@@ -78,7 +78,7 @@ describe('decodeBalanceChanges', () => {
     const recipient = out.find((c) => c.address === ADDR_RECIPIENT.toLowerCase());
     expect(sender?.amount).toBe(-500n);
     expect(recipient?.amount).toBe(500n);
-    expect(sender?.token.symbol).toBe('USDC');
+    expect(sender?.token.identifier?.toLowerCase()).toBe(ARBITRUM_USDC.identifier!.toLowerCase());
   });
 
   it('mixed native + ERC20 in the same tx aggregates both', async () => {
