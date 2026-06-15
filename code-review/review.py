@@ -18,6 +18,7 @@ Outputs (in this directory):
 """
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -94,7 +95,17 @@ def main() -> int:
     body = review.stdout.lower()
     if "## critical" in body:
         after = body.split("## critical", 1)[1].split("##", 1)[0]
-        if after.strip() and any(line.strip().startswith("-") for line in after.splitlines()):
+        findings: list[str] = []
+        for line in after.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith("-"):
+                continue
+            text = stripped.lstrip("- ").strip()
+            head = re.split(r"[.\s]", text, 1)[0]
+            if head in {"none", "nothing", "n/a", "na", ""}:
+                continue
+            findings.append(text)
+        if findings:
             print("[gate]  CRITICAL findings present — read the review before pushing.", file=sys.stderr)
             return 1
     print("[gate]  no critical findings detected.")

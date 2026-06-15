@@ -478,23 +478,21 @@ export class SolanaChain extends Chain {
   }
 
   async verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean> {
-    let signerKey: KeyObject;
-    let sigBytes: Uint8Array;
     try {
-      const pubkeyBytes = new PublicKey(req.signer).toBytes();
-      if (pubkeyBytes.length !== 32) return false;
-      signerKey = createPublicKey({
-        key: Buffer.concat([ED25519_SPKI_PREFIX, Buffer.from(pubkeyBytes)]),
+      const rawSigner = bs58.decode(req.signer);
+      if (rawSigner.length !== 32) return false;
+      const signerKey: KeyObject = createPublicKey({
+        key: Buffer.concat([ED25519_SPKI_PREFIX, Buffer.from(rawSigner)]),
         format: 'der',
         type: 'spki',
       });
-      sigBytes = parseSolanaSignature(req.signature);
+      const sigBytes = parseSolanaSignature(req.signature);
+      if (sigBytes.length !== 64) return false;
+      const messageBytes = Buffer.from(req.message, 'utf8');
+      return nodeVerify(null, messageBytes, signerKey, sigBytes);
     } catch {
       return false;
     }
-    if (sigBytes.length !== 64) return false;
-    const messageBytes = Buffer.from(req.message, 'utf8');
-    return nodeVerify(null, messageBytes, signerKey, sigBytes);
   }
 
   /**
