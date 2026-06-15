@@ -12,6 +12,12 @@ export interface CreateTransferRequest {
   memo?: string;
 }
 
+export interface VerifyMessageSignatureRequest {
+  message: string;
+  signer: string;
+  signature: string;
+}
+
 export abstract class Chain {
   readonly chainId: number;
   readonly name: string;
@@ -55,6 +61,8 @@ export abstract class Chain {
   abstract getTransactionStatus(txHash: string): Promise<TransactionStatus>;
 
   abstract getChainTipHeight(): Promise<number>;
+
+  abstract verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean>;
 
   toString(): string {
     return `Chain[chainId=${this.chainId}, name=${this.name}, networkType=${this.networkType}]`;

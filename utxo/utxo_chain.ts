@@ -1,6 +1,7 @@
 import { Psbt } from 'bitcoinjs-lib';
+import * as bitcoinMessage from 'bitcoinjs-message';
 
-import { Chain, CreateTransferRequest } from '../chain.base.ts';
+import { Chain, CreateTransferRequest, VerifyMessageSignatureRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
@@ -193,6 +194,21 @@ export class UtxoChain extends Chain {
 
   async getChainTipHeight(): Promise<number> {
     return this.chainTipProvider.getChainTipHeight();
+  }
+
+  async verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean> {
+    if (!this.validateAddress(req.signer)) return false;
+    try {
+      return bitcoinMessage.verify(
+        req.message,
+        req.signer,
+        req.signature,
+        this.params.networkInfo.messagePrefix,
+        true
+      );
+    } catch {
+      return false;
+    }
   }
 
   async getTransactionStatus(txHash: string): Promise<TransactionStatus> {
