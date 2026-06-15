@@ -32,16 +32,54 @@ Exit codes:
 
 ## Workflow
 
-1. Write the card at `cards/<short-slug>.md`. This is the contract — what the change is supposed to do, what's in scope, what's not, what done looks like.
-2. Make the change on a local feature branch.
-3. Run `python3 review.py --source <branch> --target main --card <slug>`.
-4. Read `review_<slug>.md`. Address criticals. Re-run.
-5. Once the review is clean (exit 0 + no Critical), push to main (or open a PR, per repo convention).
+There are two ways to get a card:
+
+### Mode A — you already have a YouTrack ticket
+
+```bash
+set -a && source .env && set +a
+python3 make_card.py --from-youtrack RIN-43 --slug rin-43-adopt-submodule
+```
+
+Pulls the ticket body verbatim and writes `cards/rin-43-adopt-submodule.md`.
+
+### Mode B — you have a description, not a ticket
+
+```bash
+python3 make_card.py \
+  --from-description "Add verifyMessageSignature for EVM/Solana/BTC" \
+  --slug verify-message-signature
+```
+
+(or read from a file: `--from-description @notes.txt`)
+
+Runs `claude -p` to fill in the template at `cards/_TEMPLATE.md` from your
+description. Read the result, edit, commit only when happy.
+
+### Then: implement + pre-push review
+
+1. Make the change on a local feature branch.
+2. Run `python3 review.py --source <branch> --target main --card <slug>`.
+3. Read `review_<slug>.md`. Address criticals. Re-run.
+4. Once the review is clean (exit 0 + no Critical), push to main (or open a PR, per repo convention).
 
 ## Why this is separate from the consumer-side reviewers
 
 - `pluton-back-end/code-review/` and `depositron-code-review/` review the consumer services. They diff a feature branch against the service's production branch, use the service's own conventions doc, and assume the chain SDK is correct.
 - This reviewer reviews the SDK itself. It diffs an omnichain branch against omnichain's `main`, uses the local card as the contract, and focuses on cross-chain symmetry and crypto-correctness — concerns that don't fit a service reviewer's lens.
+
+## Skill (Claude Code)
+
+A skill definition lives at `omnichain/.claude/skills/omnichain-card/SKILL.md`.
+To make it user-wide (callable from any session), copy it into your home:
+
+```bash
+mkdir -p ~/.claude/skills/omnichain-card
+cp .claude/skills/omnichain-card/SKILL.md ~/.claude/skills/omnichain-card/
+```
+
+The skill briefs Claude on the two card-creation modes and the pre-push review
+loop — invoke it when you start work on the SDK.
 
 ## Adding a new card
 
