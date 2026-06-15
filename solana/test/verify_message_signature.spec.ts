@@ -1,31 +1,8 @@
 import { sign as nodeSign, createPrivateKey } from 'node:crypto';
 import { Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
 
 import { SolanaMainnet } from '../solana_chains.ts';
-
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-
-function base58Encode(bytes: Uint8Array): string {
-  let leadingZeros = 0;
-  while (leadingZeros < bytes.length && bytes[leadingZeros] === 0) leadingZeros++;
-  const digits: number[] = [];
-  for (let i = leadingZeros; i < bytes.length; i++) {
-    let carry = bytes[i];
-    for (let j = 0; j < digits.length; j++) {
-      const x = digits[j] * 256 + carry;
-      digits[j] = x % 58;
-      carry = Math.floor(x / 58);
-    }
-    while (carry > 0) {
-      digits.push(carry % 58);
-      carry = Math.floor(carry / 58);
-    }
-  }
-  let out = '';
-  for (let i = 0; i < leadingZeros; i++) out += '1';
-  for (let i = digits.length - 1; i >= 0; i--) out += BASE58_ALPHABET[digits[i]];
-  return out;
-}
 
 function signEd25519(message: string, secretKey: Uint8Array): Buffer {
   // secretKey is the 64-byte expanded secret (seed || pubkey). Node needs the raw 32-byte seed in PKCS#8.
@@ -65,9 +42,29 @@ describe('SolanaChain.verifyMessageSignature', () => {
     const ok = await SolanaMainnet.verifyMessageSignature({
       message,
       signer,
-      signature: base58Encode(sig),
+      signature: bs58.encode(sig),
     });
     expect(ok).toBe(true);
+  });
+
+  it('rejects base64 signature (not an accepted encoding)', async () => {
+    const sig = signEd25519(message, kp.secretKey);
+    const ok = await SolanaMainnet.verifyMessageSignature({
+      message,
+      signer,
+      signature: sig.toString('base64'),
+    });
+    expect(ok).toBe(false);
+  });
+
+  it('returns false for a signer that is valid base58 but the wrong length', async () => {
+    const sig = signEd25519(message, kp.secretKey);
+    const ok = await SolanaMainnet.verifyMessageSignature({
+      message,
+      signer: bs58.encode(new Uint8Array(16)),
+      signature: sig.toString('hex'),
+    });
+    expect(ok).toBe(false);
   });
 
   it('returns false when the message differs', async () => {

@@ -56,6 +56,15 @@ describe('EvmChain.verifyMessageSignature', () => {
     expect(ok).toBe(false);
   });
 
+  it('returns false for a correctly-sized but corrupt 65-byte signature', async () => {
+    const ok = await Arbitrum.verifyMessageSignature({
+      message,
+      signer: wallet.address,
+      signature: '0x' + 'ab'.repeat(65),
+    });
+    expect(ok).toBe(false);
+  });
+
   it('returns false for a malformed signer', async () => {
     const signature = await wallet.signMessage(message);
     const ok = await Arbitrum.verifyMessageSignature({

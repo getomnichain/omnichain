@@ -66,7 +66,7 @@ Runtime deps the consumer is expected to provide (via its own
 `package.json`):
 
 - `ethers@^6`
-- `bitcoinjs-lib@^7`, `ecpair`, `tiny-secp256k1`, `coininfo`
+- `bitcoinjs-lib@^7`, `bitcoinjs-message`, `ecpair`, `tiny-secp256k1`, `coininfo`
 - `@solana/web3.js@^1`, `@solana/spl-token`
 - `axios`, `js-sha3`, `bs58`, `bip32`, `bip39`
 

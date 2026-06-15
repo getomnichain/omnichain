@@ -17,7 +17,8 @@ import {
   getMint,
 } from '@solana/spl-token';
 
-import { createPublicKey, verify as nodeVerify } from 'node:crypto';
+import { KeyObject, createPublicKey, verify as nodeVerify } from 'node:crypto';
+import bs58 from 'bs58';
 
 import { Chain, CreateTransferRequest, VerifyMessageSignatureRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
@@ -477,10 +478,11 @@ export class SolanaChain extends Chain {
   }
 
   async verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean> {
-    let signerKey;
+    let signerKey: KeyObject;
     let sigBytes: Uint8Array;
     try {
       const pubkeyBytes = new PublicKey(req.signer).toBytes();
+      if (pubkeyBytes.length !== 32) return false;
       signerKey = createPublicKey({
         key: Buffer.concat([ED25519_SPKI_PREFIX, Buffer.from(pubkeyBytes)]),
         format: 'der',
@@ -593,38 +595,10 @@ function emptyStatus(status: TransactionStatus['status']): TransactionStatus {
 
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-
 function parseSolanaSignature(raw: string): Uint8Array {
-  const trimmed = raw.trim();
-  const hexCandidate = trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed;
+  const hexCandidate = raw.startsWith('0x') ? raw.slice(2) : raw;
   if (/^[0-9a-fA-F]+$/.test(hexCandidate) && hexCandidate.length === 128) {
     return Buffer.from(hexCandidate, 'hex');
   }
-  return base58Decode(trimmed);
-}
-
-function base58Decode(input: string): Uint8Array {
-  if (input.length === 0) return new Uint8Array();
-  let leadingZeros = 0;
-  while (leadingZeros < input.length && input[leadingZeros] === '1') leadingZeros++;
-  const digits: number[] = [];
-  for (let i = leadingZeros; i < input.length; i++) {
-    const ch = input[i];
-    const carryFromChar = BASE58_ALPHABET.indexOf(ch);
-    if (carryFromChar < 0) throw new Error(`invalid base58 character ${ch}`);
-    let carry = carryFromChar;
-    for (let j = 0; j < digits.length; j++) {
-      const x = digits[j] * 58 + carry;
-      digits[j] = x & 0xff;
-      carry = x >>> 8;
-    }
-    while (carry > 0) {
-      digits.push(carry & 0xff);
-      carry >>>= 8;
-    }
-  }
-  const out = new Uint8Array(leadingZeros + digits.length);
-  for (let i = 0; i < digits.length; i++) out[leadingZeros + i] = digits[digits.length - 1 - i];
-  return out;
+  return bs58.decode(raw);
 }

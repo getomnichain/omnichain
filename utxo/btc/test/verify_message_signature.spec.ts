@@ -67,6 +67,7 @@ describe('UtxoChain.verifyMessageSignature (BTC)', () => {
   const keyPair = ECPair.fromPrivateKey(Buffer.alloc(32, 0xaa));
   const compressedPubkey = Buffer.from(keyPair.publicKey);
   const mainnetSigner = p2pkh(compressedPubkey, networks.bitcoin);
+  const p2wpkhSigner = payments.p2wpkh({ pubkey: compressedPubkey, network: networks.bitcoin }).address!;
   const chain = makeChain(false);
 
   function signLegacy(net: networks.Network): string {
@@ -75,11 +76,27 @@ describe('UtxoChain.verifyMessageSignature (BTC)', () => {
     return sig.toString('base64');
   }
 
+  function signSegwit(net: networks.Network): string {
+    const priv = Buffer.from(keyPair.privateKey!);
+    const sig = bitcoinMessage.sign(message, priv, true, net.messagePrefix, { segwitType: 'p2wpkh' });
+    return sig.toString('base64');
+  }
+
   it('returns true for a valid legacy P2PKH signature', async () => {
     const signature = signLegacy(networks.bitcoin);
     const ok = await chain.verifyMessageSignature({
       message,
       signer: mainnetSigner,
+      signature,
+    });
+    expect(ok).toBe(true);
+  });
+
+  it('returns true for a valid P2WPKH (SegWit native) signature', async () => {
+    const signature = signSegwit(networks.bitcoin);
+    const ok = await chain.verifyMessageSignature({
+      message,
+      signer: p2wpkhSigner,
       signature,
     });
     expect(ok).toBe(true);
