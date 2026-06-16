@@ -1,43 +1,102 @@
 ---
 name: omnichain-card
-description: Generate or fetch an omnichain task card, then drive the pre-push reviewer. Use when the user wants to start a change on the omnichain chain SDK — either they have a YouTrack ticket id (Mode A) or they have a description and want a card drafted (Mode B). The skill is two scripts: `make_card.py` to produce the card, then `review.py` to run a pre-push code review against local branches.
+description: Drive the full omnichain SDK change workflow — write or fetch the task card, implement, run pre-push review, loop on fixes. Use when the user is starting any change against the pluton-bridge/omnichain repo. Supports three modes depending on whether a YouTrack ticket already exists and whether the user wants manual or auto-pilot iteration.
 ---
 
 # omnichain-card
 
-Run from the omnichain repo root.
+You drive a structured workflow for omnichain changes. Pick the mode from how the user opened the conversation, then execute the steps strictly in order. Every card has its own directory at `code-review/cards/<slug>/` holding `description.md`, plus `diff_<N>.diff` and `review_<N>.md` for each review iteration.
 
-## Mode A — user has a YouTrack ticket id
+All branches are **local-only** — never `origin/*` for review inputs. The user can see file changes live in VS Code on the running session, so "show the user the diff" means saving the change to disk and stating which files moved.
 
-```bash
-set -a && source code-review/.env && set +a
-python3 code-review/make_card.py --from-youtrack <ISSUE-ID> --slug <slug>
-```
+---
 
-Writes `code-review/cards/<slug>.md` from the ticket body.
+## Mode A — User gives a YouTrack card id
 
-## Mode B — user has a description, no ticket
+Trigger: user names a ticket like "RIN-44".
 
-```bash
-python3 code-review/make_card.py \
-  --from-description "<one-line description or @path/to/notes.txt>" \
-  --slug <slug>
-```
+1. Fetch:
+   ```bash
+   cd <omnichain-root>
+   set -a && source code-review/.env && set +a
+   python3 code-review/make_card.py fetch --issue <ID> --slug <slug>
+   ```
+   `<slug>` defaults to lowercased issue id if you omit `--slug`.
+2. Read `code-review/cards/<slug>/description.md`. Confirm the scope with one sentence back to the user.
+3. Branch: `git checkout -b feature/<slug>` from `main`.
+4. Implement the change. Keep edits scoped to what the card lists in **Affected files** / **Scope**.
+5. When the code is in a state to review, show the user the file list and a brief summary. Wait for **code approval** before proceeding.
+6. On code approval, run review:
+   ```bash
+   python3 code-review/review.py --source feature/<slug> --target main --card <slug>
+   ```
+   Output appends `cards/<slug>/diff_<N>.diff` and `cards/<slug>/review_<N>.md`. The script exits non-zero if the **Critical** section has real findings.
+7. Show the user the review at `cards/<slug>/review_<N>.md`. Wait for **review approval**.
+8. If the user says "fix the criticals" (or any subset), edit the code, then go back to step 5.
+9. When the review is approved AND clean, push: `git push -u origin feature/<slug>` and tell the user the branch is up for merge.
 
-Drafts a full card matching `code-review/cards/_TEMPLATE.md`. Show the
-result to the user; only proceed once they approve.
+---
 
-## After the card exists — implement, then review BEFORE pushing
+## Mode B-manual — User gives a description, wants to drive review by hand
 
-1. `git checkout -b feature/<slug>` from `main`.
-2. Make the change.
-3. `python3 code-review/review.py --source feature/<slug> --target main --card <slug>`.
-4. Read `code-review/review_<slug>.md`. Address Critical findings before push.
-5. Push once the review is clean.
+Trigger: user gives a free-text description of what they want and does NOT say "auto" / "autopilot".
 
-## Notes
+1. Draft the card:
+   ```bash
+   python3 code-review/make_card.py draft \
+     --description "<the user's description, or @path/to/notes.txt>" \
+     --slug <slug>
+   ```
+2. Show the user `code-review/cards/<slug>/description.md`. **Wait for the user to approve the card.** They may ask for edits — apply them and show again. Loop until approved.
+3. On card approval, post the card up to YouTrack so it has a ticket id:
+   ```bash
+   set -a && source code-review/.env && set +a
+   python3 code-review/make_card.py post \
+     --slug <slug> --project RIN --summary "<one-line title>"
+   ```
+   Capture the issue id the script prints (e.g. `RIN-50`) and add it to the top of `cards/<slug>/description.md` for traceability. Default project is `RIN` for the pluton org; ask the user if you're unsure.
+4. From here on, follow Mode A steps 3 through 9.
 
-- The reviewer reads ONLY local refs — never `origin/*`. Fetch/merge upstream first if you need fresh `main`.
-- The card lives under version control at `code-review/cards/<slug>.md`. The
-  `review_*` outputs are gitignored — regenerate them on every run.
-- Never commit the YouTrack token. Use `code-review/.env` (gitignored).
+---
+
+## Mode B-auto — User gives a description AND says auto / autopilot
+
+Trigger: user says "auto mode", "autopilot", "no approvals", or equivalent, alongside a description.
+
+1. Draft the card (same `make_card.py draft` call). Do NOT wait for approval — the user has opted out of approvals.
+2. Branch: `git checkout -b feature/<slug>` from `main`.
+3. Implement.
+4. Run the review (`review.py …`). Save the iteration log.
+5. If `review.py` exit code is 0 (no Critical findings):
+   - Push the branch and tell the user the branch is ready for merge. Stop.
+6. If exit code is 1 (Critical findings present):
+   - Read `cards/<slug>/review_<N>.md`.
+   - Address every Critical finding in code.
+   - Go back to step 4.
+7. Hard cap: **at most 5 review iterations.** If iteration 5 still exits 1, stop, leave the branch unpushed, summarize the remaining Criticals, and tell the user manual review is needed. Do not push code that failed the gate.
+
+Use `TodoWrite` to track the iteration count so you don't drift past 5.
+
+---
+
+## Important rules across all modes
+
+- **Local refs only.** `review.py` rejects anything that isn't a local branch. If you need fresh `main`, do `git fetch && git checkout main && git pull` first — then re-branch.
+- **One slug per change.** All artifacts live under `cards/<slug>/`. Never write reviews to the repo root.
+- **Never delete prior iteration logs.** They're the audit trail. `review.py` auto-increments `<N>`.
+- **Don't bypass the gate.** If `review.py` exits 1, the code is not ready to push, regardless of whether you personally agree with the finding. Either fix it or document why it's a false positive in `cards/<slug>/review_<N>.md` and ask the user.
+- **Card body lives at `description.md`.** When the user asks "what was this card?", read `cards/<slug>/description.md`, not the YouTrack copy — local is the source of truth during the change.
+- **Determining the slug**: prefer the YouTrack id lowercased (`rin-44`) for Mode A. Prefer a short kebab-case noun phrase for Mode B (`verify-message-signature`).
+
+---
+
+## Skill self-check before starting
+
+Before running any command, verify:
+
+- Working directory is the omnichain repo root.
+- `code-review/.env` exists and `YOUTRACK_TOKEN` is set (only needed for `fetch` / `post`).
+- `python3 -c "import requests"` succeeds (the scripts depend on it).
+- `claude -p` is on PATH (the scripts shell out to it).
+
+If any check fails, fix it before starting the workflow — don't half-run and leave the user with partial state.
