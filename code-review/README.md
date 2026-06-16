@@ -1,95 +1,71 @@
 # omnichain code review
 
-Pre-push code reviewer for the omnichain chain SDK. Mirrors `pluton-back-end/code-review/` and `depositron-code-review/` in spirit, but:
+Pre-push code reviewer + task-card generator for the omnichain chain SDK.
 
 - Runs **inside** the omnichain repo (this directory).
-- Reads **only local refs** — never `origin/*`. Always fetch / merge locally first.
-- All inputs come from the CLI (source branch, target branch, card id) — no hardcoded values.
-- The "task card" is a local file at `cards/<id>.md` — no YouTrack / Trello integration. omnichain is an SDK, not a service; the contract document lives next to the change.
+- Reads **only local refs** — never `origin/*`.
+- Every card lives in its own directory at `cards/<slug>/` holding the description and every review iteration's diff + verdict.
+- Posts approved cards up to YouTrack so the ticket id matches what was implemented.
 
-## Usage
+The complete workflow is encoded in [`.claude/skills/omnichain-card/SKILL.md`](../.claude/skills/omnichain-card/SKILL.md) — read that for the three modes (card-id, description-manual, description-auto). The summary below is the tool reference.
+
+## Card directory layout
+
+```
+cards/<slug>/
+    description.md     # the card body — the contract
+    diff_1.diff        # git diff target...source at iteration 1
+    review_1.md        # claude -p verdict at iteration 1
+    diff_2.diff        # …after a fix
+    review_2.md
+    ...
+```
+
+## `make_card.py`
 
 ```bash
-# From inside this directory:
-python3 review.py \
-  --source feature/verify-msg-sig \
-  --target main \
-  --card verify-message-signature
+# Fetch a YouTrack issue into cards/<slug>/description.md
+set -a && source .env && set +a
+python3 make_card.py fetch --issue RIN-44 --slug rin-44
+
+# Draft a card from a description via `claude -p`
+python3 make_card.py draft \
+  --description "Add verifyMessageSignature for EVM/Solana/BTC" \
+  --slug verify-message-signature
+
+# Post an approved local card up to YouTrack as a new issue
+python3 make_card.py post \
+  --slug verify-message-signature \
+  --project RIN \
+  --summary "Verify message signature across EVM/Solana/BTC"
 ```
 
-Outputs (gitignored):
+## `review.py`
 
+```bash
+python3 review.py --source feature/<slug> --target main --card <slug>
 ```
-review_<card>.diff       # git diff <target>...<source>  (three-dot, local refs only)
-review_<card>_card.md    # snapshot of cards/<id>.md at run time
-review_<card>.md         # Claude's verdict
-```
+
+Reads `cards/<slug>/description.md` for the contract, runs the diff against local refs only, and writes the next `diff_<N>.diff` + `review_<N>.md` into the same directory.
 
 Exit codes:
 
-- `0`: review ran; no Critical-section findings detected.
-- `1`: review ran; the Critical section contains at least one finding. Read `review_<card>.md` before pushing.
-
-## Workflow
-
-There are two ways to get a card:
-
-### Mode A — you already have a YouTrack ticket
-
-```bash
-set -a && source .env && set +a
-python3 make_card.py --from-youtrack RIN-43 --slug rin-43-adopt-submodule
-```
-
-Pulls the ticket body verbatim and writes `cards/rin-43-adopt-submodule.md`.
-
-### Mode B — you have a description, not a ticket
-
-```bash
-python3 make_card.py \
-  --from-description "Add verifyMessageSignature for EVM/Solana/BTC" \
-  --slug verify-message-signature
-```
-
-(or read from a file: `--from-description @notes.txt`)
-
-Runs `claude -p` to fill in the template at `cards/_TEMPLATE.md` from your
-description. Read the result, edit, commit only when happy.
-
-### Then: implement + pre-push review
-
-1. Make the change on a local feature branch.
-2. Run `python3 review.py --source <branch> --target main --card <slug>`.
-3. Read `review_<slug>.md`. Address criticals. Re-run.
-4. Once the review is clean (exit 0 + no Critical), push to main (or open a PR, per repo convention).
+- `0`: no Critical-section findings — safe to push (per the rules in the skill).
+- `1`: at least one Critical finding — fix and re-run.
 
 ## Why this is separate from the consumer-side reviewers
 
-- `pluton-back-end/code-review/` and `depositron-code-review/` review the consumer services. They diff a feature branch against the service's production branch, use the service's own conventions doc, and assume the chain SDK is correct.
-- This reviewer reviews the SDK itself. It diffs an omnichain branch against omnichain's `main`, uses the local card as the contract, and focuses on cross-chain symmetry and crypto-correctness — concerns that don't fit a service reviewer's lens.
+- `pluton-back-end/code-review/` and `depositron-code-review/` review the consumer services. They diff a feature branch against the service's production branch and assume the chain SDK is correct.
+- This reviewer reviews the SDK itself. It diffs an omnichain branch against omnichain's `main`, uses the local card as the contract, and focuses on cross-chain symmetry and crypto correctness — concerns that don't fit a service reviewer's lens.
 
 ## Skill (Claude Code)
 
-A skill definition lives at `omnichain/.claude/skills/omnichain-card/SKILL.md`.
-To make it user-wide (callable from any session), copy it into your home:
+The skill definition lives at `omnichain/.claude/skills/omnichain-card/SKILL.md`. To make it user-wide (callable from any session):
 
 ```bash
 mkdir -p ~/.claude/skills/omnichain-card
 cp .claude/skills/omnichain-card/SKILL.md ~/.claude/skills/omnichain-card/
 ```
-
-The skill briefs Claude on the two card-creation modes and the pre-push review
-loop — invoke it when you start work on the SDK.
-
-## Adding a new card
-
-```bash
-cp cards/verify-message-signature.md cards/<your-slug>.md
-$EDITOR cards/<your-slug>.md
-# write a summary, scope, requirements, acceptance, affected files, DoD.
-```
-
-Keep cards small and self-contained. One ticket = one card = one branch = one review.
 
 ## Prompt rules
 

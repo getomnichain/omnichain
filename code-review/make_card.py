@@ -1,32 +1,39 @@
 """
 omnichain task-card generator.
 
-Two modes:
+Each card lives in its own directory under cards/<slug>/, holding the
+description plus every review iteration's diff and verdict:
 
-  1. --from-youtrack <ISSUE-ID>
-     Fetch the YouTrack issue body and save it verbatim to cards/<slug>.md.
-     Use when the card is already written upstream and you only have the ID.
+    code-review/cards/<slug>/
+        description.md     # the card body
+        diff_<N>.diff      # snapshot of git diff at review N
+        review_<N>.md      # Claude's verdict at review N
 
-  2. --from-description <text-or-@file>
-     Run Claude to draft a card matching the template at cards/_TEMPLATE.md,
-     using your description as the seed. Use when you have the idea but not
-     the formal card.
+Three subcommands:
 
-Either way the output lands at code-review/cards/<slug>.md, where the reviewer
-(`review.py --card <slug>`) reads it.
+    fetch    Pull a YouTrack issue body into cards/<slug>/description.md.
+    draft    Draft a card from a description, via `claude -p`.
+    post     Post an already-drafted local card up to YouTrack as a new issue.
 
 Examples:
 
-    # Mode A — fetch from YouTrack (token must be exported as YOUTRACK_TOKEN)
-    python3 make_card.py --from-youtrack RIN-43 --slug rin-43-adopt-submodule
+    # Mode A — fetch
+    set -a && source .env && set +a
+    python3 make_card.py fetch --issue RIN-44 --slug rin-44
 
-    # Mode B — let Claude draft from your description
-    python3 make_card.py \\
-        --from-description "Add verifyMessageSignature for EVM/Solana/BTC" \\
+    # Mode B — draft from a description
+    python3 make_card.py draft \\
+        --description "Add Chain.verifyMessageSignature for EVM/Solana/BTC" \\
         --slug verify-message-signature
+    # ...user reviews cards/verify-message-signature/description.md...
 
-    # Mode B — read description from a file
-    python3 make_card.py --from-description @notes.txt --slug some-feature
+    # Mode B (continued) — push the approved card to YouTrack
+    python3 make_card.py post \\
+        --slug verify-message-signature \\
+        --project RIN \\
+        --summary "Verify message signature across EVM/Solana/BTC"
+
+The skill at .claude/skills/omnichain-card drives the full workflow.
 """
 
 import argparse
@@ -52,49 +59,74 @@ def slugify(text: str) -> str:
     return text or "card"
 
 
-def read_description(value: str) -> str:
+def card_dir_for(slug: str) -> Path:
+    return CARDS_DIR / slug
+
+
+def description_path(slug: str) -> Path:
+    return card_dir_for(slug) / "description.md"
+
+
+def youtrack_token() -> str:
+    token = os.environ.get("YOUTRACK_TOKEN", "").strip()
+    if not token:
+        sys.exit(
+            "YOUTRACK_TOKEN is not set. Export it before running:\n"
+            "  set -a && source .env && set +a"
+        )
+    return token
+
+
+def read_text_arg(value: str) -> str:
     if value.startswith("@"):
         path = Path(value[1:]).expanduser().resolve()
         if not path.exists():
-            sys.exit(f"description file not found: {path}")
+            sys.exit(f"file not found: {path}")
         return path.read_text(encoding="utf-8")
     return value
 
 
-def fetch_youtrack_issue(issue_id: str) -> str:
-    token = os.environ.get("YOUTRACK_TOKEN", "").strip()
-    if not token:
-        sys.exit(
-            "YOUTRACK_TOKEN is not set. Export it before running --from-youtrack:\n"
-            "  export YOUTRACK_TOKEN=perm-..."
-        )
+def write_card(slug: str, body: str, *, overwrite: bool) -> Path:
+    card_dir_for(slug).mkdir(parents=True, exist_ok=True)
+    out = description_path(slug)
+    if out.exists() and not overwrite:
+        sys.exit(f"refusing to overwrite {out} (pass --overwrite to replace)")
+    out.write_text(body.rstrip() + "\n", encoding="utf-8")
+    return out
+
+
+def cmd_fetch(args: argparse.Namespace) -> int:
+    token = youtrack_token()
     resp = requests.get(
-        f"{YOUTRACK_BASE_URL}/api/issues/{issue_id}",
+        f"{YOUTRACK_BASE_URL}/api/issues/{args.issue}",
         params={"fields": "idReadable,summary,description"},
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/json",
-        },
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
         timeout=15,
     )
     if resp.status_code == 404:
-        sys.exit(f"YouTrack issue {issue_id} not found (404). Check the ID.")
+        sys.exit(f"YouTrack issue {args.issue} not found (404). Check the ID.")
     resp.raise_for_status()
     issue = resp.json()
-    summary = issue.get("summary") or issue_id
-    description = issue.get("description") or ""
-    if not description.strip():
+    summary = issue.get("summary") or args.issue
+    description = (issue.get("description") or "").strip()
+    if not description:
         sys.exit(
-            f"YouTrack issue {issue_id} has an empty description. "
-            f"Write the card body in YouTrack first, or use --from-description."
+            f"YouTrack issue {args.issue} has an empty description. "
+            f"Write the body in YouTrack first, or use `draft`."
         )
-    return f"# {summary}\n\n{description}\n"
+    body = f"# {summary}\n\n{description}\n"
+    slug = slugify(args.slug or args.issue)
+    out = write_card(slug, body, overwrite=args.overwrite)
+    print(f"[fetch] {out}  (from YouTrack {args.issue})")
+    print(f"[next]  python3 review.py --source <branch> --target main --card {slug}")
+    return 0
 
 
-def draft_via_claude(description: str) -> str:
+def cmd_draft(args: argparse.Namespace) -> int:
     if not TEMPLATE_FILE.exists():
         sys.exit(f"template not found at {TEMPLATE_FILE}")
     template = TEMPLATE_FILE.read_text(encoding="utf-8")
+    description = read_text_arg(args.description)
     prompt = (
         "You are drafting a task card for the omnichain chain SDK.\n\n"
         "Fill out EVERY section of the template below using the user's description.\n"
@@ -117,40 +149,69 @@ def draft_via_claude(description: str) -> str:
     body = result.stdout.strip()
     if not body:
         sys.exit("claude returned empty output")
-    return body + "\n"
+    slug = slugify(args.slug)
+    out = write_card(slug, body, overwrite=args.overwrite)
+    print(f"[draft] {out}  (drafted by claude -p)")
+    print(f"[next]  review the card with the user.")
+    print(f"        on approval: python3 make_card.py post --slug {slug} --project <KEY> --summary '<title>'")
+    return 0
+
+
+def cmd_post(args: argparse.Namespace) -> int:
+    token = youtrack_token()
+    desc_path = description_path(args.slug)
+    if not desc_path.exists():
+        sys.exit(f"no description at {desc_path}. Run `fetch` or `draft` first.")
+    body = desc_path.read_text(encoding="utf-8")
+    payload = {
+        "project": {"shortName": args.project},
+        "summary": args.summary,
+        "description": body,
+    }
+    resp = requests.post(
+        f"{YOUTRACK_BASE_URL}/api/issues",
+        params={"fields": "idReadable,id"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=20,
+    )
+    if not resp.ok:
+        sys.exit(f"YouTrack create failed: {resp.status_code} {resp.text}")
+    issue = resp.json()
+    issue_id = issue.get("idReadable") or issue.get("id") or "?"
+    print(f"[post]  created YouTrack issue {issue_id} in project {args.project}")
+    print(f"        {YOUTRACK_BASE_URL}/issue/{issue_id}")
+    return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="omnichain card generator")
-    mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--from-youtrack", metavar="ISSUE-ID", help="fetch the card from YouTrack")
-    mode.add_argument(
-        "--from-description",
-        metavar="TEXT or @FILE",
-        help="draft the card from a description (prefix with @ to read from a file)",
-    )
-    parser.add_argument("--slug", required=True, help="slug for the output file: cards/<slug>.md")
-    parser.add_argument("--overwrite", action="store_true", help="replace an existing cards/<slug>.md")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    f = sub.add_parser("fetch", help="fetch a card from YouTrack")
+    f.add_argument("--issue", required=True, help="YouTrack issue id, e.g. RIN-44")
+    f.add_argument("--slug", default=None, help="output slug (defaults to lowercase issue id)")
+    f.add_argument("--overwrite", action="store_true", help="replace existing description.md")
+    f.set_defaults(func=cmd_fetch)
+
+    d = sub.add_parser("draft", help="draft a card from a description")
+    d.add_argument("--description", required=True, help="description text, or @file")
+    d.add_argument("--slug", required=True, help="output slug")
+    d.add_argument("--overwrite", action="store_true", help="replace existing description.md")
+    d.set_defaults(func=cmd_draft)
+
+    p = sub.add_parser("post", help="post an approved local card up to YouTrack")
+    p.add_argument("--slug", required=True, help="local card slug")
+    p.add_argument("--project", required=True, help="YouTrack project shortName, e.g. RIN")
+    p.add_argument("--summary", required=True, help="issue title (one line)")
+    p.set_defaults(func=cmd_post)
+
     args = parser.parse_args()
-
-    slug = slugify(args.slug)
-    out_path = CARDS_DIR / f"{slug}.md"
-    if out_path.exists() and not args.overwrite:
-        sys.exit(f"refusing to overwrite {out_path} (pass --overwrite to replace)")
-
-    if args.from_youtrack:
-        body = fetch_youtrack_issue(args.from_youtrack)
-        source = f"YouTrack {args.from_youtrack}"
-    else:
-        description = read_description(args.from_description)
-        body = draft_via_claude(description)
-        source = "description (drafted by claude -p)"
-
-    out_path.write_text(body, encoding="utf-8")
-    print(f"[card] wrote {out_path} from {source}")
-    print(f"[next] review the card, then run:")
-    print(f"       python3 review.py --source <branch> --target main --card {slug}")
-    return 0
+    return args.func(args)
 
 
 if __name__ == "__main__":
