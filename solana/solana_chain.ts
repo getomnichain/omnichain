@@ -336,6 +336,71 @@ export class SolanaChain extends Chain {
   }
 
   /**
+   * Wraps a caller-supplied list of program instructions into a fully-formed
+   * UnsignedSolanaTransaction. Used by depositron's SOL_INSTRUCTIONS action type to support
+   * arbitrary program calls (staking, swaps, custom programs) without the SDK having to
+   * understand the instruction semantics. The SDK still owns the envelope: CU limit + price,
+   * MessageV0 compilation, fresh blockhash, VersionedTransaction wrapping.
+   *
+   * Caller is responsible for: instruction correctness, signer-account constraints (only the
+   * single key the caller will sign with — typically the vault key — can be flagged as signer),
+   * ATA creation (if any instruction touches an ATA that doesn't exist yet), and decimals
+   * validation (no automatic `transferChecked` fallback here).
+   */
+  async createInstructionsUnsignedTransaction(req: {
+    from: string;
+    instructions: TransactionInstruction[];
+    priorityFeeMicroLamportsPerCu?: number;
+    computeUnitLimit?: number;
+  }): Promise<UnsignedSolanaTransaction> {
+    if (!req.from || !this.validateAddress(req.from)) {
+      throw new ChainError(ChainErrorKinds.InvalidAddress, `Invalid sender: ${req.from}`, {
+        chainId: this.chainId,
+        address: req.from,
+      });
+    }
+    if (!Array.isArray(req.instructions) || req.instructions.length === 0) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        'SolanaChain.createInstructionsUnsignedTransaction requires at least one instruction',
+        { chainId: this.chainId },
+      );
+    }
+    const fromPk = new PublicKey(req.from);
+    const allIxs: TransactionInstruction[] = [];
+    if (req.computeUnitLimit !== undefined || req.priorityFeeMicroLamportsPerCu !== undefined) {
+      allIxs.push(
+        ComputeBudgetProgram.setComputeUnitLimit({
+          units: req.computeUnitLimit ?? DEFAULT_COMPUTE_UNIT_LIMIT,
+        }),
+      );
+      if (req.priorityFeeMicroLamportsPerCu !== undefined) {
+        allIxs.push(
+          ComputeBudgetProgram.setComputeUnitPrice({
+            microLamports: req.priorityFeeMicroLamportsPerCu,
+          }),
+        );
+      }
+    }
+    for (const ix of req.instructions) allIxs.push(ix);
+    const connection = this.getConnection();
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+    const message = MessageV0.compile({
+      payerKey: fromPk,
+      instructions: allIxs,
+      recentBlockhash: blockhash,
+    });
+    return new UnsignedSolanaTransaction({
+      chainId: this.chainId,
+      transaction: new VersionedTransaction(message),
+      feePayer: req.from,
+      recentBlockhash: blockhash,
+      lastValidBlockHeight,
+      instructions: allIxs,
+    });
+  }
+
+  /**
    * Returns a fresh UnsignedSolanaTransaction with the same instructions but a newly-fetched
    * blockhash. Use when a previously-built tx couldn't broadcast inside its blockhash window
    * (~60s on mainnet) — Solana drops txs whose blockhash has expired. Caller must re-sign:
