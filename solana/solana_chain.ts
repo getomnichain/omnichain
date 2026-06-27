@@ -59,6 +59,14 @@ export interface SolanaTransferOptions extends CreateTransferRequest {
   priorityFeeMicroLamportsPerCu?: number;
   /** Override CU limit. Default 200,000 covers SOL transfer + ATA creation comfortably. */
   computeUnitLimit?: number;
+  /**
+   * Optional sponsor / fee-payer pubkey. When set, the compiled tx names this account as
+   * `payerKey` and as the funding `payer` for any prepended `createAssociatedTokenAccount`
+   * instruction. The caller (sender) stays the SPL ATA owner / native-SOL source.
+   * Caller is then responsible for signing the tx with BOTH the sponsor's and the sender's
+   * keypairs. When omitted, `from` is both fee payer and source (backward-compatible).
+   */
+  feePayer?: string;
 }
 
 const DEFAULT_COMPUTE_UNIT_LIMIT = 200_000;
@@ -263,9 +271,18 @@ export class SolanaChain extends Chain {
       );
     }
 
+    if (req.feePayer !== undefined && !this.validateAddress(req.feePayer)) {
+      throw new ChainError(ChainErrorKinds.InvalidAddress, `Invalid feePayer: ${req.feePayer}`, {
+        chainId: this.chainId,
+        address: req.feePayer,
+      });
+    }
+
     const connection = this.getConnection();
     const fromPk = new PublicKey(req.from);
     const toPk = new PublicKey(req.to);
+    const feePayerAddress = req.feePayer ?? req.from;
+    const feePayerPk = new PublicKey(feePayerAddress);
 
     const instructions: TransactionInstruction[] = [];
 
@@ -298,11 +315,11 @@ export class SolanaChain extends Chain {
       const decimals = await this.resolveMintDecimals(mintPk);
       const sourceAta = getAssociatedTokenAddressSync(mintPk, fromPk, false, programId);
       const destAta = getAssociatedTokenAddressSync(mintPk, toPk, false, programId);
-      // Create the destination ATA when missing — the sender pays rent.
+      // Create the destination ATA when missing — the fee payer pays rent.
       const destInfo = await connection.getAccountInfo(destAta);
       if (!destInfo) {
         instructions.push(
-          createAssociatedTokenAccountInstruction(fromPk, destAta, toPk, mintPk, programId),
+          createAssociatedTokenAccountInstruction(feePayerPk, destAta, toPk, mintPk, programId),
         );
       }
       instructions.push(
@@ -321,14 +338,14 @@ export class SolanaChain extends Chain {
 
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
     const message = MessageV0.compile({
-      payerKey: fromPk,
+      payerKey: feePayerPk,
       instructions,
       recentBlockhash: blockhash,
     });
     return new UnsignedSolanaTransaction({
       chainId: this.chainId,
       transaction: new VersionedTransaction(message),
-      feePayer: req.from,
+      feePayer: feePayerAddress,
       recentBlockhash: blockhash,
       lastValidBlockHeight,
       instructions,
@@ -352,11 +369,24 @@ export class SolanaChain extends Chain {
     instructions: TransactionInstruction[];
     priorityFeeMicroLamportsPerCu?: number;
     computeUnitLimit?: number;
+    /**
+     * Optional sponsor / fee-payer pubkey. When set, the compiled tx names this account as
+     * `payerKey`. The caller (sender / `from`) stays as the authority for any signing role
+     * inside the supplied instructions. Caller signs with BOTH sponsor and sender keypairs.
+     * When omitted, `from` is also the fee payer (backward-compatible).
+     */
+    feePayer?: string;
   }): Promise<UnsignedSolanaTransaction> {
     if (!req.from || !this.validateAddress(req.from)) {
       throw new ChainError(ChainErrorKinds.InvalidAddress, `Invalid sender: ${req.from}`, {
         chainId: this.chainId,
         address: req.from,
+      });
+    }
+    if (req.feePayer !== undefined && !this.validateAddress(req.feePayer)) {
+      throw new ChainError(ChainErrorKinds.InvalidAddress, `Invalid feePayer: ${req.feePayer}`, {
+        chainId: this.chainId,
+        address: req.feePayer,
       });
     }
     if (!Array.isArray(req.instructions) || req.instructions.length === 0) {
@@ -366,7 +396,8 @@ export class SolanaChain extends Chain {
         { chainId: this.chainId },
       );
     }
-    const fromPk = new PublicKey(req.from);
+    const feePayerAddress = req.feePayer ?? req.from;
+    const feePayerPk = new PublicKey(feePayerAddress);
     const allIxs: TransactionInstruction[] = [];
     if (req.computeUnitLimit !== undefined || req.priorityFeeMicroLamportsPerCu !== undefined) {
       allIxs.push(
@@ -386,14 +417,14 @@ export class SolanaChain extends Chain {
     const connection = this.getConnection();
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
     const message = MessageV0.compile({
-      payerKey: fromPk,
+      payerKey: feePayerPk,
       instructions: allIxs,
       recentBlockhash: blockhash,
     });
     return new UnsignedSolanaTransaction({
       chainId: this.chainId,
       transaction: new VersionedTransaction(message),
-      feePayer: req.from,
+      feePayer: feePayerAddress,
       recentBlockhash: blockhash,
       lastValidBlockHeight,
       instructions: allIxs,
