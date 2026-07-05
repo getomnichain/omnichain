@@ -274,6 +274,108 @@ describe('BtcChain.createTransferUnsignedTransaction', () => {
   });
 });
 
+describe('BtcChain.createTransferUnsignedTransaction — multi-output', () => {
+  const RECIPIENT_A = 'tb1q9h0yjdupyfpxfjg24rpx755xrplvzd9hz2nj7v';
+  const RECIPIENT_B = 'tb1q8dv27vfa8gyc3ugucpezcrqr9972dn4z04p8ec';
+  const RECIPIENT_C = 'tb1qaufzsq0npgkclme37zvt3gea9wwvhe9nt3v8c9';
+
+  it('accepts an outputs[] array and lays them down in order followed by change', async () => {
+    const { chain } = makeChainWithUtxo(500_000);
+    const unsigned = await chain.createTransferUnsignedTransaction({
+      from: SENDER_TESTNET_P2WPKH,
+      tokenIdentifier: undefined,
+      outputs: [
+        { to: RECIPIENT_A, amount: 30_000n },
+        { to: RECIPIENT_B, amount: 10_000n },
+        { to: RECIPIENT_C, amount: 5_000n },
+      ],
+    } as any);
+    const psbt = Psbt.fromBase64(unsigned.psbtBase64, { network: networks.testnet });
+    // 3 recipient outputs + 1 change output = at least 4
+    expect(psbt.txOutputs.length).toBeGreaterThanOrEqual(4);
+    expect(psbt.txOutputs[0].value).toBe(30_000n);
+    expect(psbt.txOutputs[1].value).toBe(10_000n);
+    expect(psbt.txOutputs[2].value).toBe(5_000n);
+    // Change goes last (before optional OP_RETURN)
+    expect(psbt.txOutputs[3].address).toBe(SENDER_TESTNET_P2WPKH);
+    expect(unsigned.totalOutputSats).toBe(45_000 + (500_000 - 45_000 - unsigned.feeSats));
+  });
+
+  it('rejects a multi-output list where any amount is below dust', async () => {
+    const { chain } = makeChainWithUtxo(500_000);
+    await expect(
+      chain.createTransferUnsignedTransaction({
+        from: SENDER_TESTNET_P2WPKH,
+        tokenIdentifier: undefined,
+        outputs: [
+          { to: RECIPIENT_A, amount: 30_000n },
+          { to: RECIPIENT_B, amount: 100n }, // below dust
+        ],
+      } as any),
+    ).rejects.toThrow(/below dust/);
+  });
+
+  it('rejects a multi-output list where any address is invalid', async () => {
+    const { chain } = makeChainWithUtxo(500_000);
+    await expect(
+      chain.createTransferUnsignedTransaction({
+        from: SENDER_TESTNET_P2WPKH,
+        tokenIdentifier: undefined,
+        outputs: [
+          { to: RECIPIENT_A, amount: 30_000n },
+          { to: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', amount: 10_000n }, // mainnet
+        ],
+      } as any),
+    ).rejects.toThrow(/invalid recipient address at outputs\[1\]/);
+  });
+
+  it('rejects both single-output and outputs[] set together', async () => {
+    const { chain } = makeChainWithUtxo(500_000);
+    await expect(
+      chain.createTransferUnsignedTransaction({
+        from: SENDER_TESTNET_P2WPKH,
+        to: RECIPIENT_A,
+        amount: 30_000n,
+        tokenIdentifier: undefined,
+        outputs: [{ to: RECIPIENT_B, amount: 10_000n }],
+      } as any),
+    ).rejects.toThrow(/cannot specify both single-output.*and multi-output/);
+  });
+
+  it('rejects when neither single-output nor outputs[] is set', async () => {
+    const { chain } = makeChainWithUtxo(500_000);
+    await expect(
+      chain.createTransferUnsignedTransaction({
+        from: SENDER_TESTNET_P2WPKH,
+        tokenIdentifier: undefined,
+      } as any),
+    ).rejects.toThrow(/must specify either.*or a non-empty outputs/);
+  });
+
+  it('fee scales with the number of outputs (three outputs > one output)', async () => {
+    const { chain: chainA } = makeChainWithUtxo(500_000);
+    const oneOutput = await chainA.createTransferUnsignedTransaction({
+      from: SENDER_TESTNET_P2WPKH,
+      to: RECIPIENT_A,
+      tokenIdentifier: undefined,
+      amount: 45_000n,
+    });
+    const { chain: chainB } = makeChainWithUtxo(500_000);
+    const threeOutputs = await chainB.createTransferUnsignedTransaction({
+      from: SENDER_TESTNET_P2WPKH,
+      tokenIdentifier: undefined,
+      outputs: [
+        { to: RECIPIENT_A, amount: 30_000n },
+        { to: RECIPIENT_B, amount: 10_000n },
+        { to: RECIPIENT_C, amount: 5_000n },
+      ],
+    } as any);
+    // Two extra outputs add ~62 vbytes at P2WPKH; fee scales linearly.
+    expect(threeOutputs.feeSats).toBeGreaterThan(oneOutput.feeSats);
+    expect(threeOutputs.estimatedVBytes).toBeGreaterThan(oneOutput.estimatedVBytes);
+  });
+});
+
 describe('BtcChain.getBalance', () => {
   it('returns the confirmed balance for the address', async () => {
     const { chain } = makeChainWithUtxo(123_456);

@@ -61,7 +61,25 @@ export interface UtxoChainInit {
   rbfEnabled?: boolean;
 }
 
-export interface CreateUtxoTransferOptions extends CreateTransferRequest {
+export interface UtxoTransferOutput {
+  to: string;
+  amount: bigint;
+}
+
+export interface CreateUtxoTransferOptions extends Omit<CreateTransferRequest, 'to' | 'amount'> {
+  /** Single-recipient form. Provide either (to, amount) OR outputs[], not both. */
+  to?: string;
+  /** Single-recipient form. Provide either (to, amount) OR outputs[], not both. */
+  amount?: bigint;
+  /**
+   * Multi-recipient form. Pay N recipients atomically in a single tx. Mutually exclusive
+   * with the single (to, amount) form. On-chain the outputs appear in the order given,
+   * followed by the (optional) change output, followed by the (optional) OP_RETURN memo.
+   *
+   * Each output must be above dust; the tx pays a single fee sized to `sum(amounts)` +
+   * change. `feeRateSatsPerVByte` / `feeTargetBlocks` / `memo` apply to the whole tx.
+   */
+  outputs?: UtxoTransferOutput[];
   feeRateSatsPerVByte?: number;
   feeTargetBlocks?: number;
   rbfEnabled?: boolean;
@@ -260,11 +278,11 @@ export class UtxoChain extends Chain {
   async createTransferUnsignedTransaction(
     req: CreateUtxoTransferOptions | CreateTransferRequest
   ): Promise<UnsignedUtxoTransaction> {
-    return this.buildTransfer(req, undefined);
+    return this.buildTransfer(req as CreateUtxoTransferOptions, undefined);
   }
 
   protected async buildTransfer(
-    req: CreateTransferRequest,
+    req: CreateUtxoTransferOptions,
     getUtxosOptions: GetUtxosOptions | undefined
   ): Promise<UnsignedUtxoTransaction> {
     if (!this.validateTokenIdentifier(req.tokenIdentifier)) {
@@ -282,25 +300,55 @@ export class UtxoChain extends Chain {
       );
     }
     const fromAddress: string = req.from;
-    if (!this.validateAddress(req.to)) {
-      throw new ChainError(
-        ChainErrorKinds.InvalidAddress,
-        `${this.name}: invalid recipient address ${req.to}`,
-        { chainId: this.chainId, address: req.to }
-      );
-    }
-    if (req.amount <= 0n) {
-      throw new Error(`${this.name}: transfer amount must be > 0`);
-    }
-    const targetSats = bigintToNumber(req.amount);
-    if (targetSats < this.params.dustValueSats) {
+    const opts = req as CreateUtxoTransferOptions;
+
+    // Normalize: single-output form (to/amount) OR multi-output form (outputs[]).
+    // Exactly one must be provided; the multi-output form is preferred going forward.
+    const hasSingle = req.to !== undefined || req.amount !== undefined;
+    const hasMulti = Array.isArray(opts.outputs) && opts.outputs.length > 0;
+    if (hasSingle && hasMulti) {
       throw new Error(
-        `${this.name}: recipient amount ${targetSats} below dust ${this.params.dustValueSats}`
+        `${this.name}: cannot specify both single-output (to/amount) and multi-output (outputs[]) forms`
       );
+    }
+    if (!hasSingle && !hasMulti) {
+      throw new Error(
+        `${this.name}: must specify either (to, amount) or a non-empty outputs[] array`
+      );
+    }
+    const normalizedOutputs: UtxoTransferOutput[] = hasMulti
+      ? opts.outputs!.slice()
+      : [{ to: req.to as string, amount: req.amount as bigint }];
+
+    for (let i = 0; i < normalizedOutputs.length; i++) {
+      const o = normalizedOutputs[i];
+      if (!this.validateAddress(o.to)) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidAddress,
+          `${this.name}: invalid recipient address at outputs[${i}]: ${o.to}`,
+          { chainId: this.chainId, address: o.to }
+        );
+      }
+      if (o.amount <= 0n) {
+        throw new Error(`${this.name}: outputs[${i}] amount must be > 0`);
+      }
+      const sats = bigintToNumber(o.amount);
+      if (sats < this.params.dustValueSats) {
+        throw new Error(
+          `${this.name}: outputs[${i}] amount ${sats} below dust ${this.params.dustValueSats}`
+        );
+      }
     }
 
+    const totalTargetSats = normalizedOutputs.reduce(
+      (acc, o) => acc + bigintToNumber(o.amount),
+      0
+    );
+    const recipientTypes = normalizedOutputs.map((o) =>
+      scriptTypeForAddress(o.to, this.params.networkInfo)
+    );
+
     const memoBytes = encodeMemo(req.memo);
-    const opts = req as CreateUtxoTransferOptions;
     const feeRateSatsPerVByte = await this.resolveFeeRate(
       opts.feeRateSatsPerVByte,
       opts.feeTargetBlocks
@@ -311,15 +359,15 @@ export class UtxoChain extends Chain {
       throw new Error(`${this.name}: no spendable UTXOs available for ${fromAddress}`);
     }
 
-    const recipientType = scriptTypeForAddress(req.to, this.params.networkInfo);
     const changeAddress: string = opts.changeAddress ?? fromAddress;
     const changeType = scriptTypeForAddress(changeAddress, this.params.networkInfo);
     const outputsFixedVBytes =
-      outputVBytes(recipientType) + (memoBytes ? memoBytes.length + 11 : 0);
+      recipientTypes.reduce((acc, t) => acc + outputVBytes(t), 0) +
+      (memoBytes ? memoBytes.length + 11 : 0);
 
     const selection = this.runCoinSelection({
       utxos,
-      targetSats,
+      targetSats: totalTargetSats,
       feeRateSatsPerVByte,
       changeOutputType: changeType,
       outputsFixedVBytes,
@@ -331,7 +379,7 @@ export class UtxoChain extends Chain {
     });
     if (selection.outcome !== CoinSelectionOutcomes.Success) {
       throw new Error(
-        `${this.name}: coin selection failed (${selection.outcome}) for target ${targetSats} sats`
+        `${this.name}: coin selection failed (${selection.outcome}) for target ${totalTargetSats} sats`
       );
     }
 
@@ -353,7 +401,9 @@ export class UtxoChain extends Chain {
       inputsToSign[utxo.ownerAddress] = list;
     });
 
-    psbt.addOutput({ address: req.to, value: BigInt(targetSats) });
+    for (const o of normalizedOutputs) {
+      psbt.addOutput({ address: o.to, value: BigInt(bigintToNumber(o.amount)) });
+    }
     if (selection.hasChange) {
       psbt.addOutput({ address: changeAddress, value: BigInt(selection.changeSats) });
     }
@@ -363,7 +413,7 @@ export class UtxoChain extends Chain {
 
     const estimatedVBytes = estimateTxVBytes(
       selection.selected.map((u) => u.scriptType),
-      selection.hasChange ? [recipientType, changeType] : [recipientType],
+      selection.hasChange ? [...recipientTypes, changeType] : recipientTypes,
       memoBytes ? [memoBytes.length] : []
     );
 
@@ -376,7 +426,7 @@ export class UtxoChain extends Chain {
       feeRateSatsPerVByte,
       estimatedVBytes,
       totalInputSats: selection.totalValueSats,
-      totalOutputSats: targetSats + (selection.hasChange ? selection.changeSats : 0),
+      totalOutputSats: totalTargetSats + (selection.hasChange ? selection.changeSats : 0),
       changeAddress: selection.hasChange ? changeAddress : null,
       inputsToSign,
     });
