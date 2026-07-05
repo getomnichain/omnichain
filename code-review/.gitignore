@@ -1,4 +1,12 @@
 .env
+
+# Card iteration logs — kept locally, not tracked. Only description.md and the
+# final review the author explicitly force-adds should live in git.
+cards/*/diff_*.diff
+cards/*/review_*.md
+
+# Legacy (pre-cards/<slug>/ layout) — kept for now, safe to drop when nothing
+# in-repo references them anymore.
 review_*.diff
 review_*_card.md
 review_*.md
