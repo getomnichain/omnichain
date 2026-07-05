@@ -10,6 +10,7 @@ import {
 import {
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
   getAccount,
@@ -620,6 +621,110 @@ export class SolanaChain extends Chain {
     const programId = await this.resolveTokenProgramId(mint);
     const mintInfo = await getMint(this.getConnection(), mint, undefined, programId);
     return mintInfo.decimals;
+  }
+
+  /**
+   * Raw-instruction helper for callers that will compile the transaction downstream
+   * (e.g. depositron's SOL_INSTRUCTIONS action type) instead of using
+   * createTransferUnsignedTransaction's compiled-tx surface.
+   *
+   * Synchronous — no RPC.
+   */
+  buildNativeTransferInstruction(
+    from: PublicKey,
+    to: PublicKey,
+    lamports: bigint,
+  ): TransactionInstruction {
+    if (lamports <= 0n) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Native transfer lamports must be positive (got ${lamports})`,
+        { chainId: this.chainId },
+      );
+    }
+    return SystemProgram.transfer({
+      fromPubkey: from,
+      toPubkey: to,
+      lamports,
+    });
+  }
+
+  /**
+   * Raw-instruction helper for SPL / Token-2022 transfers where the caller will compile
+   * the transaction downstream. Returns [createATA-idempotent?, transferChecked].
+   *
+   * Idempotent ATA (vs the probe-then-create pattern in createTransferUnsignedTransaction)
+   * is deliberate: when a downstream compiler runs the emitted instructions blindly,
+   * a probe done here can race with execution — the idempotent form is a no-op when the
+   * ATA exists and a create when it doesn't, without needing a probe RPC.
+   *
+   * `allowOwnerOffCurve: true` applies to BOTH source and destination ATA derivation —
+   * needed for PDA-owned vaults / program-owned recipients. Defaults to false to match
+   * createTransferUnsignedTransaction.
+   */
+  async buildSplTransferInstructions(req: {
+    from: PublicKey;
+    to: PublicKey;
+    mint: PublicKey;
+    amount: bigint;
+    includeCreateAta?: boolean;
+    allowOwnerOffCurve?: boolean;
+  }): Promise<TransactionInstruction[]> {
+    if (req.amount <= 0n) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `SPL transfer amount must be positive (got ${req.amount})`,
+        { chainId: this.chainId, identifier: req.mint.toBase58() },
+      );
+    }
+    const includeCreateAta = req.includeCreateAta ?? true;
+    const allowOwnerOffCurve = req.allowOwnerOffCurve ?? false;
+
+    const programId = await this.resolveTokenProgramId(req.mint);
+    const decimals = await this.resolveMintDecimals(req.mint);
+
+    const deriveAta = (owner: PublicKey, role: 'source' | 'destination'): PublicKey => {
+      try {
+        return getAssociatedTokenAddressSync(req.mint, owner, allowOwnerOffCurve, programId);
+      } catch (err) {
+        // spl-token's TokenOwnerOffCurveError ships with an empty message. Rethrow as
+        // ChainError so consumers see the SDK's declared error surface, and so the
+        // reason is discoverable (pass `allowOwnerOffCurve: true` for PDA-owned wallets).
+        throw new ChainError(
+          ChainErrorKinds.InvalidAddress,
+          `${role} owner is off-curve; pass allowOwnerOffCurve:true for PDA-owned wallets`,
+          { chainId: this.chainId, address: owner.toBase58() },
+        );
+      }
+    };
+    const sourceAta = deriveAta(req.from, 'source');
+    const destAta = deriveAta(req.to, 'destination');
+
+    const instructions: TransactionInstruction[] = [];
+    if (includeCreateAta) {
+      instructions.push(
+        createAssociatedTokenAccountIdempotentInstruction(
+          req.from,
+          destAta,
+          req.to,
+          req.mint,
+          programId,
+        ),
+      );
+    }
+    instructions.push(
+      createTransferCheckedInstruction(
+        sourceAta,
+        req.mint,
+        destAta,
+        req.from,
+        req.amount,
+        decimals,
+        [],
+        programId,
+      ),
+    );
+    return instructions;
   }
 
   /** Decodes per-account lamport deltas + SPL pre/post token-balance diffs into BalanceChange[]. */

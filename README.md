@@ -84,6 +84,15 @@ ship a `package.json`.)
 - **Ship infrastructure** — RPC URLs, indexer keys, Bitcoin Core /
   Esplora endpoints are all consumer-owned.
 
+## Solana raw-instruction helpers
+
+`SolanaChain` exposes two raw-instruction builders alongside `createTransferUnsignedTransaction`, for callers that will compile the transaction downstream (e.g. depositron's `SOL_INSTRUCTIONS` action type):
+
+- `buildNativeTransferInstruction(from, to, lamports)` — sync; wraps `SystemProgram.transfer`.
+- `buildSplTransferInstructions({from, to, mint, amount, includeCreateAta?, allowOwnerOffCurve?})` — async; returns `[createATA-idempotent?, transferChecked]`. Uses the idempotent ATA form (not probe-then-create) because the downstream compiler runs instructions blindly and a probe would race with execution. `allowOwnerOffCurve` applies to both source and destination ATA derivation for PDA-owned wallets. Defaults preserve the safe-by-default posture (`includeCreateAta: true`, `allowOwnerOffCurve: false`).
+
+`createTransferUnsignedTransaction`'s compiled-tx surface is unchanged and continues to use probe-then-create for its own end-to-end signing path.
+
 ## Module-level documentation
 
 See [docs/README.md](./docs/README.md) for the full module guide.
