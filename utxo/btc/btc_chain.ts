@@ -1,6 +1,6 @@
 import { CreateTransferRequest } from '../../chain.base.ts';
 
-import { GetUtxosOptions, UtxoChain, UtxoChainInit } from '../utxo_chain.ts';
+import { CreateUtxoTransferOptions, GetUtxosOptions, UtxoChain, UtxoChainInit } from '../utxo_chain.ts';
 import { UnsignedUtxoTransaction } from '../unsigned_utxo_transaction.ts';
 import { UnspentTransactionOutput } from '../utxo.ts';
 import { outpointKey, unionOutpoints } from './tools/asset_outpoint.ts';
@@ -22,11 +22,7 @@ export interface BtcGetUtxosOptions extends GetUtxosOptions {
   excludeRareSats?: boolean;
 }
 
-export interface CreateBtcTransferOptions extends CreateTransferRequest {
-  feeRateSatsPerVByte?: number;
-  feeTargetBlocks?: number;
-  rbfEnabled?: boolean;
-  changeAddress?: string;
+export interface CreateBtcTransferOptions extends CreateUtxoTransferOptions {
   excludeInscriptions?: boolean;
   excludeRunes?: boolean;
   excludeRareSats?: boolean;
@@ -95,6 +91,6 @@ export class BtcChain extends UtxoChain {
             excludeRareSats: opts.excludeRareSats,
           }
         : undefined;
-    return this.buildTransfer(req, getUtxosOptions);
+    return this.buildTransfer(req as CreateBtcTransferOptions, getUtxosOptions);
   }
 }
