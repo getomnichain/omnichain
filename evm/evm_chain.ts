@@ -70,15 +70,21 @@ export interface EvmChainInit {
   explorerBaseUrl: string;
   nativeSymbol: string;
   nativeDecimals?: number;
-  rpcEnvVar: string;
+  /**
+   * Optional. When set, used verbatim. When omitted, the env-var fallback
+   * chain is tried: `<NAME_UPPERCASE_UNDERSCORED>_RPC_URL`
+   * (e.g. `ARBITRUM_RPC_URL`), then `EVM_<chainId>_RPC_URL`, then throws.
+   */
+  rpcUrl?: string;
   supportsEip1559?: boolean;
 }
 
 export class EvmChain extends Chain {
-  readonly rpcEnvVar: string;
+  readonly rpcUrl: string | undefined;
   readonly supportsEip1559: boolean;
   private readonly _nativeToken: EvmToken;
   private _provider: JsonRpcProvider | null = null;
+  private _resolvedRpcUrl: string | null = null;
 
   constructor(init: EvmChainInit) {
     super(
@@ -89,7 +95,7 @@ export class EvmChain extends Chain {
       init.nativeSymbol,
       init.explorerBaseUrl
     );
-    this.rpcEnvVar = init.rpcEnvVar;
+    this.rpcUrl = init.rpcUrl;
     this.supportsEip1559 = init.supportsEip1559 ?? true;
     this._nativeToken = EvmToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 18);
   }
@@ -106,6 +112,7 @@ export class EvmChain extends Chain {
   getProvider(): JsonRpcProvider {
     if (this._provider) return this._provider;
     const rpcUrl = this.readRpcUrl();
+    this._resolvedRpcUrl = rpcUrl;
     this._provider = new JsonRpcProvider(rpcUrl);
     return this._provider;
   }
@@ -149,7 +156,7 @@ export class EvmChain extends Chain {
         .filter((v): v is string => typeof v === 'string')
         .map((v) => BigInt(v));
     } catch (err) {
-      const sanitized = sanitizeMessage(stringifyErr(err), this.rpcEnvVar);
+      const sanitized = sanitizeMessage(stringifyErr(err), this._resolvedRpcUrl);
       console.warn(`[${this.name}] eth_feeHistory unavailable, falling back to getFeeData × multiplier: ${sanitized}`);
       const fee = await provider.getFeeData();
       const baseMaxPriority = fee.maxPriorityFeePerGas ?? PRIORITY_FEE_FLOOR;
@@ -172,25 +179,25 @@ export class EvmChain extends Chain {
   }
 
   private readRpcUrl(): string {
-    const rpcUrl = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.[
-      this.rpcEnvVar
-    ];
-    if (!rpcUrl || rpcUrl.trim().length === 0) {
-      throw new ChainError(
-        ChainErrorKinds.RpcNotConfigured,
-        `${this.name} RPC env var ${this.rpcEnvVar} is not set`,
-        { chainId: this.chainId, envVar: this.rpcEnvVar }
-      );
+    if (this.rpcUrl && this.rpcUrl.trim().length > 0) return this.rpcUrl.trim();
+    const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+    const candidates = envCandidatesFor(this.name, this.chainId);
+    for (const key of candidates) {
+      const value = env?.[key];
+      if (value && value.trim().length > 0) return value.trim();
     }
-    return rpcUrl;
+    throw new ChainError(
+      ChainErrorKinds.RpcNotConfigured,
+      `${this.name} RPC URL is not configured (pass rpcUrl at construction, or set one of: ${candidates.join(', ')})`,
+      { chainId: this.chainId, envCandidates: candidates }
+    );
   }
 
   private rpcHost(): string | undefined {
-    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-    const rpcUrl = proc?.env?.[this.rpcEnvVar];
-    if (!rpcUrl) return undefined;
+    const url = this._resolvedRpcUrl ?? this.rpcUrl;
+    if (!url) return undefined;
     try {
-      const u = new URL(rpcUrl);
+      const u = new URL(url);
       return `${u.protocol}//${u.host}`;
     } catch {
       return undefined;
@@ -490,12 +497,12 @@ export class EvmChain extends Chain {
   }
 
   private rpcError(message: string, cause: unknown, extra: { txHash?: string } = {}): ChainError {
-    const sanitizedMessage = sanitizeMessage(`${message}: ${stringifyErr(cause)}`, this.rpcEnvVar);
+    const sanitizedMessage = sanitizeMessage(`${message}: ${stringifyErr(cause)}`, this._resolvedRpcUrl);
     return new ChainError(
       ChainErrorKinds.RpcError,
       sanitizedMessage,
       { chainId: this.chainId, rpcHost: this.rpcHost(), ...extra },
-      sanitizeCause(cause, this.rpcEnvVar)
+      sanitizeCause(cause, this._resolvedRpcUrl)
     );
   }
 }
@@ -574,25 +581,27 @@ function stringifyErr(err: unknown): string {
   return String(err);
 }
 
-function sanitizeMessage(message: string, rpcEnvVar: string): string {
-  const url = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.[
-    rpcEnvVar
-  ];
-  if (!url) return message;
-  let host: string;
-  try {
-    const u = new URL(url);
-    host = `${u.protocol}//${u.host}`;
-  } catch {
-    return message.replaceAll(url, '<rpc>');
-  }
-  return message.replaceAll(url, host);
+function envCandidatesFor(name: string, chainId: number): string[] {
+  const normalized = name.replace(/ /g, '_').toUpperCase() + '_RPC_URL';
+  return [normalized, `EVM_${chainId}_RPC_URL`];
 }
 
-function sanitizeCause(cause: unknown, rpcEnvVar: string): Error | undefined {
+function sanitizeMessage(message: string, rpcUrl: string | null): string {
+  if (!rpcUrl) return message;
+  let host: string;
+  try {
+    const u = new URL(rpcUrl);
+    host = `${u.protocol}//${u.host}`;
+  } catch {
+    return message.replaceAll(rpcUrl, '<rpc>');
+  }
+  return message.replaceAll(rpcUrl, host);
+}
+
+function sanitizeCause(cause: unknown, rpcUrl: string | null): Error | undefined {
   if (!(cause instanceof Error)) return undefined;
-  const safe = new Error(sanitizeMessage(cause.message, rpcEnvVar));
+  const safe = new Error(sanitizeMessage(cause.message, rpcUrl));
   safe.name = cause.name;
-  if (cause.stack) safe.stack = sanitizeMessage(cause.stack, rpcEnvVar);
+  if (cause.stack) safe.stack = sanitizeMessage(cause.stack, rpcUrl);
   return safe;
 }

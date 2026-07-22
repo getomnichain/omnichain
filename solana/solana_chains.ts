@@ -9,13 +9,17 @@ export const SOLANA_MAINNET_CHAIN_ID = -100;
 export const SOLANA_TESTNET_CHAIN_ID = -101;
 export const SOLANA_DEVNET_CHAIN_ID = -102;
 
+// Predefined factories don't set rpcUrl — the SolanaChain fallback chain is:
+//   <NAME_UPPERCASE_UNDERSCORED>_RPC_URL env, then defaultRpcUrl (public cluster).
+// Solana never throws "not configured"; the public cluster below is always reachable.
+
 export const SolanaMainnet = new SolanaChain({
   chainId: SOLANA_MAINNET_CHAIN_ID,
   name: 'Solana',
   blockTimeSeconds: 0.4,
   explorerBaseUrl: 'https://solscan.io',
   nativeSymbol: 'SOL',
-  rpcEnvVar: 'SOLANA_RPC_URL',
+  defaultRpcUrl: 'https://api.mainnet-beta.solana.com',
   chainAgnosticGenesisHash: '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
 });
 
@@ -26,7 +30,7 @@ export const SolanaTestnet = new SolanaChain({
   explorerBaseUrl: 'https://solscan.io',
   explorerClusterSuffix: '?cluster=testnet',
   nativeSymbol: 'SOL',
-  rpcEnvVar: 'SOLANA_TESTNET_RPC_URL',
+  defaultRpcUrl: 'https://api.testnet.solana.com',
   chainAgnosticGenesisHash: '4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z',
 });
 
@@ -37,7 +41,7 @@ export const SolanaDevnet = new SolanaChain({
   explorerBaseUrl: 'https://solscan.io',
   explorerClusterSuffix: '?cluster=devnet',
   nativeSymbol: 'SOL',
-  rpcEnvVar: 'SOLANA_DEVNET_RPC_URL',
+  defaultRpcUrl: 'https://api.devnet.solana.com',
   chainAgnosticGenesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
 });
 

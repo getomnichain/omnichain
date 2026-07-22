@@ -1,5 +1,5 @@
-import { ChainErrorKinds, isChainError } from '../../errors.ts';
 import { NetworkType, networkTypeOf } from '../../network_type.ts';
+import { SolanaChain } from '../solana_chain.ts';
 import {
   ALL_SOLANA_CHAINS,
   SOLANA_DEVNET_CHAIN_ID,
@@ -75,23 +75,39 @@ describe('SolanaChain — validators', () => {
   });
 });
 
-describe('SolanaChain — RPC env-var gating', () => {
+describe('SolanaChain — RPC precedence (constructor > env > defaultRpcUrl)', () => {
   const originalEnv = process.env.SOLANA_RPC_URL;
   afterEach(() => {
     if (originalEnv === undefined) delete process.env.SOLANA_RPC_URL;
     else process.env.SOLANA_RPC_URL = originalEnv;
   });
 
-  it('getBalance throws RpcNotConfigured when env var is missing', async () => {
+  it('constructor rpcUrl wins over env var', () => {
+    process.env.SOLANA_RPC_URL = 'https://env.example.invalid';
+    const chain = new SolanaChain({
+      chainId: -999,
+      name: 'Solana Test',
+      blockTimeSeconds: 0.4,
+      explorerBaseUrl: 'https://solscan.io',
+      nativeSymbol: 'SOL',
+      defaultRpcUrl: 'https://default.example.invalid',
+      rpcUrl: 'https://ctor.example.invalid',
+      chainAgnosticGenesisHash: 'test-genesis-hash-32-chars------',
+    });
+    expect(chain.getConnection().rpcEndpoint).toBe('https://ctor.example.invalid');
+  });
+
+  it('falls back to defaultRpcUrl when neither constructor URL nor env var is set', () => {
     delete process.env.SOLANA_RPC_URL;
-    try {
-      // We need a fresh chain instance because Connection is cached after first read.
-      // Hitting balance on the global SolanaMainnet works because the cache is per-instance
-      // and is only initialised on the first getConnection() call.
-      await SolanaMainnet.getBalance(VALID_ADDR);
-      fail('expected throw');
-    } catch (err) {
-      expect(isChainError(err, ChainErrorKinds.RpcNotConfigured)).toBe(true);
-    }
+    const chain = new SolanaChain({
+      chainId: -998,
+      name: 'Solana FallbackTest', // no env var of this shape is set
+      blockTimeSeconds: 0.4,
+      explorerBaseUrl: 'https://solscan.io',
+      nativeSymbol: 'SOL',
+      defaultRpcUrl: 'https://default.example.invalid',
+      chainAgnosticGenesisHash: 'test-genesis-hash-32-chars------',
+    });
+    expect(chain.getConnection().rpcEndpoint).toBe('https://default.example.invalid');
   });
 });
