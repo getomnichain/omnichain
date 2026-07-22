@@ -1,4 +1,5 @@
 import { ARBITRUM_CHAIN_ID, Arbitrum } from '../evm_chains.ts';
+import { EvmChain } from '../evm_chain.ts';
 import { ARBITRUM_USDC } from '../evm_tokens.ts';
 import { ChainErrorKinds, isChainError } from '../../errors.ts';
 
@@ -109,20 +110,56 @@ describe('EvmChain — createTransferUnsignedTransaction', () => {
   });
 });
 
-describe('EvmChain — RPC env-var gating', () => {
-  const originalEnv = process.env.ARBITRUM_RPC_URL;
+describe('EvmChain — RPC URL resolution', () => {
+  const originalName = process.env.ARBITRUM_RPC_URL;
+  const originalId = process.env.EVM_42161_RPC_URL;
   afterEach(() => {
-    if (originalEnv === undefined) delete process.env.ARBITRUM_RPC_URL;
-    else process.env.ARBITRUM_RPC_URL = originalEnv;
+    if (originalName === undefined) delete process.env.ARBITRUM_RPC_URL;
+    else process.env.ARBITRUM_RPC_URL = originalName;
+    if (originalId === undefined) delete process.env.EVM_42161_RPC_URL;
+    else process.env.EVM_42161_RPC_URL = originalId;
   });
 
-  it('getBalance throws RpcNotConfigured when env var is missing', async () => {
+  it('getBalance throws RpcNotConfigured when no URL source is set', async () => {
     delete process.env.ARBITRUM_RPC_URL;
+    delete process.env.EVM_42161_RPC_URL;
     try {
       await Arbitrum.getBalance(VALID_EIP55);
       fail('expected throw');
     } catch (err) {
       expect(isChainError(err, ChainErrorKinds.RpcNotConfigured)).toBe(true);
     }
+  });
+
+  it('constructor rpcUrl wins over env vars', () => {
+    process.env.ARBITRUM_RPC_URL = 'https://env-primary.invalid';
+    process.env.EVM_42161_RPC_URL = 'https://env-secondary.invalid';
+    const chain = new EvmChain({
+      chainId: ARBITRUM_CHAIN_ID,
+      name: 'Arbitrum',
+      blockTimeSeconds: 0.25,
+      explorerBaseUrl: 'https://arbiscan.io',
+      nativeSymbol: 'ETH',
+      rpcUrl: 'https://ctor.invalid',
+    });
+    // Fresh instance — getProvider caches after first call, so the chain-level
+    // rpcUrl field is what we assert.
+    expect(chain.rpcUrl).toBe('https://ctor.invalid');
+  });
+
+  it('falls back to EVM_<chainId>_RPC_URL when <NAME>_RPC_URL is unset', async () => {
+    delete process.env.ARBITRUM_RPC_URL;
+    process.env.EVM_42161_RPC_URL = 'https://per-id-fallback.invalid';
+    // Fresh instance to bypass the cached provider on the predefined Arbitrum.
+    const chain = new EvmChain({
+      chainId: ARBITRUM_CHAIN_ID,
+      name: 'Arbitrum',
+      blockTimeSeconds: 0.25,
+      explorerBaseUrl: 'https://arbiscan.io',
+      nativeSymbol: 'ETH',
+    });
+    // getBalance would try to make an actual RPC call; skip that. Instead trigger
+    // the URL resolution path indirectly via getProvider which reads and caches it.
+    expect(() => chain.getProvider()).not.toThrow();
   });
 });

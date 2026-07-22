@@ -45,8 +45,18 @@ export interface SolanaChainInit {
   explorerClusterSuffix?: string;
   nativeSymbol: string;
   nativeDecimals?: number;
-  /** Env var the runtime reads to get the RPC URL — keeps secrets out of the codebase. */
-  rpcEnvVar: string;
+  /**
+   * Public cluster URL used as the final fallback when no override is set.
+   * Required — Solana never throws "not configured" like EVM; it falls back
+   * to this so a call without env config still reaches a real cluster.
+   */
+  defaultRpcUrl: string;
+  /**
+   * Optional override. When set, used verbatim. When omitted, the env-var
+   * `<NAME_UPPERCASE_UNDERSCORED>_RPC_URL` is tried (e.g. `SOLANA_RPC_URL`),
+   * and if that is unset, `defaultRpcUrl` is used.
+   */
+  rpcUrl?: string;
   /** CAIP-2 genesis hash (first 32 chars). Surfaced for the depositron `chainAgnosticName` column. */
   chainAgnosticGenesisHash: string;
 }
@@ -94,7 +104,8 @@ const SOL_PRIORITY_PERCENTILE: Record<Priority, number> = {
  *     it's authoritative.
  */
 export class SolanaChain extends Chain {
-  readonly rpcEnvVar: string;
+  readonly defaultRpcUrl: string;
+  readonly rpcUrl: string | undefined;
   readonly explorerClusterSuffix: string;
   readonly chainAgnosticGenesisHash: string;
   private readonly _nativeToken: SolanaToken;
@@ -109,7 +120,8 @@ export class SolanaChain extends Chain {
       init.nativeSymbol,
       init.explorerBaseUrl,
     );
-    this.rpcEnvVar = init.rpcEnvVar;
+    this.defaultRpcUrl = init.defaultRpcUrl;
+    this.rpcUrl = init.rpcUrl;
     this.explorerClusterSuffix = init.explorerClusterSuffix ?? '';
     this.chainAgnosticGenesisHash = init.chainAgnosticGenesisHash;
     this._nativeToken = SolanaToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 9);
@@ -153,16 +165,11 @@ export class SolanaChain extends Chain {
   }
 
   private readRpcUrl(): string {
-    const rpcUrl = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
-      ?.env?.[this.rpcEnvVar];
-    if (!rpcUrl || rpcUrl.trim().length === 0) {
-      throw new ChainError(
-        ChainErrorKinds.RpcNotConfigured,
-        `${this.name}: ${this.rpcEnvVar} is not set`,
-        { chainId: this.chainId, envVar: this.rpcEnvVar },
-      );
-    }
-    return rpcUrl.trim();
+    if (this.rpcUrl && this.rpcUrl.trim().length > 0) return this.rpcUrl.trim();
+    const envName = this.name.replace(/ /g, '_').toUpperCase() + '_RPC_URL';
+    const fromEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.[envName];
+    if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
+    return this.defaultRpcUrl;
   }
 
   getWalletExplorerUrl(address: string): string {

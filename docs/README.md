@@ -180,12 +180,20 @@ export const Polygon = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://polygonscan.com',
   nativeSymbol: 'MATIC',
-  rpcEnvVar: 'POLYGON_RPC_URL',
+  // rpcUrl is optional. When omitted, the SDK resolves via env-var fallback:
+  //   POLYGON_RPC_URL, then EVM_137_RPC_URL, then throws RpcNotConfigured.
 });
 ```
 
-(`rpcEnvVar` is the env var name the consumer is expected to set; the
-SDK reads it lazily in `getProvider()`. See [evm.md](./evm.md).)
+The RPC URL precedence for every `EvmChain` is:
+
+1. `rpcUrl` passed at construction (wins).
+2. `<NAME_UPPERCASE_UNDERSCORED>_RPC_URL` env var (e.g. `POLYGON_RPC_URL`).
+3. `EVM_<chainId>_RPC_URL` env var.
+4. Throws `ChainError(RpcNotConfigured)` on first RPC call.
+
+Solana is similar but has a required `defaultRpcUrl` that acts as the final
+fallback instead of throwing — see [solana.md](./solana.md).
 
 ### New UTXO chain
 See [utxo.md](./utxo.md) — define `UtxoNetworkParams` (use `coininfo` for
