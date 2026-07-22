@@ -17,7 +17,7 @@ export interface ChainErrorMeta {
   address?: string;
   identifier?: string;
   rpcHost?: string;
-  envVar?: string;
+  envCandidates?: string[];
 }
 
 export class ChainError extends Error {
