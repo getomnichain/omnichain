@@ -797,7 +797,12 @@ export class SolanaChain extends Chain {
         // the mint as if it were a wallet address would be actively wrong.
         // Matches Python's behavior in impl/solana/base.py:704-706.
         if (owner === null) continue;
-        const splToken = new SolanaToken(this.chainId, '', mint, decimals);
+        // Symbol is not surfaced by getTransaction; use an UNKNOWN placeholder
+        // built from the first four mint characters. Mirrors the EVM decoder's
+        // UNKNOWN_<hex-slice> shape (evm_chain.ts:480) so consumers can spot
+        // unresolved tokens uniformly.
+        const symbol = `UNKNOWN_${mint.slice(0, 4)}`;
+        const splToken = new SolanaToken(this.chainId, symbol, mint, decimals);
         changes.push({ address: owner, token: splToken, amount: delta });
       }
     }
