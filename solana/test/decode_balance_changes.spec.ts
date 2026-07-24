@@ -1,83 +1,59 @@
-import { jest } from '@jest/globals';
-import { PublicKey } from '@solana/web3.js';
-
 import { SolanaMainnet } from '../solana_chains.ts';
-
-// getTransaction returns a rich object; we synthesize just enough for decoder.
-type FakeTokenBalance = {
-  accountIndex: number;
-  mint: string;
-  owner?: string | null;
-  uiTokenAmount: { amount: string; decimals: number; uiAmount: number | null; uiAmountString: string };
-};
 
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const ALICE = '5gUuDFHswKi2QMA1qJHf6FEVhNCrHnyAdfWniMaUUPE4';
 const BOB = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM';
-const CHARLIE = 'BbmkgZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM9WzDXwB';
 
+/**
+ * Synthetic `getTransaction`-shaped object that gives `_decodeBalanceChanges` what it needs
+ * without a real @solana/web3.js Connection (consumers such as pluton stub the module in
+ * their jest config; a real Connection round-trip is unavailable in that env).
+ */
 function fakeTx(opts: {
-  slot: number;
-  blockTime: number | null;
-  err: unknown;
-  fee: number;
   accountKeys: string[];
   preBalances: number[];
   postBalances: number[];
-  preTokenBalances: FakeTokenBalance[];
-  postTokenBalances: FakeTokenBalance[];
-}): unknown {
+  preTokenBalances: Array<{
+    accountIndex: number;
+    mint: string;
+    owner: string | null;
+    uiTokenAmount: { amount: string; decimals: number };
+  }>;
+  postTokenBalances: Array<{
+    accountIndex: number;
+    mint: string;
+    owner: string | null;
+    uiTokenAmount: { amount: string; decimals: number };
+  }>;
+}) {
   return {
-    slot: opts.slot,
-    blockTime: opts.blockTime,
     transaction: {
       message: {
-        staticAccountKeys: opts.accountKeys.map((k) => new PublicKey(k)),
+        staticAccountKeys: opts.accountKeys.map((k) => ({ toBase58: () => k })),
       },
-      signatures: ['sig'],
     },
     meta: {
-      err: opts.err,
-      fee: opts.fee,
       preBalances: opts.preBalances,
       postBalances: opts.postBalances,
       preTokenBalances: opts.preTokenBalances,
       postTokenBalances: opts.postTokenBalances,
-      innerInstructions: [],
-      logMessages: [],
     },
-  };
+  } as unknown as Parameters<typeof SolanaMainnet._decodeBalanceChanges>[0];
 }
 
-describe('SolanaChain.decodeBalanceChanges (via getTransactionStatus)', () => {
-  const chain = SolanaMainnet;
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  function mockGetTransaction(tx: unknown) {
-    const conn = chain.getConnection();
-    jest.spyOn(conn, 'getTransaction').mockResolvedValue(tx as never);
-    jest.spyOn(conn, 'getSlot').mockResolvedValue(1_000);
-  }
-
-  it('SPL balance change: uses uiTokenAmount.decimals (not 0) and owner (not mint)', async () => {
-    mockGetTransaction(
+describe('SolanaChain._decodeBalanceChanges', () => {
+  it('SPL change: pulls decimals from uiTokenAmount, not the old hard-coded 0', () => {
+    const changes = SolanaMainnet._decodeBalanceChanges(
       fakeTx({
-        slot: 500,
-        blockTime: 1_700_000_000,
-        err: null,
-        fee: 5000,
         accountKeys: [ALICE, BOB, USDC_MINT],
         preBalances: [1_000_000_000, 0, 0],
-        postBalances: [999_995_000, 0, 0],
+        postBalances: [1_000_000_000, 0, 0], // no native change
         preTokenBalances: [
           {
             accountIndex: 0,
             mint: USDC_MINT,
             owner: ALICE,
-            uiTokenAmount: { amount: '10000000', decimals: 6, uiAmount: 10, uiAmountString: '10' },
+            uiTokenAmount: { amount: '10000000', decimals: 6 },
           },
         ],
         postTokenBalances: [
@@ -85,52 +61,45 @@ describe('SolanaChain.decodeBalanceChanges (via getTransactionStatus)', () => {
             accountIndex: 0,
             mint: USDC_MINT,
             owner: ALICE,
-            uiTokenAmount: { amount: '9000000', decimals: 6, uiAmount: 9, uiAmountString: '9' },
+            uiTokenAmount: { amount: '9000000', decimals: 6 },
           },
           {
             accountIndex: 1,
             mint: USDC_MINT,
             owner: BOB,
-            uiTokenAmount: { amount: '1000000', decimals: 6, uiAmount: 1, uiAmountString: '1' },
+            uiTokenAmount: { amount: '1000000', decimals: 6 },
           },
         ],
       }),
     );
 
-    const status = await chain.getTransactionStatus('sig');
-    const splChanges = status.balanceChanges.filter((c) => c.token.identifier === USDC_MINT);
-    expect(splChanges).toHaveLength(2);
+    const spl = changes.filter((c) => c.token.identifier === USDC_MINT);
+    expect(spl).toHaveLength(2);
 
-    const alicePair = splChanges.find((c) => c.address === ALICE);
-    const bobPair = splChanges.find((c) => c.address === BOB);
-    expect(alicePair).toBeDefined();
-    expect(bobPair).toBeDefined();
-    expect(alicePair!.amount).toBe(-1_000_000n);
-    expect(bobPair!.amount).toBe(1_000_000n);
-    // Decimals now come from uiTokenAmount, not the hardcoded 0.
-    expect(alicePair!.token.decimals).toBe(6);
-    expect(bobPair!.token.decimals).toBe(6);
-    // Address is the owner (a wallet), never the mint.
-    expect(alicePair!.address).not.toBe(USDC_MINT);
-    expect(bobPair!.address).not.toBe(USDC_MINT);
+    const alicePair = spl.find((c) => c.address === ALICE);
+    const bobPair = spl.find((c) => c.address === BOB);
+    expect(alicePair?.amount).toBe(-1_000_000n);
+    expect(bobPair?.amount).toBe(1_000_000n);
+    // Decimals now surface from the token-balance meta (was hard-coded to 0).
+    expect(alicePair?.token.decimals).toBe(6);
+    expect(bobPair?.token.decimals).toBe(6);
+    // Address is the wallet owner, never the mint.
+    expect(alicePair?.address).not.toBe(USDC_MINT);
+    expect(bobPair?.address).not.toBe(USDC_MINT);
   });
 
-  it('SPL balance change with null owner is dropped (was filling in mint as address)', async () => {
-    mockGetTransaction(
+  it('drops SPL entries whose token-account owner is null (was writing mint as address)', () => {
+    const changes = SolanaMainnet._decodeBalanceChanges(
       fakeTx({
-        slot: 500,
-        blockTime: 1_700_000_000,
-        err: null,
-        fee: 5000,
-        accountKeys: [ALICE, CHARLIE, USDC_MINT],
-        preBalances: [1_000_000_000, 0, 0],
-        postBalances: [999_995_000, 0, 0],
+        accountKeys: [ALICE, USDC_MINT],
+        preBalances: [1_000_000_000, 0],
+        postBalances: [1_000_000_000, 0],
         preTokenBalances: [
           {
             accountIndex: 1,
             mint: USDC_MINT,
             owner: null,
-            uiTokenAmount: { amount: '5000000', decimals: 6, uiAmount: 5, uiAmountString: '5' },
+            uiTokenAmount: { amount: '5000000', decimals: 6 },
           },
         ],
         postTokenBalances: [
@@ -138,50 +107,40 @@ describe('SolanaChain.decodeBalanceChanges (via getTransactionStatus)', () => {
             accountIndex: 1,
             mint: USDC_MINT,
             owner: null,
-            uiTokenAmount: { amount: '0', decimals: 6, uiAmount: 0, uiAmountString: '0' },
+            uiTokenAmount: { amount: '0', decimals: 6 },
           },
         ],
       }),
     );
 
-    const status = await chain.getTransactionStatus('sig');
-    const splChanges = status.balanceChanges.filter((c) => c.token.identifier === USDC_MINT);
-    // The single ownerless entry is skipped — never emits the mint as a wallet.
-    expect(splChanges).toHaveLength(0);
-    // And critically, no change carries the mint address as `address`.
-    for (const c of status.balanceChanges) {
-      expect(c.address).not.toBe(USDC_MINT);
-    }
+    // The single owner-less delta is skipped — mint never appears as a wallet address.
+    const spl = changes.filter((c) => c.token.identifier === USDC_MINT);
+    expect(spl).toHaveLength(0);
+    for (const c of changes) expect(c.address).not.toBe(USDC_MINT);
   });
 
-  it('null owner in pre but set in post is preserved (freshly-initialized ATA)', async () => {
-    mockGetTransaction(
+  it('promotes post-side owner into a pre entry that lacked one (fresh ATA)', () => {
+    const changes = SolanaMainnet._decodeBalanceChanges(
       fakeTx({
-        slot: 500,
-        blockTime: 1_700_000_000,
-        err: null,
-        fee: 5000,
         accountKeys: [ALICE, BOB, USDC_MINT],
         preBalances: [1_000_000_000, 0, 0],
-        postBalances: [999_995_000, 0, 0],
+        postBalances: [1_000_000_000, 0, 0],
         preTokenBalances: [],
         postTokenBalances: [
           {
             accountIndex: 1,
             mint: USDC_MINT,
             owner: BOB,
-            uiTokenAmount: { amount: '1000000', decimals: 6, uiAmount: 1, uiAmountString: '1' },
+            uiTokenAmount: { amount: '1000000', decimals: 6 },
           },
         ],
       }),
     );
 
-    const status = await chain.getTransactionStatus('sig');
-    const bobChange = status.balanceChanges.find(
+    const bobChange = changes.find(
       (c) => c.token.identifier === USDC_MINT && c.address === BOB,
     );
-    expect(bobChange).toBeDefined();
-    expect(bobChange!.amount).toBe(1_000_000n);
-    expect(bobChange!.token.decimals).toBe(6);
+    expect(bobChange?.amount).toBe(1_000_000n);
+    expect(bobChange?.token.decimals).toBe(6);
   });
 });

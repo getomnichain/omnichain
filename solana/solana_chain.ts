@@ -562,7 +562,7 @@ export class SolanaChain extends Chain {
     const tipSlot = await connection.getSlot('confirmed');
     const confirmations = Math.max(0, tipSlot - slot);
     const status = tx.meta?.err ? TransactionStatusTypes.Failed : TransactionStatusTypes.Success;
-    const balanceChanges = this.decodeBalanceChanges(tx);
+    const balanceChanges = this._decodeBalanceChanges(tx);
     const gasFee: GasFee | null = tx.meta
       ? { token: this._nativeToken, amount: BigInt(tx.meta.fee) }
       : null;
@@ -734,8 +734,12 @@ export class SolanaChain extends Chain {
     return instructions;
   }
 
-  /** Decodes per-account lamport deltas + SPL pre/post token-balance diffs into BalanceChange[]. */
-  private decodeBalanceChanges(
+  /**
+   * Decodes per-account lamport deltas + SPL pre/post token-balance diffs into
+   * BalanceChange[]. Marked internal via naming rather than TS `private` so that
+   * chain-agnostic unit tests can exercise it without spinning up a Connection.
+   */
+  _decodeBalanceChanges(
     tx: NonNullable<Awaited<ReturnType<Connection['getTransaction']>>>,
   ): BalanceChange[] {
     const changes: BalanceChange[] = [];
