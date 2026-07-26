@@ -3,7 +3,6 @@ import {
   CHAIN_ID_SOLANA_MAINNET,
   CHAIN_ID_SOLANA_TESTNET,
 } from '../chain_ids.ts';
-import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { SolanaChain } from './solana_chain.ts';
 
 /**
@@ -24,22 +23,22 @@ export const SOLANA_DEVNET_CHAIN_ID = CHAIN_ID_SOLANA_DEVNET;
 
 /**
  * Legacy Solana chainId numbering used by the pre-v0 TS SDK.
- * Kept as an aliased registration so `networkTypeOf(-100)` still resolves to
- * SOLANA rather than throwing `ChainNotSupported`. Consumers migrating
- * persisted rows can call `migrateLegacySolanaChainId(-100)` to obtain the
- * canonical `-2000` value.
+ *
+ * These are NOT registered as `NetworkType.SOLANA` aliases — a half-wired
+ * shim (accept-then-fail-later) is worse than fail-closed for a signing SDK.
+ * Consumers with persisted `-100 / -101 / -102` rows MUST call
+ * `migrateLegacySolanaChainId(id)` (or run the SQL rewrite in
+ * `docs/UPGRADE_TO_V0.md`) before those values enter the SDK; otherwise
+ * `networkTypeOf(-100)` throws `ChainError(ChainNotSupported)` at
+ * validation time, which is the intended safe behavior.
  */
 const LEGACY_SOLANA_MAINNET_CHAIN_ID = -100;
 const LEGACY_SOLANA_TESTNET_CHAIN_ID = -101;
 const LEGACY_SOLANA_DEVNET_CHAIN_ID = -102;
 
-registerNonEvmChain(LEGACY_SOLANA_MAINNET_CHAIN_ID, NetworkType.SOLANA);
-registerNonEvmChain(LEGACY_SOLANA_TESTNET_CHAIN_ID, NetworkType.SOLANA);
-registerNonEvmChain(LEGACY_SOLANA_DEVNET_CHAIN_ID, NetworkType.SOLANA);
-
 /** Map a legacy Solana chainId (-100/-101/-102) to its canonical v0 value
  *  (-2000/-2001/-2002). Non-legacy IDs are returned unchanged.
- *  Consumers use this to rewrite persisted rows during the v0 upgrade. */
+ *  Call this on any persisted chainId before passing it into the SDK. */
 export function migrateLegacySolanaChainId(chainId: number): number {
   if (chainId === LEGACY_SOLANA_MAINNET_CHAIN_ID) return CHAIN_ID_SOLANA_MAINNET;
   if (chainId === LEGACY_SOLANA_TESTNET_CHAIN_ID) return CHAIN_ID_SOLANA_TESTNET;

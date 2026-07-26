@@ -119,7 +119,7 @@ describe('EvmChain.suggestGas — 1559 path (Python get_1559_fees parity)', () =
     }
   });
 
-  it('missing baseFeePerGas throws ChainError(RpcError) rather than falling back', async () => {
+  it('missing baseFeePerGas throws ChainError(TransactionDecodeFailed) — distinct kind from transport failure', async () => {
     jest.spyOn(Arbitrum, 'getProvider').mockReturnValue(
       stubProvider({ feeHistory: { gasUsedRatio: [], reward: [] } }),
     );
@@ -127,7 +127,7 @@ describe('EvmChain.suggestGas — 1559 path (Python get_1559_fees parity)', () =
       await Arbitrum.suggestGas(Priority.NORMAL);
       throw new Error('expected throw');
     } catch (e) {
-      expect(isChainError(e, ChainErrorKinds.RpcError)).toBe(true);
+      expect(isChainError(e, ChainErrorKinds.TransactionDecodeFailed)).toBe(true);
     }
   });
 });
@@ -168,16 +168,18 @@ describe('EvmChain.suggestGas — !supportsEip1559 legacy branch', () => {
     }
   });
 
-  it('legacy branch uses 2 gwei fallback when provider returns null/0 gasPrice', async () => {
+  it('legacy branch bubbles RpcError when provider returns null/0 gasPrice (bubble, don\'t guess)', async () => {
     Object.defineProperty(Arbitrum, 'supportsEip1559', { value: false, configurable: true });
     try {
       jest.spyOn(Arbitrum, 'getProvider').mockReturnValue(
         stubProvider({ feeData: { gasPrice: null } }),
       );
-
-      const gas = await Arbitrum.suggestGas(Priority.SLOW);
-      // 2 gwei × 1.0 (SLOW multiplier) = 2 gwei
-      expect(gas.maxPriorityFeePerGas).toBe(TWO_GWEI);
+      try {
+        await Arbitrum.suggestGas(Priority.SLOW);
+        throw new Error('expected throw');
+      } catch (e) {
+        expect(isChainError(e, ChainErrorKinds.RpcError)).toBe(true);
+      }
     } finally {
       Object.defineProperty(Arbitrum, 'supportsEip1559', { value: true, configurable: true });
     }

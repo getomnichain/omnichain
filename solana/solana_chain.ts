@@ -180,7 +180,7 @@ export class SolanaChain extends Chain {
    * `SolanaChain.rpc_url_env_for_chain_id` (impl/solana/base.py:421-423)
    * exactly, including the signed chainId. Shell operators must set via
    * dotenv / docker / k8s since `SOLANA_-2000_RPC_URL` is not a settable
-   * name in sh/bash/zsh; noted in `SINAN_OPEN_QUESTIONS.md`.
+   * name in sh/bash/zsh.
    */
   static rpcUrlEnvForChainId(chainId: number): string {
     return `SOLANA_${chainId}_RPC_URL`;

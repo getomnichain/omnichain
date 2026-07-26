@@ -68,8 +68,7 @@ migrations will land in a separate section here.
   can now set `SOLANA_-2000_RPC_URL` for per-cluster overrides.
 - **Note**: TS matches Python's signed-chainId env-var name exactly
   (`SOLANA_-2000_RPC_URL`). Shell operators (bash/zsh/sh can't set that
-  key syntax) must use dotenv, Docker, or k8s to inject it. Divergence
-  noted in `SINAN_OPEN_QUESTIONS.md` for upstream discussion.
+  key syntax) must use dotenv, Docker, or k8s to inject it.
 
 ---
 
@@ -142,6 +141,16 @@ migrations will land in a separate section here.
   - Tron family: `728126428`, `2494104990`
 - Diff your custom chainIds against these before upgrading.
 
+## Tron chainIds no longer route to `EvmAddress`
+
+- **What**: `CHAIN_ID_TRON_MAINNET` (`728126428`) and `CHAIN_ID_TRON_SHASTA`
+  (`2494104990`) are now seeded as `NetworkType.TRON`, and `addressFor`
+  throws `ChainError(ChainNotSupported)` for them (no TRON address parser
+  yet in v0). Previously these positive chainIds silently routed through
+  `EvmAddress`, so any `0x…` string validated as a Tron address.
+- **Consumer action**: if you actually handle Tron addresses, run your own
+  validation upstream of `addressFor` until the TRON port lands.
+
 ## `networkTypeOf` fail-closed for unregistered negative chainIds
 
 - **What**: `networkTypeOf(chainId)` now throws `ChainError(ChainNotSupported)`
@@ -179,7 +188,7 @@ migrations will land in a separate section here.
   Avalanche, Celo, Linea, Scroll, Blast, Sei, Monad, Sonic, HyperEVM,
   MegaETH, Mantle, ZKSync, ZetaChain, etc.). Each mirrors Python
   `impl/evm/chains.py` line-for-line.
-- 54 pre-baked EVM tokens (`evm_tokens.ts`) mirroring
+- 55 pre-baked EVM tokens (`evm_tokens.ts`) mirroring
   `impl/evm/assets.py`.
 - New root module `chain_ids.ts` exports every constant Python's
   `chain_ids.py` defines: BTC family (`-1..-3`), LTC (`-10`), DOGE (`-12`),

@@ -460,7 +460,17 @@ export const Aurora = new EvmChain({
   supportsEip1559: false,
 });
 
-export const ALL_EVM_CHAINS: ReadonlyArray<EvmChain> = [
+/**
+ * All pre-baked EVM chains this package DECLARES. Membership does NOT imply
+ * any of them are RPC-configured in the caller's environment — most consumers
+ * only wire a subset (see `ALL_EVM_CHAINS` below for the pre-v0-compatible
+ * "wired" set).
+ *
+ * Iterating this array and calling `chain.getProvider()` on each entry
+ * throws `ChainError(RpcNotConfigured)` for any chain the consumer hasn't
+ * set an env var for. Filter before use.
+ */
+export const ALL_DECLARED_EVM_CHAINS: ReadonlyArray<EvmChain> = [
   Ethereum,
   Optimism,
   Cronos,
@@ -510,3 +520,11 @@ export const ALL_EVM_CHAINS: ReadonlyArray<EvmChain> = [
   CeloSepoliaTestnet,
   Aurora,
 ];
+
+/**
+ * Backwards-compatible "wired" set — the pre-v0 SDK's 4-chain default.
+ * Consumers that iterate `ALL_EVM_CHAINS` and register everything (pluton's
+ * ChainRegistryService pattern) keep the same semantics as before the
+ * catalogue expansion. Use `ALL_DECLARED_EVM_CHAINS` for the full catalogue.
+ */
+export const ALL_EVM_CHAINS: ReadonlyArray<EvmChain> = [Ethereum, Arbitrum, Base, BnbChain];

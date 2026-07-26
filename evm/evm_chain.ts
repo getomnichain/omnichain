@@ -59,10 +59,9 @@ const FEE_HISTORY_BLOCK_COUNT = 10;
 const FINAL_TIP_PERCENTILE = 90;
 
 // TS-only safety floor applied to any suggested gas price / tip. Python does
-// NOT enforce a minimum: `sorted_tips[idx]` can be 0 on quiet L2 blocks, and
-// legacy `eth_gasPrice()` has no fallback. Silently unmineable transactions
-// are unacceptable for a signing SDK, so TS clamps to 0.05 gwei.
-// Raised upstream in SINAN_OPEN_QUESTIONS.md.
+// NOT enforce a minimum: `sorted_tips[idx]` can be 0 on quiet L2 blocks.
+// Silently unmineable transactions are unacceptable for a signing SDK, so
+// TS clamps to 0.05 gwei.
 const MIN_GAS_PRICE_FLOOR = 50_000_000n;
 
 function atLeast(n: bigint, min: bigint): bigint {
@@ -173,13 +172,19 @@ export class EvmChain extends Chain {
     if (!this.supportsEip1559) {
       const mult = GAS_MULTIPLIER_PCT[priority];
       const fee = await provider.getFeeData();
-      // Symmetric with the 1559 branch: when the provider returns null/0 for
-      // gasPrice AND maxFeePerGas, use the 2-gwei fallback (matches the
-      // 1559 EMPTY_REWARD_FALLBACK_TIP so the two paths degrade identically).
-      // MIN_GAS_PRICE_FLOOR still clamps the scaled result.
       const providerHint = fee.gasPrice ?? fee.maxFeePerGas ?? 0n;
-      const base = providerHint > 0n ? providerHint : EMPTY_REWARD_FALLBACK_TIP;
-      const scaled = atLeast((base * mult) / 100n, MIN_GAS_PRICE_FLOOR);
+      if (providerHint <= 0n) {
+        // Bubble as ChainError(RpcError) rather than guess a base gas price.
+        // Legacy chains span a huge price range (0.05-100 gwei); any hard-coded
+        // fallback would 20-40x overpay on low-price L2s (Aurora, Metis,
+        // IotaEvm, OkxChain, Shimmer, PolygonZKEvm) or underpay on mainnet.
+        // Matches the 1559 branch's "bubble, don't guess" policy.
+        throw this.rpcError(
+          'legacy getFeeData returned no usable gasPrice',
+          new Error('gasPrice null/0'),
+        );
+      }
+      const scaled = atLeast((providerHint * mult) / 100n, MIN_GAS_PRICE_FLOOR);
       return new EvmGasEstimate({
         gasPrice: scaled,
         maxFeePerGas: scaled,
@@ -191,19 +196,28 @@ export class EvmChain extends Chain {
     // NB: Python reads `base_fee_per_gas` from `eth_getBlock("latest")` (line
     // 1109-1110); TS reuses `feeHistory.baseFeePerGas[-1]` — the JSON-RPC
     // "next block projection", up to ±12.5% off. Deliberate: saves an RPC
-    // round-trip. Raised in SINAN_OPEN_QUESTIONS.md.
+    // round-trip. (See the local SINAN questions doc for the upstream
+    // discussion — TS uses feeHistory's projection to skip the extra RPC.)
     const rewardPercentile = PRIORITY_REWARD_PERCENTILE[priority];
+    let raw: {
+      baseFeePerGas?: string[];
+      gasUsedRatio?: number[];
+      reward?: string[][];
+      oldestBlock?: string;
+    };
+    // Narrow try — only the RPC call. Response-shape and parse errors are
+    // distinct from transport failures and get a distinct ChainError kind.
     try {
-      const raw = (await provider.send('eth_feeHistory', [
+      raw = (await provider.send('eth_feeHistory', [
         `0x${FEE_HISTORY_BLOCK_COUNT.toString(16)}`,
         'latest',
         [rewardPercentile],
-      ])) as {
-        baseFeePerGas?: string[];
-        gasUsedRatio?: number[];
-        reward?: string[][];
-        oldestBlock?: string;
-      };
+      ])) as typeof raw;
+    } catch (err) {
+      throw this.rpcError('eth_feeHistory transport failed', err);
+    }
+
+    try {
       const baseFees = raw.baseFeePerGas;
       if (!Array.isArray(baseFees) || baseFees.length === 0) {
         throw new Error('missing baseFeePerGas');
@@ -239,7 +253,12 @@ export class EvmChain extends Chain {
         maxFeePerGas,
       });
     } catch (err) {
-      throw this.rpcError('eth_feeHistory failed', err);
+      throw new ChainError(
+        ChainErrorKinds.TransactionDecodeFailed,
+        `eth_feeHistory response malformed: ${(err as Error).message}`,
+        { chainId: this.chainId, rpcHost: this.rpcHost() },
+        err,
+      );
     }
   }
 
