@@ -30,7 +30,7 @@ Every change in this branch cites its counterpart in the Python source (file:lin
 **Phase 2 — Category C additive**:
 - New `chain_ids.ts`: every constant + `CHAIN_FAMILY_*` set + `is*` predicate mirrored from chain_ids.py.
 - `evm_chains.ts` rewritten: 48 pre-baked chains, each linked to its `impl/evm/chains.py:LN` counterpart.
-- `evm_tokens.ts` rewritten: 35 pre-baked tokens mirroring `impl/evm/assets.py`.
+- `evm_tokens.ts` rewritten: 55 pre-baked tokens — 53 mirroring `impl/evm/assets.py` + 2 TS-only convenience natives (`CELO_SEPOLIA_CELO`, `MOONBEAM_GLMR`) labeled inline.
 - `EVM_ASSETS_REQUIRING_ZERO_RESET_APPROVAL` marker exported (declarative only).
 - New `solana/solana_tokens.ts`: SOLANA_USDC / EURC / WSOL / PYUSD / USDT + devnet variants.
 - Barrel updates: `chain_ids` at root, `solana_tokens` in solana barrel.

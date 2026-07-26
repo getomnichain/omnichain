@@ -1,5 +1,6 @@
 import { networks } from 'bitcoinjs-lib';
 
+import { ChainError, ChainErrorKinds } from '../../errors.ts';
 import {
   BIP32_PURPOSE_P2PKH,
   BIP32_PURPOSE_P2SH_P2WPKH,
@@ -92,8 +93,10 @@ export function registerBtcChainParams(chainId: bigint, params: BtcNetworkParams
 export function btcParamsForChainId(chainId: bigint): BtcNetworkParams {
   const params = btcParamsByChainId.get(chainId);
   if (!params) {
-    throw new Error(
-      `No BTC network params registered for chainId ${chainId}; construct a BtcChain with that id first`
+    throw new ChainError(
+      ChainErrorKinds.ChainNotSupported,
+      `No BTC network params registered for chainId ${chainId}; construct a BtcChain with that id first`,
+      { chainId: Number(chainId) },
     );
   }
   return params;

@@ -10,10 +10,10 @@ import { TonAddress } from '../ton/ton_address.ts';
 // SolanaChain instances — so addressFor/canonicalizeAddress route them
 // correctly whether or not any concrete SolanaChain constructor has run.
 import {
-  SOLANA_MAINNET_CHAIN_ID,
-  SOLANA_TESTNET_CHAIN_ID,
-  SOLANA_DEVNET_CHAIN_ID,
-} from '../solana/solana_chains.ts';
+  CHAIN_ID_SOLANA_DEVNET as SOLANA_DEVNET_CHAIN_ID,
+  CHAIN_ID_SOLANA_MAINNET as SOLANA_MAINNET_CHAIN_ID,
+  CHAIN_ID_SOLANA_TESTNET as SOLANA_TESTNET_CHAIN_ID,
+} from '../chain_ids.ts';
 
 import { addressFor, canonicalizeAddress, tryCanonicalizeAddress } from '../address.factory.ts';
 import { IsAddress } from '../is_address.decorator.ts';

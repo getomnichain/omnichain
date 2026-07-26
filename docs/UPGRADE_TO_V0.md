@@ -18,20 +18,30 @@ migrations will land in a separate section here.
   - `CHAIN_ID_SOLANA_TESTNET`: `-101` → `-2001`
   - `CHAIN_ID_SOLANA_DEVNET`: `-102` → `-2002`
 - **Python source**: `omnichain-py/src/omnichain/chain_ids.py`
-- **Legacy shim**: the pre-v0 IDs `-100/-101/-102` are still registered as
-  `NetworkType.SOLANA` at module load, so `addressFor(-100, ...)` continues
-  to work during migration. Use `migrateLegacySolanaChainId(id)` to rewrite
-  persisted rows to the canonical v0 value:
+- **NO grace-period shim.** The legacy IDs `-100/-101/-102` are NOT registered
+  as `NetworkType.SOLANA`. `networkTypeOf(-100)` throws
+  `ChainError(ChainNotSupported)` at validation time — a half-wired shim
+  (accept-then-fail-later on a signing path) would be worse than the hard fail.
+  Callers **must** normalize legacy IDs via `migrateLegacySolanaChainId(id)`
+  before the value enters the SDK:
   ```ts
   import { migrateLegacySolanaChainId } from '@getomnichain/omnichain';
   const canonical = migrateLegacySolanaChainId(row.chainId);
   ```
-- **Consumer action**: schedule a one-time SQL rewrite:
-  ```sql
-  UPDATE <table> SET chain_id = -2000 WHERE chain_id = -100;
-  UPDATE <table> SET chain_id = -2001 WHERE chain_id = -101;
-  UPDATE <table> SET chain_id = -2002 WHERE chain_id = -102;
-  ```
+- **Consumer action** (do all of these):
+  1. **SQL rewrite** any persisted rows:
+     ```sql
+     UPDATE <table> SET chain_id = -2000 WHERE chain_id = -100;
+     UPDATE <table> SET chain_id = -2001 WHERE chain_id = -101;
+     UPDATE <table> SET chain_id = -2002 WHERE chain_id = -102;
+     ```
+  2. **grep your source for hardcoded `-100`, `-101`, `-102`** — the renumber
+     is not a compile-time break; call sites like
+     `chainRegistry.get(-100)` silently return `undefined` and any
+     `try { … } catch { return; }` wrappers turn into permanent no-ops
+     with no telemetry. Rewrite hardcoded constants to import
+     `CHAIN_ID_SOLANA_*` from `@getomnichain/omnichain`.
+  3. Audit config files / env-var values with the legacy IDs baked in.
 
 ### Solana chain names
 
@@ -136,7 +146,7 @@ migrations will land in a separate section here.
 - **Consumer action**: `import`-time crash if your custom chain uses an ID
   that collides with a seeded family. Static seeds shipped in v0:
   - BTC family: `-1`, `-2`, `-3`, `-10`, `-12`, `-14`, `-16`, `-18`
-  - Solana family: `-2000`, `-2001`, `-2002` (+ legacy aliases `-100`, `-101`, `-102`)
+  - Solana family: `-2000`, `-2001`, `-2002` (legacy `-100/-101/-102` are NOT seeded — migrate first)
   - TON family: `-4000`, `-4001`
   - Tron family: `728126428`, `2494104990`
 - Diff your custom chainIds against these before upgrading.

@@ -116,8 +116,12 @@ export interface EvmChainInit {
 export class EvmChain extends Chain {
   readonly rpcUrl: string | undefined;
   readonly supportsEip1559: boolean;
-  readonly nativeTransferGasLimit: number;
-  readonly nativeTransferGasMultiplier: number;
+  // Internal — declarative-only in v0. NOT read by any SDK code path yet.
+  // Wired into the transfer builder in the follow-up Phase 3 branch. Kept
+  // as private fields (not readonly public) so consumers can't read an
+  // authoritative-looking value the SDK doesn't currently honor.
+  private readonly _nativeTransferGasLimit: number;
+  private readonly _nativeTransferGasMultiplier: number;
   private readonly _nativeToken: EvmToken;
   private _provider: JsonRpcProvider | null = null;
   private _resolvedRpcUrl: string | null = null;
@@ -133,8 +137,8 @@ export class EvmChain extends Chain {
     );
     this.rpcUrl = init.rpcUrl;
     this.supportsEip1559 = init.supportsEip1559 ?? true;
-    this.nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;
-    this.nativeTransferGasMultiplier = init.nativeTransferGasMultiplier ?? 1.4;
+    this._nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;
+    this._nativeTransferGasMultiplier = init.nativeTransferGasMultiplier ?? 1.4;
     this._nativeToken = EvmToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 18);
   }
 
@@ -143,8 +147,9 @@ export class EvmChain extends Chain {
   }
 
   getErc20Token(symbol: string, contractAddress: string, decimals: number): EvmToken {
-    const checksummed = new EvmAddress(contractAddress).toChecksum();
-    return EvmToken.erc20(this.chainId, symbol, checksummed, decimals);
+    // `EvmToken.erc20` → `new EvmToken` normalizes the identifier internally;
+    // no need to checksum here as well.
+    return EvmToken.erc20(this.chainId, symbol, contractAddress, decimals);
   }
 
   getProvider(): JsonRpcProvider {
@@ -173,18 +178,13 @@ export class EvmChain extends Chain {
       const mult = GAS_MULTIPLIER_PCT[priority];
       const fee = await provider.getFeeData();
       const providerHint = fee.gasPrice ?? fee.maxFeePerGas ?? 0n;
-      if (providerHint <= 0n) {
-        // Bubble as ChainError(RpcError) rather than guess a base gas price.
-        // Legacy chains span a huge price range (0.05-100 gwei); any hard-coded
-        // fallback would 20-40x overpay on low-price L2s (Aurora, Metis,
-        // IotaEvm, OkxChain, Shimmer, PolygonZKEvm) or underpay on mainnet.
-        // Matches the 1559 branch's "bubble, don't guess" policy.
-        throw this.rpcError(
-          'legacy getFeeData returned no usable gasPrice',
-          new Error('gasPrice null/0'),
-        );
-      }
-      const scaled = atLeast((providerHint * mult) / 100n, MIN_GAS_PRICE_FLOOR);
+      // Symmetric with the 1559 branch: when the provider gives no useful
+      // data, degrade to MIN_GAS_PRICE_FLOOR × mult rather than throw. Both
+      // branches always return a suggestion; the floor keeps the value
+      // mineable on low-price L2s without over-paying (0.05 gwei × 1.5 =
+      // 0.075 gwei worst case at FAST).
+      const base = providerHint > 0n ? providerHint : MIN_GAS_PRICE_FLOOR;
+      const scaled = atLeast((base * mult) / 100n, MIN_GAS_PRICE_FLOOR);
       return new EvmGasEstimate({
         gasPrice: scaled,
         maxFeePerGas: scaled,
@@ -217,49 +217,52 @@ export class EvmChain extends Chain {
       throw this.rpcError('eth_feeHistory transport failed', err);
     }
 
+    // Narrow parse — only the shape checks + BigInt() coercions can throw
+    // for structural reasons here. `EvmGasEstimate` construction and the
+    // pure-arithmetic tip selection happen outside so that a defect there
+    // isn't mislabelled as an RPC-response malformed error.
+    let latestBaseFee: bigint;
+    let tips: bigint[];
     try {
       const baseFees = raw.baseFeePerGas;
       if (!Array.isArray(baseFees) || baseFees.length === 0) {
         throw new Error('missing baseFeePerGas');
       }
-      const latestBaseFee = BigInt(baseFees[baseFees.length - 1] ?? '0x0');
-
-      // We requested one percentile → each reward row has one entry at index 0.
+      latestBaseFee = BigInt(baseFees[baseFees.length - 1] ?? '0x0');
       const rewardRows = Array.isArray(raw.reward) ? raw.reward : [];
-      const tips: bigint[] = rewardRows
+      tips = rewardRows
         .map((row) => (Array.isArray(row) ? row[0] : undefined))
         .filter((v): v is string => typeof v === 'string')
         .map((v) => BigInt(v));
-
-      let selectedTip: bigint;
-      if (tips.length === 0) {
-        selectedTip = EMPTY_REWARD_FALLBACK_TIP;
-      } else {
-        const sortedTips = [...tips].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-        const idx = Math.min(
-          Math.floor((sortedTips.length * FINAL_TIP_PERCENTILE) / 100),
-          sortedTips.length - 1,
-        );
-        selectedTip = sortedTips[idx] ?? 0n;
-      }
-
-      // TS safety floor — Python doesn't clamp (see MIN_GAS_PRICE_FLOOR).
-      const finalTip = atLeast(selectedTip, MIN_GAS_PRICE_FLOOR);
-
-      // Safety buffer: base fee can climb 12.5%/block; caller may wait multiple blocks.
-      const maxFeePerGas = latestBaseFee * 2n + finalTip;
-      return new EvmGasEstimate({
-        maxPriorityFeePerGas: finalTip,
-        maxFeePerGas,
-      });
     } catch (err) {
       throw new ChainError(
         ChainErrorKinds.TransactionDecodeFailed,
-        `eth_feeHistory response malformed: ${(err as Error).message}`,
+        `eth_feeHistory response malformed: ${stringifyErr(err)}`,
         { chainId: this.chainId, rpcHost: this.rpcHost() },
-        err,
+        err instanceof Error ? err : new Error(stringifyErr(err)),
       );
     }
+
+    let selectedTip: bigint;
+    if (tips.length === 0) {
+      selectedTip = EMPTY_REWARD_FALLBACK_TIP;
+    } else {
+      const sortedTips = [...tips].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      const idx = Math.min(
+        Math.floor((sortedTips.length * FINAL_TIP_PERCENTILE) / 100),
+        sortedTips.length - 1,
+      );
+      selectedTip = sortedTips[idx] ?? 0n;
+    }
+
+    // TS safety floor — Python doesn't clamp (see MIN_GAS_PRICE_FLOOR).
+    const finalTip = atLeast(selectedTip, MIN_GAS_PRICE_FLOOR);
+    // Safety buffer: base fee can climb 12.5%/block; caller may wait multiple blocks.
+    const maxFeePerGas = latestBaseFee * 2n + finalTip;
+    return new EvmGasEstimate({
+      maxPriorityFeePerGas: finalTip,
+      maxFeePerGas,
+    });
   }
 
   private readRpcUrl(): string {

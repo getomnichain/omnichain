@@ -1,10 +1,21 @@
 import {
+  CHAIN_ID_BITCOIN_MAINNET,
+  CHAIN_ID_BITCOIN_SIGNET,
+  CHAIN_ID_BITCOIN_TESTNET,
   CHAIN_FAMILY_SOLANA,
   CHAIN_FAMILY_TON,
   CHAIN_FAMILY_TRON,
-  CHAIN_FAMILY_UTXO,
 } from './chain_ids.ts';
 import { ChainError, ChainErrorKinds } from './errors.ts';
+
+/** BTC address-grammar family. Distinct from the full `CHAIN_FAMILY_UTXO`
+ *  (which includes LTC/DOGE/DASH/ZEC/BCH — those have their own address
+ *  grammars and must not route through the BTC parser). */
+const BTC_ADDRESS_GRAMMAR_IDS: readonly number[] = [
+  CHAIN_ID_BITCOIN_MAINNET,
+  CHAIN_ID_BITCOIN_TESTNET,
+  CHAIN_ID_BITCOIN_SIGNET,
+];
 
 export enum NetworkType {
   EVM = 'EVM',
@@ -17,15 +28,16 @@ export enum NetworkType {
 
 const networkTypeRegistry = new Map<number, NetworkType>();
 
-// Seed the registry statically from the chain-family sets so classification
-// works without any chain instance having been constructed.
+// Seed the registry statically for families that have a working address
+// parser in v0. Only BTC (bech32 + base58 with BTC HRPs), Solana, TON, Tron.
 //
-// **Note**: this only decides `networkTypeOf`. Family-specific address
-// factories still need registered params (e.g. BTC address parsing requires
-// `registerBtcChainParams` — see `utxo/btc/network_params.ts`). `addressFor`
-// on a seeded UTXO id that has no params registered will throw a
-// family-specific error, not `ChainNotSupported`.
-for (const id of CHAIN_FAMILY_UTXO) networkTypeRegistry.set(id, NetworkType.BTC);
+// LTC/DOGE/DASH/ZEC/BCH are NOT seeded: their address grammars differ from
+// BTC's (different HRPs, different version bytes, CashAddr for BCH,
+// t-addr/z-addr for ZEC). Static-seeding them as BTC would route their
+// addresses through the BTC parser and either reject valid inputs or,
+// worse, silently misinterpret them. They fail closed via the negative-id
+// throw until a chain instance registers per-chain params.
+for (const id of BTC_ADDRESS_GRAMMAR_IDS) networkTypeRegistry.set(id, NetworkType.BTC);
 for (const id of CHAIN_FAMILY_SOLANA) networkTypeRegistry.set(id, NetworkType.SOLANA);
 for (const id of CHAIN_FAMILY_TON) networkTypeRegistry.set(id, NetworkType.TON);
 for (const id of CHAIN_FAMILY_TRON) networkTypeRegistry.set(id, NetworkType.TRON);

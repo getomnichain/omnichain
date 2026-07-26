@@ -201,6 +201,12 @@ export const CHAIN_ID_AURORA = 1313161554;
  * isn't a Tron chain. Does NOT assert that the chainId corresponds to a
  * pre-baked `EvmChain` in `evm_chains.ts`. Consumers wanting a support check
  * should look up the chain in `ALL_EVM_CHAINS`.
+ *
+ * **Caveat on all `is*` predicates**: they operate on the immutable Python-
+ * parity family sets in this file. `networkTypeOf()` (in `network_type.ts`)
+ * reads the runtime registry that also includes consumer-registered chains,
+ * and is the authoritative routing check. The two can disagree for any
+ * chainId a consumer registered.
  */
 export function isEvm(chainId: number): boolean {
   return Number.isInteger(chainId) && chainId > 0 && !CHAIN_FAMILY_TRON.has(chainId);
