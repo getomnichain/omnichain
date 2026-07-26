@@ -111,19 +111,24 @@ describe('EvmChain.suggestGas — 1559 path (Python get_1559_fees parity)', () =
     jest.spyOn(Arbitrum, 'getProvider').mockReturnValue(
       stubProvider({ feeHistoryThrows: new Error('eth_feeHistory not supported') }),
     );
-
-    await expect(Arbitrum.suggestGas(Priority.NORMAL)).rejects.toSatisfy((e) =>
-      isChainError(e, ChainErrorKinds.RpcError),
-    );
+    try {
+      await Arbitrum.suggestGas(Priority.NORMAL);
+      throw new Error('expected throw');
+    } catch (e) {
+      expect(isChainError(e, ChainErrorKinds.RpcError)).toBe(true);
+    }
   });
 
   it('missing baseFeePerGas throws ChainError(RpcError) rather than falling back', async () => {
     jest.spyOn(Arbitrum, 'getProvider').mockReturnValue(
       stubProvider({ feeHistory: { gasUsedRatio: [], reward: [] } }),
     );
-    await expect(Arbitrum.suggestGas(Priority.NORMAL)).rejects.toSatisfy((e) =>
-      isChainError(e, ChainErrorKinds.RpcError),
-    );
+    try {
+      await Arbitrum.suggestGas(Priority.NORMAL);
+      throw new Error('expected throw');
+    } catch (e) {
+      expect(isChainError(e, ChainErrorKinds.RpcError)).toBe(true);
+    }
   });
 });
 

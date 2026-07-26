@@ -60,12 +60,12 @@ migrations will land in a separate section here.
 - **What**: `SolanaChain.readRpcUrl` fallback chain expanded:
   1. constructor `rpcUrl`
   2. env `<NAME_UPPERCASE_UNDERSCORED>_RPC_URL`
-  3. env `SOLANA_<abs(chainId)>_RPC_URL` (new, e.g. `SOLANA_2000_RPC_URL`)
+  3. env `SOLANA_<abs(chainId)>_RPC_URL` (new, e.g. `SOLANA_-2000_RPC_URL`)
   4. env from `legacyRpcEnvNames` (per-instance)
   5. `defaultRpcUrl` (public cluster)
 - **Python source**: `impl/solana/base.py:420-434`
 - **Consumer action**: additive — existing setups keep working. Consumers
-  can now set `SOLANA_2000_RPC_URL` for per-cluster overrides.
+  can now set `SOLANA_-2000_RPC_URL` for per-cluster overrides.
 - **Note**: TS matches Python's signed-chainId env-var name exactly
   (`SOLANA_-2000_RPC_URL`). Shell operators (bash/zsh/sh can't set that
   key syntax) must use dotenv, Docker, or k8s to inject it. Divergence

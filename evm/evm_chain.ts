@@ -58,6 +58,13 @@ const FEE_HISTORY_BLOCK_COUNT = 10;
 // Python default 90.0 (impl/evm/base.py:1102).
 const FINAL_TIP_PERCENTILE = 90;
 
+// TS-only safety floor applied to any suggested gas price / tip. Python does
+// NOT enforce a minimum: `sorted_tips[idx]` can be 0 on quiet L2 blocks, and
+// legacy `eth_gasPrice()` has no fallback. Silently unmineable transactions
+// are unacceptable for a signing SDK, so TS clamps to 0.05 gwei.
+// Raised upstream in SINAN_OPEN_QUESTIONS.md.
+const MIN_GAS_PRICE_FLOOR = 50_000_000n;
+
 function atLeast(n: bigint, min: bigint): bigint {
   return n < min ? min : n;
 }
@@ -166,8 +173,10 @@ export class EvmChain extends Chain {
     if (!this.supportsEip1559) {
       const mult = GAS_MULTIPLIER_PCT[priority];
       const fee = await provider.getFeeData();
-      const base = fee.gasPrice ?? fee.maxFeePerGas ?? EMPTY_REWARD_FALLBACK_TIP;
-      const scaled = (base * mult) / 100n;
+      // Nullish-coalescing does NOT catch 0n; explicit falsy check keeps
+      // MIN_GAS_PRICE_FLOOR effective when the provider returns a zero fee.
+      const base = fee.gasPrice ?? fee.maxFeePerGas ?? 0n;
+      const scaled = atLeast((base * mult) / 100n, MIN_GAS_PRICE_FLOOR);
       return new EvmGasEstimate({
         gasPrice: scaled,
         maxFeePerGas: scaled,
@@ -176,52 +185,59 @@ export class EvmChain extends Chain {
     }
 
     // 1559 path — mirrors omnichain-py get_1559_fees (impl/evm/base.py:1098-1132).
+    // NB: Python reads `base_fee_per_gas` from `eth_getBlock("latest")` (line
+    // 1109-1110); TS reuses `feeHistory.baseFeePerGas[-1]` — the JSON-RPC
+    // "next block projection", up to ±12.5% off. Deliberate: saves an RPC
+    // round-trip. Raised in SINAN_OPEN_QUESTIONS.md.
     const rewardPercentile = PRIORITY_REWARD_PERCENTILE[priority];
-    let raw: {
-      baseFeePerGas?: string[];
-      gasUsedRatio?: number[];
-      reward?: string[][];
-      oldestBlock?: string;
-    };
     try {
-      raw = (await provider.send('eth_feeHistory', [
+      const raw = (await provider.send('eth_feeHistory', [
         `0x${FEE_HISTORY_BLOCK_COUNT.toString(16)}`,
         'latest',
         [rewardPercentile],
-      ])) as typeof raw;
+      ])) as {
+        baseFeePerGas?: string[];
+        gasUsedRatio?: number[];
+        reward?: string[][];
+        oldestBlock?: string;
+      };
+      const baseFees = raw.baseFeePerGas;
+      if (!Array.isArray(baseFees) || baseFees.length === 0) {
+        throw new Error('missing baseFeePerGas');
+      }
+      const latestBaseFee = BigInt(baseFees[baseFees.length - 1] ?? '0x0');
+
+      // We requested one percentile → each reward row has one entry at index 0.
+      const rewardRows = Array.isArray(raw.reward) ? raw.reward : [];
+      const tips: bigint[] = rewardRows
+        .map((row) => (Array.isArray(row) ? row[0] : undefined))
+        .filter((v): v is string => typeof v === 'string')
+        .map((v) => BigInt(v));
+
+      let selectedTip: bigint;
+      if (tips.length === 0) {
+        selectedTip = EMPTY_REWARD_FALLBACK_TIP;
+      } else {
+        const sortedTips = [...tips].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+        const idx = Math.min(
+          Math.floor((sortedTips.length * FINAL_TIP_PERCENTILE) / 100),
+          sortedTips.length - 1,
+        );
+        selectedTip = sortedTips[idx] ?? 0n;
+      }
+
+      // TS safety floor — Python doesn't clamp (see MIN_GAS_PRICE_FLOOR).
+      const finalTip = atLeast(selectedTip, MIN_GAS_PRICE_FLOOR);
+
+      // Safety buffer: base fee can climb 12.5%/block; caller may wait multiple blocks.
+      const maxFeePerGas = latestBaseFee * 2n + finalTip;
+      return new EvmGasEstimate({
+        maxPriorityFeePerGas: finalTip,
+        maxFeePerGas,
+      });
     } catch (err) {
       throw this.rpcError('eth_feeHistory failed', err);
     }
-    const baseFees = raw.baseFeePerGas;
-    if (!Array.isArray(baseFees) || baseFees.length === 0) {
-      throw this.rpcError(
-        'eth_feeHistory returned no baseFeePerGas',
-        new Error('missing baseFeePerGas'),
-      );
-    }
-    const latestBaseFee = BigInt(baseFees[baseFees.length - 1] ?? '0x0');
-
-    // We requested one percentile → each reward row has one entry at index 0.
-    const tips: bigint[] = (raw.reward ?? [])
-      .map((row) => row?.[0])
-      .filter((v): v is string => typeof v === 'string')
-      .map((v) => BigInt(v));
-
-    let selectedTip: bigint;
-    if (tips.length === 0) {
-      selectedTip = EMPTY_REWARD_FALLBACK_TIP;
-    } else {
-      const sortedTips = [...tips].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-      const idx = Math.floor((sortedTips.length * FINAL_TIP_PERCENTILE) / 100);
-      selectedTip = sortedTips[Math.min(idx, sortedTips.length - 1)]!;
-    }
-
-    // Safety buffer: base fee can climb 12.5%/block; caller may wait multiple blocks.
-    const maxFeePerGas = latestBaseFee * 2n + selectedTip;
-    return new EvmGasEstimate({
-      maxPriorityFeePerGas: selectedTip,
-      maxFeePerGas,
-    });
   }
 
   private readRpcUrl(): string {

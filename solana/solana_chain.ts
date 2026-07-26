@@ -59,7 +59,7 @@ export interface SolanaChainInit {
   rpcUrl?: string;
   /**
    * Additional env var names to consult during RPC URL resolution, tried
-   * *after* the derived name and the `SOLANA_<abs(chainId)>_RPC_URL` fallback
+   * *after* the derived name and the `SOLANA_<chainId>_RPC_URL` fallback
    * but *before* `defaultRpcUrl`. Used to keep pre-rename env vars working —
    * e.g. `SolanaMainnet` used to derive `SOLANA_RPC_URL`; after the rename
    * to `"Solana Mainnet"` the derived name is `SOLANA_MAINNET_RPC_URL`, and
