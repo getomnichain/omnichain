@@ -588,23 +588,13 @@ export class SolanaChain extends Chain {
     }
     if (!tx) {
       // Could be still propagating (Processed but not yet Confirmed); fall back to signature
-      // status before declaring NotFound. Fees/logs cannot be reconstructed from a
-      // signature-status alone, so success/failed cases from this fallback path
-      // still map to pending/notFound with no fees.
+      // status before declaring NotFound. If the sig reports settled but the full tx isn't
+      // fetchable (the RPC may have pruned the slot's ledger data), return Pending so the
+      // caller keeps polling — reporting NotFound here would let a deposit-detector
+      // conclude a finalized-and-settled transfer never happened, and let a broadcaster
+      // consider rebroadcast safe.
       const sig = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
       if (!sig || !sig.value) return SolanaTransactionStatus.notFound(this.chainId);
-      if (
-        sig.value.confirmationStatus === 'finalized' ||
-        sig.value.confirmationStatus === 'confirmed'
-      ) {
-        // Signature reports settled but full tx isn't fetchable — treat as
-        // notFound with the reported err (if any) rather than success without
-        // fees/balance-changes.
-        return SolanaTransactionStatus.notFound(
-          this.chainId,
-          sig.value.err ? { code: 'REVERTED', reason: JSON.stringify(sig.value.err) } : null,
-        );
-      }
       return SolanaTransactionStatus.pending(this.chainId);
     }
 
@@ -626,16 +616,18 @@ export class SolanaChain extends Chain {
       );
     }
     const feeLamports = BigInt(tx.meta.fee);
-    const computeUnitsConsumed = BigInt(tx.meta.computeUnitsConsumed ?? 0);
+    const rawCu = tx.meta.computeUnitsConsumed;
+    const computeUnitsConsumed =
+      rawCu === undefined || rawCu === null ? null : BigInt(rawCu);
     const preLamports = BigInt(tx.meta.preBalances?.[0] ?? 0);
     const postLamports = BigInt(tx.meta.postBalances?.[0] ?? 0);
     const fees = new SolanaTransactionFees({
       feePayer,
       feeLamports,
-      computeUnitsConsumed: computeUnitsConsumed > 0n ? computeUnitsConsumed : 1n,
+      computeUnitsConsumed,
       netLamportsChangeByFeePayer: postLamports - preLamports,
     });
-    const inclusionAt = tx.blockTime ? new Date(tx.blockTime * 1000) : new Date(0);
+    const inclusionAt = tx.blockTime ? new Date(tx.blockTime * 1000) : null;
 
     if (tx.meta.err) {
       return SolanaTransactionStatus.failed({

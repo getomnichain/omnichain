@@ -28,22 +28,26 @@ export class EvmTransactionGasFees {
   readonly maxPriorityFeePerGas: bigint | undefined;
 
   constructor(init: EvmTransactionGasFeesInit) {
-    if (init.gasLimit <= 0n) {
+    // Observed on-chain values (not caller inputs) — reject negatives only.
+    // Zero-gas / subsidised environments and pruned-node receipts return 0
+    // for one or more of these fields; throwing there would turn
+    // getTransactionStatus from "returns a status" into "throws".
+    if (init.gasLimit < 0n) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        `EvmTransactionGasFees.gasLimit must be > 0, got ${init.gasLimit}`,
+        `EvmTransactionGasFees.gasLimit must be >= 0, got ${init.gasLimit}`,
       );
     }
-    if (init.gasLimitUsed <= 0n) {
+    if (init.gasLimitUsed < 0n) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        `EvmTransactionGasFees.gasLimitUsed must be > 0, got ${init.gasLimitUsed}`,
+        `EvmTransactionGasFees.gasLimitUsed must be >= 0, got ${init.gasLimitUsed}`,
       );
     }
-    if (init.effectiveGasPrice <= 0n) {
+    if (init.effectiveGasPrice < 0n) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        `EvmTransactionGasFees.effectiveGasPrice must be > 0, got ${init.effectiveGasPrice}`,
+        `EvmTransactionGasFees.effectiveGasPrice must be >= 0, got ${init.effectiveGasPrice}`,
       );
     }
     this.gasLimit = init.gasLimit;
@@ -136,7 +140,7 @@ export class EvmTransactionStatus extends TransactionStatus {
 
   static successful(args: {
     chainId: number;
-    inclusionAt: Date;
+    inclusionAt: Date | null;
     balanceChanges: NestedBalanceChanges;
     logs: readonly EvmParsedTransactionLog[];
     fees: EvmTransactionGasFees;
@@ -154,7 +158,7 @@ export class EvmTransactionStatus extends TransactionStatus {
 
   static failed(args: {
     chainId: number;
-    inclusionAt: Date;
+    inclusionAt: Date | null;
     error: TransactionErrorInfo;
     fees: EvmTransactionGasFees;
   }): EvmTransactionStatus {

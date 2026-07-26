@@ -1,11 +1,11 @@
 import { Psbt } from 'bitcoinjs-lib';
-import Decimal from 'decimal.js';
 
 import {
   CHAIN_ID_BITCOIN_MAINNET,
   CHAIN_ID_BITCOIN_SIGNET,
   CHAIN_ID_BITCOIN_TESTNET,
 } from '../chain_ids.ts';
+import { btcParamsForChainId } from './btc/network_params.ts';
 import { Chain, CreateTransferRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
@@ -43,7 +43,6 @@ import {
   FINAL_SEQUENCE,
   OP_RETURN_MAX_BYTES,
   RBF_SEQUENCE,
-  Slip44,
   UtxoNetworkParams,
 } from './utxo_network_params.ts';
 
@@ -128,21 +127,22 @@ export class UtxoChain extends Chain {
   protected readonly rbfEnabled: boolean;
 
   constructor(init: UtxoChainInit) {
-    // iter-15 medium #1: reject a non-BTC UTXO chain (LTC/DOGE/DASH/ZEC/BCH)
-    // constructed with a reserved BTC chainId. Without this guard, the seeded
-    // btcParamsByChainId entry validates BTC-grammar addresses under a chain
-    // whose real address rules are different — a silent fail-open on the
-    // path the BtcChain-vs-UtxoChain split was supposed to prevent.
-    if (
-      RESERVED_BTC_CHAIN_IDS.includes(init.chainId) &&
-      init.params.slip44CoinId !== Slip44.BTC &&
-      init.params.slip44CoinId !== Slip44.Testnet
-    ) {
-      throw new ChainError(
-        ChainErrorKinds.InvalidArgument,
-        `chainId ${init.chainId} is reserved for BTC; UtxoChain construction with a non-BTC params (slip44CoinId=${init.params.slip44CoinId}) is not permitted. Choose a distinct chainId for this network.`,
-        { chainId: init.chainId },
-      );
+    // Reject a non-BTC UTXO chain (LTC/DOGE/DASH/ZEC/BCH — mainnet AND
+    // testnet) constructed with a reserved BTC chainId. The prior slip44
+    // heuristic let `litecoinTestnetChain({chainId: -2})` through because
+    // LTC testnet's slip44 is `Slip44.Testnet` (same as BTC testnet). Gate
+    // on the seeded BTC params directly: at reserved ids the constructor
+    // must present params shape-identical to what's already seeded, else
+    // it's a chain claiming a BTC id with foreign address rules.
+    if (RESERVED_BTC_CHAIN_IDS.includes(init.chainId)) {
+      const seeded = btcParamsForChainId(BigInt(init.chainId));
+      if (init.params !== seeded && !isSameBtcParamsShape(init.params, seeded)) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `chainId ${init.chainId} is reserved for BTC; UtxoChain construction with foreign params (slip44=${init.params.slip44CoinId}) is not permitted. Choose a distinct chainId for this network.`,
+          { chainId: init.chainId },
+        );
+      }
     }
     super(
       init.chainId,
@@ -271,14 +271,11 @@ export class UtxoChain extends Chain {
         );
       }
       for (const [address, sats] of perAddressSats) {
-        const hr = new Decimal(sats.toString()).div(
-          new Decimal(10).pow(this._nativeToken.decimals),
-        );
         AssetBalanceChange.upsert(
           balanceChanges,
           address,
           this._nativeToken,
-          new AssetBalanceChange(hr, this._nativeToken.decimals),
+          AssetBalanceChange.fromMr(sats, this._nativeToken.decimals),
         );
       }
 
@@ -538,6 +535,19 @@ function bigintToNumber(value: bigint): number {
     throw new Error(`UTXO amount ${value} exceeds Number.MAX_SAFE_INTEGER`);
   }
   return Number(value);
+}
+
+function isSameBtcParamsShape(a: UtxoNetworkParams, b: UtxoNetworkParams): boolean {
+  return (
+    a.slip44CoinId === b.slip44CoinId &&
+    a.walletAddressRegex.source === b.walletAddressRegex.source &&
+    a.walletAddressRegex.flags === b.walletAddressRegex.flags &&
+    a.dustValueSats === b.dustValueSats &&
+    a.networkInfo.pubKeyHash === b.networkInfo.pubKeyHash &&
+    a.networkInfo.scriptHash === b.networkInfo.scriptHash &&
+    a.networkInfo.bip32.public === b.networkInfo.bip32.public &&
+    a.networkInfo.bip32.private === b.networkInfo.bip32.private
+  );
 }
 
 function encodeMemo(memo: string | undefined): Buffer | null {

@@ -34,57 +34,105 @@ consumers relying on it must move to `ethers.verifyMessage` /
 `nacl.sign.detached.verify` / `bitcoinjs-message` directly, matching what
 `omnichain-py` consumers already do.
 
-### 2. `TransactionStatus` variant-shape refactor (Python parity)
+### 2. `TransactionStatus` per-network subclass hierarchy (Python parity)
 
-**Python (base/base.py:361-399):** single `AbstractTransactionStatus` class;
-`balance_changes`, `error`, `inclusion_datetime_utc` are all `Optional` and
-gated by runtime asserts on `status_type`. Not per-network subclasses.
+**Python:** `AbstractTransactionStatus` (base/base.py:361-399) is an abstract
+base with 5 core fields + runtime asserts, and each impl subclasses it to
+add chain-specific extras:
+- `EvmTransactionStatus(AbstractTransactionStatus)` — adds `logs`, `fees`
+- `SolanaTransactionStatus(AbstractTransactionStatus)` — adds `fees`
+- `UtxoTransactionStatus(AbstractTransactionStatus)` — adds `inputs`,
+  `outputs`, `vsize`, `confirmations`; constructor param
+  `confirmation_datetime_utc` is aliased to parent's `inclusion_datetime_utc`
+
+Static factories `successful` / `failed` / `pending` / `not_found` live on
+each subclass (they need the chain-specific fields). `UtxoTransactionStatus`
+has **no** factories; direct constructor. `EvmTransactionStatus.not_found`
+requires positional `error`; `SolanaTransactionStatus.not_found` defaults it
+to `None` — mirrored per-subclass exactly.
+
+**Change:** abstract `TransactionStatus` base (transaction_status.ts) with
+5 core fields `{chainId, status, inclusionAt, error, balanceChanges}` and
+constructor asserts:
+- `Success`  → `balanceChanges` non-null, `error` null
+- `Failed`   → `balanceChanges` null, `error` non-null
+- `Pending`  → both null (`{}` for balanceChanges also fails — must be exactly null)
+- `NotFound` → `balanceChanges` null, `error` optional
+
+Three subclass modules (`evm/evm_transaction_status.ts`,
+`solana/solana_transaction_status.ts`, `utxo/utxo_transaction_status.ts`)
+each add the chain-specific value types and factories.
+
+Type-guard helpers `isSuccess`/`isFailed`/`isPending`/`isNotFound` narrow
+nullness at consumer call sites.
+
+**Deviation from Python (documented in SINAN_OPEN_QUESTIONS):** Python
+uses `assert` → `AssertionError`; TS uses `ChainError(InvalidArgument)` for
+consistency with the rest of the SDK. TS uses exhaustive switch on the
+status type discriminant so a new status is a compile error (Python falls
+through to Pending).
+
+### 3. `AssetBalanceChange` + `NestedBalanceChanges` (Python parity + safety flip)
+
+**Python (base/base.py:239-311):** value type with `_decimals: int`,
+`balance_change_hr: Decimal`, `balance_change_mr: int` (computed
+`hr_to_mr(hr, decimals)` in constructor). Static `upsert(dict, wallet,
+asset, change)` — mutating; zero-net collapses BOTH the asset row and the
+wallet row when its inner dict empties; on non-zero-net merge uses
+`change._decimals` (not existing's).
+
+Container: `Dict[WalletAddressType, Dict[AssetType, AssetBalanceChange]]`.
+Asset keys are objects hashed via `AbstractAsset._hash_str = f'{chainId}_{symbol}_{identifier or ""}_{decimals}'`.
 
 **Change:**
-- `TransactionStatus` becomes a single class (or interface + factory) with:
-  - `status: TransactionStatusType` (unchanged)
-  - `balanceChanges: NestedBalanceChanges | null` (was `BalanceChange[]`)
-  - `error: TransactionError | null` (new — folded from `errorInfo`)
-  - `inclusionAt: Date | null` (renamed from `txTimestamp`)
-- Runtime constructor asserts mirror Python's:
-  - `Success`  → `balanceChanges` present, `error` null
-  - `Failed`   → `balanceChanges` null,    `error` present
-  - `Pending`  → both null
-  - `NotFound` → both null (error optional per Python's "in not found, error can be available" comment)
-- Type-guard helpers: `isSuccess(s)`, `isFailed(s)`, `isPending(s)`,
-  `isNotFound(s)` — narrow the field types at call sites.
-- `TransactionStatusTypes` (const object) → keep as-is (already correct).
+- `AssetBalanceChange {balanceChangeMr: bigint, decimals: number}` with
+  `balanceChangeHr: Decimal` as a **lazy getter** derived from mr / 10^decimals.
+  Storage flip vs Python (which stores hr and computes mr): decimal.js
+  defaults to 20 significant digits, so 18-decimal amounts ≥ ~100 tokens
+  silently truncate on Decimal → bigint round-trip. Storing bigint keeps
+  every wei/lamport/satoshi exact; Decimal accessor is best-effort display.
+- Statics: `zero(decimals)`, `fromMr(mr, decimals)`, `fromHr(hr, decimals)`,
+  `upsert(container, wallet, token, change)` (mutating, Python-parity zero-
+  net cleanup + decimals mismatch throws).
+- `add(other)` requires decimals-equal; throws otherwise.
+- `NestedBalanceChanges = Map<walletStr, Map<assetHash, {token, change}>>`
+  where `assetHashOf(token) = ${chainId}_${symbol}_${identifier ?? ''}` —
+  drops decimals from the key (matches `Token.equals` identity). Python
+  includes decimals in `__hash__` and excludes from `__eq__` — a wart TS
+  fixes here to prevent decimals-disagreement splitting one asset into
+  two non-cancelling rows on Solana `uiTokenAmount.decimals` variance.
+- **Solana decoder** (`_decodeBalanceChanges`) rewritten to return
+  `NestedBalanceChanges` via `upsert`. Preserves the three PR #7 bug fixes.
+- **EVM decoder** (`decodeBalanceChanges`) rewritten to return
+  `NestedBalanceChanges` via `upsert`. Signature gains required `gasCost`
+  arg (sender native debit = value + gasCost — Python parity). Native +
+  ERC-20 self-transfers add both legs unconditionally so upsert's zero-
+  net rule cancels the intra-token movement while preserving gas debit.
+- **UTXO decoder** (`getTransactionStatus`) rewritten. Outputs-only
+  behavior preserved from Phase 1 (input-side accounting parity deferred;
+  noted in `SINAN_OPEN_QUESTIONS.md`).
 
-**Deviation from Python (documented):** Python uses `AssertionError`; TS uses
-`ChainError(InvalidArgument)` for consistency with the rest of the SDK.
+### 3b. Per-network value types
 
-### 3. Nested `balanceChanges` (Python parity)
-
-**Python (base/base.py:239-311):** `AssetBalanceChange` value type with `pre`,
-`post`, `decimals`. Container shape:
-`Optional[Dict[WalletAddressType, Dict[AssetType, AssetBalanceChange]]]`.
-`AssetBalanceChange.merge` handles adding a change into an existing
-`(wallet, asset)` cell, and deletes the wallet row when its cells all zero out.
-
-**Change:**
-- New value type `AssetBalanceChange { pre: bigint; post: bigint; decimals: number }`
-  with methods:
-  - `static zero(decimals): AssetBalanceChange`
-  - `static fromDelta(deltaMinorUnits, decimals): AssetBalanceChange`
-  - `add(other): AssetBalanceChange` (Python `__add__`)
-  - `delta(): bigint` (post - pre)
-- New container type `NestedBalanceChanges = Map<string, Map<string, AssetBalanceChange>>`
-  keyed by `(walletAddress, tokenIdentifier)`. `tokenIdentifier` for native is `''`
-  matching current convention.
-- Merge helper `mergeBalanceChange(container, wallet, tokenIdentifier, change)`
-  mirrors Python's `AssetBalanceChange.merge`, including the "delete wallet
-  row when empty" behavior.
-- **Solana decoder rewrite:** `_decodeBalanceChanges` currently produces
-  `BalanceChange[]` — rewrite to produce `NestedBalanceChanges`. Preserves
-  the three PR #7 bug fixes (decimals from `uiTokenAmount`, drop null-owner
-  entries, `UNKNOWN_<prefix>` symbol).
-- **EVM decoder rewrite:** parallel change to whatever produces the flat
-  array today.
+Ported 1:1 from Python:
+- `EvmTransactionGasFees` — `gasLimit`, `gasLimitUsed`, `effectiveGasPrice`
+  (all `bigint`, `>= 0` — observed data, not user input), optional
+  `gasPrice` / `maxFeePerGas` / `maxPriorityFeePerGas`; computed
+  `totalGasInWei = gasLimitUsed * effectiveGasPrice`.
+- `EvmParsedTransactionLog` with `isTransferLog()` + `asTransferLog()` →
+  `EvmErc20TransferLog { tokenContract, fromAddress, toAddress, value }`.
+- `SolanaTransactionFees` — `feePayer`, `feeLamports >= 0`,
+  `computeUnitsConsumed: bigint | null` (getTransaction may omit it in
+  older meta shapes; fabricating a value would misrepresent observed
+  data), `netLamportsChangeByFeePayer` (may be `<= 0`).
+- `SolanaTransactionStatus.balanceChangesExcludingFees(nativeAsset)` —
+  deep-copies and reverses the fee debit on the `feePayer`'s native row.
+  Validates that the passed `nativeAsset` matches the recorded row via
+  `assetHashOf` — throws instead of producing a phantom second native row.
+- `UtxoTransactionInput / UtxoTransactionOutput` value types
+  (txid/vout/scriptPubkeyHex/address/value; scriptPubkeyHex/address/value).
+- `UtxoTransactionStatus.confirmationAt` constructor param aliased to
+  parent's `inclusionAt`, exposed as a getter for consumer readability.
 
 ### 4. iter-15 mediums
 
@@ -118,8 +166,32 @@ iter 15 medium #4.
 ## Out of scope for 2A (goes to 2B / 2C)
 
 - FeePriority threading through `CreateTransferRequest` → **2B**
-- `AssetBalance` type with human-readable Decimal accessor + `decimal.js` dep → **2B**
 - TON `impl/base.py` port (~1,700 lines) → **2C**
+
+## Scope changes accepted mid-flight (vs the original card outline)
+
+- **`decimal.js` moved from 2B into 2A** — needed by `AssetBalanceChange`
+  (which stores `balanceChangeMr: bigint` as source of truth but exposes
+  `balanceChangeHr: Decimal` as a lazy accessor for consumer display).
+  Consumers must `npm install decimal.js` — documented in
+  `docs/UPGRADE_TO_V0_2A.md`.
+- **`TransactionStatus` split into per-network subclasses** rather than a
+  single class — Python actually does this (each impl subclasses
+  `AbstractTransactionStatus` to add chain-specific fields). "Match the
+  python" directive wins over the original single-class sketch.
+- **`AssetBalanceChange`: `upsert` (not `merge`), bigint source-of-truth,
+  `fromMr`/`fromHr`/`zero` factories (no `delta()` method)** — mirrors
+  Python's method name and drops the never-used `delta()` in favor of
+  keying off the stored `balanceChangeMr` directly.
+- **`NestedBalanceChanges` keyed by `assetHashOf(token)` = `${chainId}_${symbol}_${identifier ?? ''}`**
+  (drops decimals from the hash key) — deliberately safer than Python's
+  own `__hash__ = chainId_symbol_identifier_decimals` (which is a known
+  Python wart per Explore-agent read: Python's `__eq__` excludes decimals
+  but `__hash__` includes them, so dict entries with same-eq-but-different-
+  hash keys end up in the same bucket with undefined behavior). TS keying
+  on `Token.equals` identity prevents decimals-disagreement splitting one
+  asset into two non-cancelling balance rows on Solana `uiTokenAmount`
+  variance.
 
 ## Docs
 

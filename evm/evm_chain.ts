@@ -17,7 +17,6 @@ import {
   AssetBalanceChange,
   NestedBalanceChanges,
   TransactionErrorInfo,
-  TransactionStatusTypes,
 } from '../transaction_status.ts';
 import {
   EvmParsedTransactionLog,
@@ -468,14 +467,15 @@ export class EvmChain extends Chain {
 
     const succeeded = receipt.status === 1;
 
-    let inclusionAt: Date = new Date(0);
+    let inclusionAt: Date | null = null;
     try {
       const block = await provider.getBlock(receipt.blockNumber);
       if (block?.timestamp !== undefined) {
         inclusionAt = new Date(Number(block.timestamp) * 1000);
       }
     } catch {
-      // leave inclusionAt as epoch
+      // leave inclusionAt as null — a 1970-01-01 sentinel would silently
+      // pass through consumer SLA/age math as a real inclusion time.
     }
 
     const fees = new EvmTransactionGasFees({
@@ -554,10 +554,13 @@ export class EvmChain extends Chain {
 
     // Sender's native debit = value + gasCost (matches Python
     // impl/evm/base.py:_get_balance_changes fee-inclusive semantics).
+    // Credit toAddr whenever value>0 — for self-transfers (from===to) the
+    // per-(wallet,token) netting in upsert cancels the +value against the
+    // -value component of the debit, leaving the -gasCost we actually want.
     if (fromAddr) {
       addRaw(rawChanges, fromAddr, '', -(value + gasCost));
     }
-    if (value > 0n && toAddr && toAddr !== fromAddr) {
+    if (value > 0n && toAddr) {
       addRaw(rawChanges, toAddr, '', value);
     }
 
@@ -589,10 +592,13 @@ export class EvmChain extends Chain {
     for (const { addr, token } of resolved) tokensByContract.set(addr, token);
 
     for (const t of transferLogs) {
-      if (t.from !== t.to) {
-        addRaw(rawChanges, t.from, t.contract, -t.amount);
-        addRaw(rawChanges, t.to, t.contract, t.amount);
-      }
+      // Symmetric with the native path: always add both legs. Self-transfer
+      // nets to zero at the per-(wallet, contract) map level and is dropped
+      // by the `delta === 0n` filter below — the explicit gate here would
+      // over-suppress the credit if a future decoder gained non-cancelling
+      // side effects.
+      addRaw(rawChanges, t.from, t.contract, -t.amount);
+      addRaw(rawChanges, t.to, t.contract, t.amount);
     }
 
     const result: NestedBalanceChanges = new Map();

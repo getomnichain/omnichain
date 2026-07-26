@@ -1,8 +1,7 @@
-import { jest } from '@jest/globals';
 import { TransactionReceipt } from 'ethers';
 
 import { ChainErrorKinds, isChainError } from '../../errors.ts';
-import { BalanceChange } from '../../transaction_status.ts';
+import { AssetBalanceChangeEntry, assetHashOf } from '../../transaction_status.ts';
 import { Arbitrum } from '../evm_chains.ts';
 import { ARBITRUM_USDC } from '../evm_tokens.ts';
 
@@ -40,100 +39,167 @@ function decode(args: {
   from: string;
   to: string | null;
   value: bigint;
+  gasCost?: bigint;
   receipt: TransactionReceipt;
-}): Promise<BalanceChange[]> {
-  return Arbitrum.decodeBalanceChanges(args);
+}) {
+  return Arbitrum.decodeBalanceChanges({
+    from: args.from,
+    to: args.to,
+    value: args.value,
+    gasCost: args.gasCost ?? 0n,
+    receipt: args.receipt,
+  });
 }
 
-describe('decodeBalanceChanges', () => {
-  it('native-only transfer yields signed native balance changes', async () => {
-    const receipt = syntheticReceipt({});
-    const out = await decode({
+function entryFor(
+  bc: Map<string, Map<string, AssetBalanceChangeEntry>>,
+  wallet: string,
+  tokenIdentifier: string | undefined,
+): AssetBalanceChangeEntry | undefined {
+  const inner = bc.get(wallet.toLowerCase());
+  if (!inner) return undefined;
+  for (const entry of inner.values()) {
+    const id = entry.token.identifier;
+    if ((tokenIdentifier ?? undefined) === (id ?? undefined)) return entry;
+    if (
+      tokenIdentifier !== undefined &&
+      id !== undefined &&
+      id.toLowerCase() === tokenIdentifier.toLowerCase()
+    ) {
+      return entry;
+    }
+  }
+  return undefined;
+}
+
+describe('EvmChain.decodeBalanceChanges (NestedBalanceChanges shape)', () => {
+  it('native-only transfer with zero gasCost yields the transfer as offsetting entries', async () => {
+    const bc = await decode({
       from: ADDR_SENDER,
       to: ADDR_RECIPIENT,
       value: 1_000_000n,
-      receipt,
+      gasCost: 0n,
+      receipt: syntheticReceipt({}),
     });
-    expect(out).toHaveLength(2);
-    const sender = out.find((c) => c.address === ADDR_SENDER.toLowerCase());
-    const recipient = out.find((c) => c.address === ADDR_RECIPIENT.toLowerCase());
-    expect(sender?.amount).toBe(-1_000_000n);
-    expect(recipient?.amount).toBe(1_000_000n);
-    expect(sender?.token.isNative()).toBe(true);
+    expect(bc.size).toBe(2);
+    expect(entryFor(bc, ADDR_SENDER, undefined)?.change.balanceChangeMr).toBe(-1_000_000n);
+    expect(entryFor(bc, ADDR_RECIPIENT, undefined)?.change.balanceChangeMr).toBe(1_000_000n);
   });
 
-  it('ERC20-only transfer log yields signed ERC20 balance changes', async () => {
-    const receipt = syntheticReceipt({
-      logs: [
-        {
-          address: ARBITRUM_USDC.identifier!,
-          topics: [ERC20_TRANSFER_TOPIC, addrTopic(ADDR_SENDER), addrTopic(ADDR_RECIPIENT)],
-          data: amountData(500n),
-        },
-      ],
-    });
-    const out = await decode({ from: ADDR_SENDER, to: null, value: 0n, receipt });
-    expect(out).toHaveLength(2);
-    const sender = out.find((c) => c.address === ADDR_SENDER.toLowerCase());
-    const recipient = out.find((c) => c.address === ADDR_RECIPIENT.toLowerCase());
-    expect(sender?.amount).toBe(-500n);
-    expect(recipient?.amount).toBe(500n);
-    expect(sender?.token.identifier?.toLowerCase()).toBe(ARBITRUM_USDC.identifier!.toLowerCase());
-  });
-
-  it('mixed native + ERC20 in the same tx aggregates both', async () => {
-    const receipt = syntheticReceipt({
-      logs: [
-        {
-          address: ARBITRUM_USDC.identifier!,
-          topics: [ERC20_TRANSFER_TOPIC, addrTopic(ADDR_SENDER), addrTopic(ADDR_RECIPIENT)],
-          data: amountData(200n),
-        },
-      ],
-    });
-    const out = await decode({
+  it('native transfer with gasCost debits sender by value+gasCost (Python fee-inclusive semantics)', async () => {
+    const bc = await decode({
       from: ADDR_SENDER,
       to: ADDR_RECIPIENT,
       value: 1_000_000n,
-      receipt,
+      gasCost: 21_000_000_000_000n,
+      receipt: syntheticReceipt({}),
     });
-    expect(out).toHaveLength(4);
-    const native = out.filter((c) => c.token.isNative());
-    const erc20 = out.filter((c) => !c.token.isNative());
-    expect(native).toHaveLength(2);
-    expect(erc20).toHaveLength(2);
+    expect(entryFor(bc, ADDR_SENDER, undefined)?.change.balanceChangeMr).toBe(
+      -(1_000_000n + 21_000_000_000_000n),
+    );
+    expect(entryFor(bc, ADDR_RECIPIENT, undefined)?.change.balanceChangeMr).toBe(1_000_000n);
   });
 
-  it('self-send: native balance changes empty', async () => {
-    const receipt = syntheticReceipt({});
-    const out = await decode({
+  it('self-transfer nets to only -gasCost on sender (no phantom -value)', async () => {
+    const bc = await decode({
       from: ADDR_SENDER,
       to: ADDR_SENDER,
       value: 1_000_000n,
-      receipt,
+      gasCost: 21_000_000_000_000n,
+      receipt: syntheticReceipt({}),
     });
-    expect(out).toHaveLength(0);
+    // -(value + gasCost) + value = -gasCost. The +value credit must land on
+    // the same (wallet, native) key, not be suppressed on self-transfer.
+    expect(bc.size).toBe(1);
+    expect(entryFor(bc, ADDR_SENDER, undefined)?.change.balanceChangeMr).toBe(
+      -21_000_000_000_000n,
+    );
+  });
+
+  it('ERC20 transfer log yields signed ERC20 balance changes', async () => {
+    const bc = await decode({
+      from: ADDR_SENDER,
+      to: null,
+      value: 0n,
+      gasCost: 0n,
+      receipt: syntheticReceipt({
+        logs: [
+          {
+            address: ARBITRUM_USDC.identifier!,
+            topics: [ERC20_TRANSFER_TOPIC, addrTopic(ADDR_SENDER), addrTopic(ADDR_RECIPIENT)],
+            data: amountData(500n),
+          },
+        ],
+      }),
+    });
+    expect(entryFor(bc, ADDR_SENDER, ARBITRUM_USDC.identifier)?.change.balanceChangeMr).toBe(-500n);
+    expect(entryFor(bc, ADDR_RECIPIENT, ARBITRUM_USDC.identifier)?.change.balanceChangeMr).toBe(500n);
+  });
+
+  it('ERC20 self-transfer nets to zero and drops the row (upsert zero-net cleanup)', async () => {
+    const bc = await decode({
+      from: ADDR_SENDER,
+      to: null,
+      value: 0n,
+      gasCost: 0n,
+      receipt: syntheticReceipt({
+        logs: [
+          {
+            address: ARBITRUM_USDC.identifier!,
+            topics: [ERC20_TRANSFER_TOPIC, addrTopic(ADDR_SENDER), addrTopic(ADDR_SENDER)],
+            data: amountData(500n),
+          },
+        ],
+      }),
+    });
+    // With gasCost=0 there's no residual native debit either, so the map is empty.
+    expect(bc.size).toBe(0);
+  });
+
+  it('mixed native + ERC20 aggregates both under the same wallet keys', async () => {
+    const bc = await decode({
+      from: ADDR_SENDER,
+      to: ADDR_RECIPIENT,
+      value: 1_000_000n,
+      gasCost: 0n,
+      receipt: syntheticReceipt({
+        logs: [
+          {
+            address: ARBITRUM_USDC.identifier!,
+            topics: [ERC20_TRANSFER_TOPIC, addrTopic(ADDR_SENDER), addrTopic(ADDR_RECIPIENT)],
+            data: amountData(200n),
+          },
+        ],
+      }),
+    });
+    expect(bc.get(ADDR_SENDER.toLowerCase())?.size).toBe(2);
+    expect(bc.get(ADDR_RECIPIENT.toLowerCase())?.size).toBe(2);
   });
 
   it('non-canonical Transfer topic is silently ignored', async () => {
-    const receipt = syntheticReceipt({
-      logs: [
-        {
-          address: ARBITRUM_USDC.identifier!,
-          topics: [
-            '0xfeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface',
-            addrTopic(ADDR_SENDER),
-            addrTopic(ADDR_RECIPIENT),
-          ],
-          data: amountData(500n),
-        },
-      ],
+    const bc = await decode({
+      from: ADDR_SENDER,
+      to: null,
+      value: 0n,
+      gasCost: 0n,
+      receipt: syntheticReceipt({
+        logs: [
+          {
+            address: ARBITRUM_USDC.identifier!,
+            topics: [
+              '0xfeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface',
+              addrTopic(ADDR_SENDER),
+              addrTopic(ADDR_RECIPIENT),
+            ],
+            data: amountData(500n),
+          },
+        ],
+      }),
     });
-    const out = await decode({ from: ADDR_SENDER, to: null, value: 0n, receipt });
-    expect(out).toHaveLength(0);
+    expect(bc.size).toBe(0);
   });
 
-  it('throws transaction_decode_failed when receipt has no logs array', async () => {
+  it('throws TransactionDecodeFailed when receipt has no logs array', async () => {
     const bogusReceipt = {
       hash: '0xtx',
       status: 1,
@@ -153,18 +219,27 @@ describe('decodeBalanceChanges', () => {
 
   it('unknown ERC20 contract falls back to a placeholder token (no throw)', async () => {
     const unknownContract = '0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead';
-    const receipt = syntheticReceipt({
-      logs: [
-        {
-          address: unknownContract,
-          topics: [ERC20_TRANSFER_TOPIC, addrTopic(ADDR_SENDER), addrTopic(ADDR_RECIPIENT)],
-          data: amountData(7n),
-        },
-      ],
+    const bc = await decode({
+      from: ADDR_SENDER,
+      to: null,
+      value: 0n,
+      gasCost: 0n,
+      receipt: syntheticReceipt({
+        logs: [
+          {
+            address: unknownContract,
+            topics: [ERC20_TRANSFER_TOPIC, addrTopic(ADDR_SENDER), addrTopic(ADDR_RECIPIENT)],
+            data: amountData(7n),
+          },
+        ],
+      }),
     });
-    const out = await decode({ from: ADDR_SENDER, to: null, value: 0n, receipt });
-    expect(out).toHaveLength(2);
-    expect(out[0].token.symbol.startsWith('UNKNOWN_')).toBe(true);
-    expect(out[0].token.decimals).toBe(0);
+    const senderInner = bc.get(ADDR_SENDER.toLowerCase());
+    expect(senderInner?.size).toBe(1);
+    const entry = [...senderInner!.values()][0];
+    expect(entry.token.symbol.startsWith('UNKNOWN_')).toBe(true);
+    expect(entry.token.decimals).toBe(0);
+    // Assert the map key matches assetHashOf(entry.token) — invariant preservation.
+    expect(senderInner!.has(assetHashOf(entry.token))).toBe(true);
   });
 });

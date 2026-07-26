@@ -1,5 +1,3 @@
-import Decimal from 'decimal.js';
-
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { Token } from '../token.ts';
 import {
@@ -9,19 +7,22 @@ import {
   TransactionStatus,
   TransactionStatusType,
   TransactionStatusTypes,
+  assetHashOf,
 } from '../transaction_status.ts';
 
 export interface SolanaTransactionFeesInit {
   feePayer: string;
   feeLamports: bigint;
-  computeUnitsConsumed: bigint;
+  computeUnitsConsumed: bigint | null;
   netLamportsChangeByFeePayer: bigint;
 }
 
 export class SolanaTransactionFees {
   readonly feePayer: string;
   readonly feeLamports: bigint;
-  readonly computeUnitsConsumed: bigint;
+  /** Nullable because getTransaction may omit `computeUnitsConsumed` in
+   * older meta shapes; fabricating a value would misrepresent observed data. */
+  readonly computeUnitsConsumed: bigint | null;
   readonly netLamportsChangeByFeePayer: bigint;
 
   constructor(init: SolanaTransactionFeesInit) {
@@ -31,16 +32,17 @@ export class SolanaTransactionFees {
         'SolanaTransactionFees.feePayer must be non-empty',
       );
     }
-    if (init.feeLamports <= 0n) {
+    // Observed on-chain values (not caller inputs) — reject negatives only.
+    if (init.feeLamports < 0n) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        `SolanaTransactionFees.feeLamports must be > 0, got ${init.feeLamports}`,
+        `SolanaTransactionFees.feeLamports must be >= 0, got ${init.feeLamports}`,
       );
     }
-    if (init.computeUnitsConsumed <= 0n) {
+    if (init.computeUnitsConsumed !== null && init.computeUnitsConsumed < 0n) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        `SolanaTransactionFees.computeUnitsConsumed must be > 0, got ${init.computeUnitsConsumed}`,
+        `SolanaTransactionFees.computeUnitsConsumed must be >= 0 or null, got ${init.computeUnitsConsumed}`,
       );
     }
     this.feePayer = init.feePayer;
@@ -75,7 +77,7 @@ export class SolanaTransactionStatus extends TransactionStatus {
 
   static successful(args: {
     chainId: number;
-    inclusionAt: Date;
+    inclusionAt: Date | null;
     balanceChanges: NestedBalanceChanges;
     fees: SolanaTransactionFees;
   }): SolanaTransactionStatus {
@@ -91,7 +93,7 @@ export class SolanaTransactionStatus extends TransactionStatus {
 
   static failed(args: {
     chainId: number;
-    inclusionAt: Date;
+    inclusionAt: Date | null;
     error: TransactionErrorInfo;
     fees: SolanaTransactionFees;
   }): SolanaTransactionStatus {
@@ -150,28 +152,39 @@ export class SolanaTransactionStatus extends TransactionStatus {
         'balanceChangesExcludingFees requires non-null fees to know which fee_payer to credit',
       );
     }
+    // The fee-payer's native row must exist in balanceChanges (fees were
+    // debited from it). If nativeAsset isn't the same asset (chainId+
+    // symbol+identifier) as what the decoder wrote, we'd produce a phantom
+    // second native row on upsert; reject that instead.
+    const feePayerRow = this.balanceChanges.get(this.fees.feePayer);
+    if (!feePayerRow) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `balanceChangesExcludingFees: fee_payer ${this.fees.feePayer} has no row in balanceChanges — cannot cancel a fee that isn't recorded`,
+      );
+    }
+    if (!feePayerRow.has(assetHashOf(nativeAsset))) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `balanceChangesExcludingFees: native asset ${assetHashOf(nativeAsset)} does not match the fee-payer's recorded asset(s) [${[...feePayerRow.keys()].join(', ')}]`,
+      );
+    }
     const copy: NestedBalanceChanges = new Map();
     for (const [wallet, perWallet] of this.balanceChanges) {
       const inner = new Map<string, { token: Token; change: AssetBalanceChange }>();
       for (const [hash, entry] of perWallet) {
         inner.set(hash, {
           token: entry.token,
-          change: new AssetBalanceChange(
-            new Decimal(entry.change.balanceChangeHr),
-            entry.change.decimals,
-          ),
+          change: AssetBalanceChange.fromMr(entry.change.balanceChangeMr, entry.change.decimals),
         });
       }
       copy.set(wallet, inner);
     }
-    const feeAsHr = new Decimal(this.fees.feeLamports.toString()).div(
-      new Decimal(10).pow(nativeAsset.decimals),
-    );
     AssetBalanceChange.upsert(
       copy,
       this.fees.feePayer,
       nativeAsset,
-      new AssetBalanceChange(feeAsHr, nativeAsset.decimals),
+      AssetBalanceChange.fromMr(this.fees.feeLamports, nativeAsset.decimals),
     );
     return copy;
   }
