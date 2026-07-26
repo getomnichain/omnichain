@@ -3,6 +3,7 @@ import {
   CHAIN_ID_SOLANA_MAINNET,
   CHAIN_ID_SOLANA_TESTNET,
 } from '../chain_ids.ts';
+import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { SolanaChain } from './solana_chain.ts';
 
 /**
@@ -14,10 +15,37 @@ import { SolanaChain } from './solana_chain.ts';
  * "Solana Devnet") so `<NAME>_RPC_URL` env-var derivation is unambiguous.
  */
 
-// Re-export for backward-compat with any consumer that used the old local names.
+/** @deprecated Use CHAIN_ID_SOLANA_MAINNET from chain_ids.ts (value changed from -100 to -2000). */
 export const SOLANA_MAINNET_CHAIN_ID = CHAIN_ID_SOLANA_MAINNET;
+/** @deprecated Use CHAIN_ID_SOLANA_TESTNET from chain_ids.ts (value changed from -101 to -2001). */
 export const SOLANA_TESTNET_CHAIN_ID = CHAIN_ID_SOLANA_TESTNET;
+/** @deprecated Use CHAIN_ID_SOLANA_DEVNET from chain_ids.ts (value changed from -102 to -2002). */
 export const SOLANA_DEVNET_CHAIN_ID = CHAIN_ID_SOLANA_DEVNET;
+
+/**
+ * Legacy Solana chainId numbering used by the pre-v0 TS SDK.
+ * Kept as an aliased registration so `networkTypeOf(-100)` still resolves to
+ * SOLANA rather than throwing `ChainNotSupported`. Consumers migrating
+ * persisted rows can call `migrateLegacySolanaChainId(-100)` to obtain the
+ * canonical `-2000` value.
+ */
+const LEGACY_SOLANA_MAINNET_CHAIN_ID = -100;
+const LEGACY_SOLANA_TESTNET_CHAIN_ID = -101;
+const LEGACY_SOLANA_DEVNET_CHAIN_ID = -102;
+
+registerNonEvmChain(LEGACY_SOLANA_MAINNET_CHAIN_ID, NetworkType.SOLANA);
+registerNonEvmChain(LEGACY_SOLANA_TESTNET_CHAIN_ID, NetworkType.SOLANA);
+registerNonEvmChain(LEGACY_SOLANA_DEVNET_CHAIN_ID, NetworkType.SOLANA);
+
+/** Map a legacy Solana chainId (-100/-101/-102) to its canonical v0 value
+ *  (-2000/-2001/-2002). Non-legacy IDs are returned unchanged.
+ *  Consumers use this to rewrite persisted rows during the v0 upgrade. */
+export function migrateLegacySolanaChainId(chainId: number): number {
+  if (chainId === LEGACY_SOLANA_MAINNET_CHAIN_ID) return CHAIN_ID_SOLANA_MAINNET;
+  if (chainId === LEGACY_SOLANA_TESTNET_CHAIN_ID) return CHAIN_ID_SOLANA_TESTNET;
+  if (chainId === LEGACY_SOLANA_DEVNET_CHAIN_ID) return CHAIN_ID_SOLANA_DEVNET;
+  return chainId;
+}
 
 // Predefined factories don't set rpcUrl — SolanaChain's fallback chain is:
 //   <NAME_UPPERCASE_UNDERSCORED>_RPC_URL env,
@@ -31,6 +59,10 @@ export const SolanaMainnet = new SolanaChain({
   explorerBaseUrl: 'https://solscan.io',
   nativeSymbol: 'SOL',
   defaultRpcUrl: 'https://api.mainnet-beta.solana.com',
+  // Pre-v0 SDK derived SOLANA_RPC_URL for the mainnet instance; keep it as a
+  // legacy fallback so existing deployments don't silently switch to the
+  // rate-limited public cluster when they haven't renamed their env var yet.
+  legacyRpcEnvNames: ['SOLANA_RPC_URL'],
   chainAgnosticGenesisHash: '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
 });
 

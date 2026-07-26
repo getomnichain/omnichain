@@ -81,11 +81,24 @@ export interface EvmChainInit {
    */
   rpcUrl?: string;
   supportsEip1559?: boolean;
-  /** Default gas limit for a native (non-ERC20) transfer. Mirrors Python default 21_000
-   *  (impl/evm/base.py:479). Scroll overrides to 360_000 etc. */
+  /**
+   * Default gas limit for a native (non-ERC20) transfer. Mirrors Python default 21_000
+   * (impl/evm/base.py:479). Scroll overrides to 360_000 etc.
+   *
+   * **Declarative-only in v0**: stored on the chain instance and readable by
+   * consumers, but NOT consumed by `createTransferUnsignedTransaction` yet —
+   * gas fields on the returned `UnsignedEvmTransaction` are populated by the
+   * caller. Wired into the builder in the follow-up architectural PR (Phase 3
+   * of Sinan parity).
+   */
   nativeTransferGasLimit?: number;
-  /** Multiplier applied to the eth_gasPrice / effective gas price when building a native
-   *  transfer. Mirrors Python default 1.4 (impl/evm/base.py:480). Scroll overrides to 50.0. */
+  /**
+   * Multiplier applied to the eth_gasPrice / effective gas price when building
+   * a native transfer. Mirrors Python default 1.4 (impl/evm/base.py:480).
+   * Scroll overrides to 50.0.
+   *
+   * **Declarative-only in v0** — see `nativeTransferGasLimit` note above.
+   */
   nativeTransferGasMultiplier?: number;
 }
 

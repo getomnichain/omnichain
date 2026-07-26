@@ -196,6 +196,12 @@ export const CHAIN_ID_SEPOLIA = 11155111;
 export const CHAIN_ID_CELO_SEPOLIA = 11142220;
 export const CHAIN_ID_AURORA = 1313161554;
 
+/**
+ * Sign/family test — returns `true` for any positive integer chainId that
+ * isn't a Tron chain. Does NOT assert that the chainId corresponds to a
+ * pre-baked `EvmChain` in `evm_chains.ts`. Consumers wanting a support check
+ * should look up the chain in `ALL_EVM_CHAINS`.
+ */
 export function isEvm(chainId: number): boolean {
-  return chainId > 0 && !CHAIN_FAMILY_TRON.has(chainId);
+  return Number.isInteger(chainId) && chainId > 0 && !CHAIN_FAMILY_TRON.has(chainId);
 }

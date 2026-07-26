@@ -136,7 +136,16 @@ export const MOONBEAM_GLMR = MoonBeam.nativeToken;
  * (`EVM_ASSETS_REQUIRING_ZERO_RESET_APPROVAL`).
  *
  * Declarative list only — the SDK does not enforce an approval layer
- * (see SINAN_OPEN_QUESTIONS.md). Consumer approval logic should consult
- * this array before issuing a fresh approve.
+ * (see SINAN_OPEN_QUESTIONS.md). Consumer approval logic uses the
+ * `requiresZeroResetApproval(token)` predicate below.
  */
 export const EVM_ASSETS_REQUIRING_ZERO_RESET_APPROVAL: ReadonlyArray<EvmToken> = [ETHEREUM_USDT];
+
+/**
+ * Membership check using identifier-based equality (`Token.sameAsset`) rather
+ * than reference identity — so a caller who constructs their own USDT-Ethereum
+ * `EvmToken` instance still gets `true`.
+ */
+export function requiresZeroResetApproval(token: EvmToken): boolean {
+  return EVM_ASSETS_REQUIRING_ZERO_RESET_APPROVAL.some((a) => a.sameAsset(token));
+}

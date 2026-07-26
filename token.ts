@@ -37,10 +37,14 @@ export abstract class Token {
   /**
    * Identity is `(chainId, symbol, identifier)` — decimals is deliberately
    * NOT part of equality. Mirrors omnichain-py/base/base.py:60-65
-   * (`AbstractAsset.__eq__`). Two Token instances with the same chain / symbol
-   * / identifier but different declared decimals compare equal; consumers
-   * that hash tokens should key on identifier alone if they need to
-   * disambiguate decimals variants.
+   * (`AbstractAsset.__eq__`).
+   *
+   * **Do NOT use `equals` as a precondition for amount scaling** — two Token
+   * instances can compare equal while disagreeing on decimals. For that
+   * safety check use `strictEquals(other)` (which includes decimals).
+   *
+   * For identifier-only comparison (ignoring both symbol drift and decimals),
+   * use `sameAsset(other)`.
    */
   equals(other: Token): boolean {
     return (
@@ -48,6 +52,24 @@ export abstract class Token {
       this.symbol === other.symbol &&
       this.identifier === other.identifier
     );
+  }
+
+  /**
+   * Strict equality including `decimals`. Use before parseUnits-style
+   * conversions where a mismatched decimals would silently mis-scale amounts.
+   */
+  strictEquals(other: Token): boolean {
+    return this.equals(other) && this.decimals === other.decimals;
+  }
+
+  /**
+   * Identifier-only equality — same chain + same contract address / mint /
+   * native marker, regardless of symbol drift (e.g. `'USDT'` vs `'USD₮0'`
+   * for Arbitrum USDT). Useful for registry / lookup paths where the
+   * consumer might not know the canonical symbol.
+   */
+  sameAsset(other: Token): boolean {
+    return this.chainId === other.chainId && this.identifier === other.identifier;
   }
 
   toString(): string {
