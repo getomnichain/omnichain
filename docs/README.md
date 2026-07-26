@@ -19,7 +19,8 @@ mounted at each service's own `chain` directory.
 | `Address` | [address.ts](../address.ts) | Abstract address with `canonical()` + `networkType` |
 | `UnsignedTransaction` | [unsigned_transaction.ts](../unsigned_transaction.ts) | Abstract base for an unsigned tx; per-chain subclasses add the bytes |
 | `NetworkType` | [network_type.ts](../network_type.ts) | Enum (`EVM`, `COSMOS`, `TON`, `SOLANA`, `BTC`) + `registerNonEvmChain(chainId, type)` registry |
-| `TransactionStatus` | [transaction_status.ts](../transaction_status.ts) | Polled tx state — confirmations, gas/fee paid, balance changes |
+| `TransactionStatus` | [transaction_status.ts](../transaction_status.ts) | Abstract base — chainId, status, inclusionAt, error, balanceChanges. Per-network subclasses: `EvmTransactionStatus` (+logs, +fees), `SolanaTransactionStatus` (+fees), `UtxoTransactionStatus` (+inputs, +outputs, +vsize, +confirmations) |
+| `AssetBalanceChange` | [transaction_status.ts](../transaction_status.ts) | Per-(wallet, asset) balance delta with `.balanceChangeHr: Decimal` + `.balanceChangeMr: bigint` + `.decimals`. `NestedBalanceChanges = Map<wallet, Map<assetHash, {token, change}>>` |
 | `Priority` | [priority.ts](../priority.ts) | Shared `Priority` enum (`SLOW`/`NORMAL`/`FAST`) used by per-chain `suggestGas` / `suggestFeeRate` / `suggestPriorityFeeMicroLamports` |
 | `ChainError` | [errors.ts](../errors.ts) | Module-internal error with a `kind` discriminator |
 | `addressFor(chainId, raw)` | [address.factory.ts](../address.factory.ts) | Network-aware address constructor |
@@ -120,10 +121,25 @@ read environment variables** for credentials.
 ### Check transaction status
 
 ```ts
+import { isSuccess } from 'omnichain';
+
 const status = await chain.getTransactionStatus(txHash);
-// { status: 'Success' | 'Failed' | 'Pending' | 'NotFound',
-//   confirmations, balanceChanges[], gasFee | null, errorInfo? }
+// EvmTransactionStatus | SolanaTransactionStatus | UtxoTransactionStatus
+// Base fields: { chainId, status, inclusionAt, error, balanceChanges }
+// Subclass extras vary per chain (see the type table above).
+
+if (isSuccess(status)) {
+  // balanceChanges is now Map<wallet, Map<assetHash, {token, change}>>
+  for (const [wallet, perAsset] of status.balanceChanges) {
+    for (const { token, change } of perAsset.values()) {
+      console.log(wallet, token.symbol, change.balanceChangeHr.toString());
+    }
+  }
+}
 ```
+
+For consumer migration off the Phase 1 flat shape, see
+[UPGRADE_TO_V0_2A.md](./UPGRADE_TO_V0_2A.md).
 
 ## Error model
 
