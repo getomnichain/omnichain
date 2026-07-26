@@ -242,7 +242,7 @@ export class EvmChain extends Chain {
       // Populating maxFeePerGas/maxPriorityFeePerGas as duplicates would let
       // a consumer build a type-2 tx paying the full gasPrice as a tip on
       // top of base fee.
-      return new EvmGasEstimate({ gasPrice: scaled });
+      return new EvmGasEstimate({ kind: 'legacy', gasPrice: scaled });
     }
 
     // 1559 path — mirrors omnichain-py get_1559_fees (impl/evm/base.py:1098-1132).
@@ -311,6 +311,7 @@ export class EvmChain extends Chain {
     // Safety buffer: base fee can climb 12.5%/block; caller may wait multiple blocks.
     const maxFeePerGas = latestBaseFee * 2n + finalTip;
     return new EvmGasEstimate({
+      kind: 'eip1559',
       maxPriorityFeePerGas: finalTip,
       maxFeePerGas,
     });

@@ -91,6 +91,12 @@ export function btcParamsByName(name: BtcNetworkName): BtcNetworkParams {
 
 const btcParamsByChainId = new Map<bigint, BtcNetworkParams>();
 
+const RESERVED_SEED_CHAIN_IDS = new Set<bigint>([
+  BigInt(CHAIN_ID_BITCOIN_MAINNET),
+  BigInt(CHAIN_ID_BITCOIN_TESTNET),
+  BigInt(CHAIN_ID_BITCOIN_SIGNET),
+]);
+
 // Static seed for the canonical BTC chainIds so `addressFor(-1, 'bc1q…')`
 // resolves without any consumer having constructed a BtcChain instance —
 // symmetric with the NetworkType static seed. Custom BTC ids still register
@@ -100,26 +106,72 @@ btcParamsByChainId.set(BigInt(CHAIN_ID_BITCOIN_TESTNET), BITCOIN_TESTNET_PARAMS)
 btcParamsByChainId.set(BigInt(CHAIN_ID_BITCOIN_SIGNET), BITCOIN_SIGNET_PARAMS);
 
 /**
- * Register BTC network params for a chainId. Idempotent when the new params
- * name matches the existing entry's name; throws `ChainError(InvalidArgument)`
- * when the names differ.
+ * Register BTC network params for a chainId.
  *
- * **Known gap**: the guard compares `name` only, not per-field. A consumer
- * passing `{ ...BITCOIN_MAINNET_PARAMS, hrp: 'XX' }` (same name, different
- * HRP) would silently replace the seeded mainnet entry. Deep-equal per
- * field is deferred; callers customising params should use a distinct
- * chainId rather than override a seeded one.
+ * The three statically-seeded chainIds (BTC mainnet/testnet/signet) are
+ * **reserved** — any attempt to re-register them throws
+ * `ChainError(InvalidArgument)`, even with matching-name params. This
+ * prevents a hostile consumer replacing e.g. mainnet's `hrp` field with
+ * a differently-shaped grammar. If you need custom BTC-shaped params,
+ * choose a distinct (non-seed) chainId.
+ *
+ * For non-seeded chainIds, the guard compares identity-relevant fields
+ * (`hrp`, `pubKeyHash`, `scriptHash`, `bip32` derivation info) rather
+ * than the `name` alone — silent-replace-with-different-grammar is not
+ * possible on any registered id, seeded or not.
  */
 export function registerBtcChainParams(chainId: bigint, params: BtcNetworkParams): void {
-  const existing = btcParamsByChainId.get(chainId);
-  if (existing !== undefined && existing !== params && existing.name !== params.name) {
+  if (RESERVED_SEED_CHAIN_IDS.has(chainId)) {
     throw new ChainError(
       ChainErrorKinds.InvalidArgument,
-      `BTC chainId ${chainId} already registered with params for network '${existing.name}'; refusing to reclassify as '${params.name}'`,
+      `BTC chainId ${chainId} is a reserved static seed; consumer registration is not permitted. Choose a distinct chainId for custom BTC-shaped params.`,
       { chainId: Number(chainId) },
     );
   }
+  const existing = btcParamsByChainId.get(chainId);
+  if (existing !== undefined && existing !== params) {
+    if (!btcParamsShapeMatches(existing, params)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `BTC chainId ${chainId} already registered with different identity-relevant params ('${existing.name}' vs '${params.name}'). Consumer must unregister first if intentional.`,
+        { chainId: Number(chainId) },
+      );
+    }
+  }
   btcParamsByChainId.set(chainId, params);
+}
+
+/**
+ * Remove a consumer-registered BTC chainId entry. The three static seeds
+ * (BTC mainnet/testnet/signet) cannot be unregistered — throws
+ * `ChainError(InvalidArgument)` on those ids.
+ *
+ * Paired with `unregisterChain(id)` from `network_type.ts` when the
+ * consumer wants a full teardown of a custom BTC-shaped id: both
+ * registries need clearing to avoid drift where `networkTypeOf(id)`
+ * throws `ChainNotSupported` but `btcParamsForChainId(id)` still returns
+ * stale params.
+ */
+export function unregisterBtcChainParams(chainId: bigint): void {
+  if (RESERVED_SEED_CHAIN_IDS.has(chainId)) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `BTC chainId ${chainId} is a reserved static seed; unregistration not permitted.`,
+      { chainId: Number(chainId) },
+    );
+  }
+  btcParamsByChainId.delete(chainId);
+}
+
+function btcParamsShapeMatches(a: BtcNetworkParams, b: BtcNetworkParams): boolean {
+  return (
+    a.hrp === b.hrp &&
+    a.slip44CoinId === b.slip44CoinId &&
+    a.networkInfo.pubKeyHash === b.networkInfo.pubKeyHash &&
+    a.networkInfo.scriptHash === b.networkInfo.scriptHash &&
+    a.networkInfo.bip32.public === b.networkInfo.bip32.public &&
+    a.networkInfo.bip32.private === b.networkInfo.bip32.private
+  );
 }
 
 export function btcParamsForChainId(chainId: bigint): BtcNetworkParams {

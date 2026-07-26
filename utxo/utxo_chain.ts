@@ -1,6 +1,11 @@
 import { Psbt } from 'bitcoinjs-lib';
 import Decimal from 'decimal.js';
 
+import {
+  CHAIN_ID_BITCOIN_MAINNET,
+  CHAIN_ID_BITCOIN_SIGNET,
+  CHAIN_ID_BITCOIN_TESTNET,
+} from '../chain_ids.ts';
 import { Chain, CreateTransferRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
@@ -38,8 +43,15 @@ import {
   FINAL_SEQUENCE,
   OP_RETURN_MAX_BYTES,
   RBF_SEQUENCE,
+  Slip44,
   UtxoNetworkParams,
 } from './utxo_network_params.ts';
+
+const RESERVED_BTC_CHAIN_IDS: readonly number[] = [
+  CHAIN_ID_BITCOIN_MAINNET,
+  CHAIN_ID_BITCOIN_TESTNET,
+  CHAIN_ID_BITCOIN_SIGNET,
+];
 import { UnsignedUtxoTransaction } from './unsigned_utxo_transaction.ts';
 
 export interface UtxoChainInit {
@@ -116,6 +128,22 @@ export class UtxoChain extends Chain {
   protected readonly rbfEnabled: boolean;
 
   constructor(init: UtxoChainInit) {
+    // iter-15 medium #1: reject a non-BTC UTXO chain (LTC/DOGE/DASH/ZEC/BCH)
+    // constructed with a reserved BTC chainId. Without this guard, the seeded
+    // btcParamsByChainId entry validates BTC-grammar addresses under a chain
+    // whose real address rules are different — a silent fail-open on the
+    // path the BtcChain-vs-UtxoChain split was supposed to prevent.
+    if (
+      RESERVED_BTC_CHAIN_IDS.includes(init.chainId) &&
+      init.params.slip44CoinId !== Slip44.BTC &&
+      init.params.slip44CoinId !== Slip44.Testnet
+    ) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `chainId ${init.chainId} is reserved for BTC; UtxoChain construction with a non-BTC params (slip44CoinId=${init.params.slip44CoinId}) is not permitted. Choose a distinct chainId for this network.`,
+        { chainId: init.chainId },
+      );
+    }
     super(
       init.chainId,
       init.name,
