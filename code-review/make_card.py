@@ -118,7 +118,7 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     slug = slugify(args.slug or args.issue)
     out = write_card(slug, body, overwrite=args.overwrite)
     print(f"[fetch] {out}  (from YouTrack {args.issue})")
-    print(f"[next]  python3 review.py --source <branch> --target main --card {slug}")
+    print(f"[next]  python3 code_reviewer.py --source <branch> --target main --card {slug}")
     return 0
 
 

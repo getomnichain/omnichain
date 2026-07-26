@@ -20,7 +20,7 @@ counterpart, then explain what's different.
 | EIP-1559 priority fee | Same idea — `setComputeUnitPrice` is the lever | No `maxFeePerGas` cap; the price you set IS the price |
 | Replace-by-fee (RBF) | Not supported | Once submitted, you can't bump. Just sign a higher-fee tx with the *same* blockhash within its validity window. |
 | Mempool | Leader's local mempool | Not consensus mempool; tx flows directly to current/next leader |
-| `eth_chainId` | Genesis block hash (CAIP-2 `solana:<first-32-of-hash>`) | Depositron assigns negative synthetic chainIds: mainnet `-100`, testnet `-101`, devnet `-102` |
+| `eth_chainId` | Genesis block hash (CAIP-2 `solana:<first-32-of-hash>`) | Synthetic negative chainIds: mainnet `-2000`, testnet `-2001`, devnet `-2002` (matches omnichain-py `chain_ids.py`). The pre-v0 `-100/-101/-102` scheme is **NOT** registered as aliases — `networkTypeOf(-100)` throws `ChainError(ChainNotSupported)` at validation. Consumers must run `migrateLegacySolanaChainId(id)` on persisted rows *before* the value enters the SDK (see `docs/UPGRADE_TO_V0.md`). |
 | Finality | `processed → confirmed → finalized` | We use `confirmed` for status reads (~12 slots ≈ 5 s) |
 | Block time | ~12 s | ~0.4 s |
 

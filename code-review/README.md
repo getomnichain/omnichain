@@ -40,10 +40,10 @@ python3 make_card.py post \
   --summary "Verify message signature across EVM/Solana/BTC"
 ```
 
-## `review.py`
+## `code_reviewer.py`
 
 ```bash
-python3 review.py --source feature/<slug> --target main --card <slug>
+python3 code_reviewer.py --source feature/<slug> --target main --card <slug>
 ```
 
 Reads `cards/<slug>/description.md` for the contract, runs the diff against local refs only, and writes the next `diff_<N>.diff` + `review_<N>.md` into the same directory.

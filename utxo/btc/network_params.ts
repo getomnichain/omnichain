@@ -1,6 +1,12 @@
 import { networks } from 'bitcoinjs-lib';
 
 import {
+  CHAIN_ID_BITCOIN_MAINNET,
+  CHAIN_ID_BITCOIN_SIGNET,
+  CHAIN_ID_BITCOIN_TESTNET,
+} from '../../chain_ids.ts';
+import { ChainError, ChainErrorKinds } from '../../errors.ts';
+import {
   BIP32_PURPOSE_P2PKH,
   BIP32_PURPOSE_P2SH_P2WPKH,
   BIP32_PURPOSE_P2TR,
@@ -85,15 +91,49 @@ export function btcParamsByName(name: BtcNetworkName): BtcNetworkParams {
 
 const btcParamsByChainId = new Map<bigint, BtcNetworkParams>();
 
+// Static seed for the canonical BTC chainIds so `addressFor(-1, 'bc1q…')`
+// resolves without any consumer having constructed a BtcChain instance —
+// symmetric with the NetworkType static seed. Custom BTC ids still register
+// via the BtcChain constructor.
+btcParamsByChainId.set(BigInt(CHAIN_ID_BITCOIN_MAINNET), BITCOIN_MAINNET_PARAMS);
+btcParamsByChainId.set(BigInt(CHAIN_ID_BITCOIN_TESTNET), BITCOIN_TESTNET_PARAMS);
+btcParamsByChainId.set(BigInt(CHAIN_ID_BITCOIN_SIGNET), BITCOIN_SIGNET_PARAMS);
+
+/**
+ * Register BTC network params for a chainId. Idempotent when the new params
+ * name matches the existing entry's name; throws `ChainError(InvalidArgument)`
+ * when the names differ.
+ *
+ * **Known gap**: the guard compares `name` only, not per-field. A consumer
+ * passing `{ ...BITCOIN_MAINNET_PARAMS, hrp: 'XX' }` (same name, different
+ * HRP) would silently replace the seeded mainnet entry. Deep-equal per
+ * field is deferred; callers customising params should use a distinct
+ * chainId rather than override a seeded one.
+ */
 export function registerBtcChainParams(chainId: bigint, params: BtcNetworkParams): void {
+  const existing = btcParamsByChainId.get(chainId);
+  if (existing !== undefined && existing !== params && existing.name !== params.name) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `BTC chainId ${chainId} already registered with params for network '${existing.name}'; refusing to reclassify as '${params.name}'`,
+      { chainId: Number(chainId) },
+    );
+  }
   btcParamsByChainId.set(chainId, params);
 }
 
 export function btcParamsForChainId(chainId: bigint): BtcNetworkParams {
   const params = btcParamsByChainId.get(chainId);
   if (!params) {
-    throw new Error(
-      `No BTC network params registered for chainId ${chainId}; construct a BtcChain with that id first`
+    // Do NOT tell the caller to register — for non-BTC UTXO chainIds
+    // (LTC/DOGE/etc.), registering BITCOIN_MAINNET_PARAMS here would let
+    // BTC addresses validate as if they belonged to the wrong chain.
+    // The v0 workaround is `chain.validateAddress(raw)` on the chain
+    // instance directly; see docs/UPGRADE_TO_V0.md.
+    throw new ChainError(
+      ChainErrorKinds.ChainNotSupported,
+      `No BTC network params registered for chainId ${chainId}`,
+      { chainId: Number(chainId) },
     );
   }
   return params;

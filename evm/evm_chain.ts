@@ -9,7 +9,7 @@ import {
   verifyMessage as ethersVerifyMessage,
 } from 'ethers';
 
-import { NetworkType } from '../network_type.ts';
+import { NetworkType, tryNetworkTypeOf } from '../network_type.ts';
 
 import { Chain, CreateTransferRequest, VerifyMessageSignatureRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
@@ -27,27 +27,42 @@ import { EvmAddress } from './evm_address.ts';
 import { EvmToken } from './evm_token.ts';
 import { UnsignedEvmTransaction } from './unsigned_evm_transaction.ts';
 
-// Order matches eth_feeHistory request: [25, 50, 90] → 0, 1, 2.
-const PRIORITY_PERCENTILE_INDEX: Record<Priority, number> = {
-  [Priority.SLOW]: 0,
-  [Priority.NORMAL]: 1,
-  [Priority.FAST]: 2,
+// Priority profile mirrors omnichain-py/impl/evm/base.py:440-444
+// (`_FEE_PRIORITY_PROFILE`): the reward-percentile is used for the 1559
+// path (get_1559_fees's reward_percentile arg); the legacy multiplier
+// applies ONLY when supportsEip1559 is false (Python does not fall back
+// to the multiplier on the 1559 path).
+const PRIORITY_REWARD_PERCENTILE: Record<Priority, number> = {
+  [Priority.SLOW]: 25,
+  [Priority.NORMAL]: 50,
+  [Priority.FAST]: 75,
 };
 
+// Legacy gas-price multiplier per priority tier — for the legacy branch only.
+// Expressed as basis points × 100 so integer bigint arithmetic works.
 const GAS_MULTIPLIER_PCT: Record<Priority, bigint> = {
   [Priority.SLOW]: 100n,
   [Priority.NORMAL]: 120n,
-  [Priority.FAST]: 200n,
+  [Priority.FAST]: 150n,
 };
 
-const PRIORITY_FEE_FLOOR = 50_000_000n;
+// Empty-reward fallback tip: 2 gwei — matches Python `Web3.to_wei(2, 'gwei')`
+// at impl/evm/base.py:1124.
+const EMPTY_REWARD_FALLBACK_TIP = 2_000_000_000n;
 
-function avg(xs: bigint[]): bigint {
-  if (xs.length === 0) return 0n;
-  let sum = 0n;
-  for (const x of xs) sum += x;
-  return sum / BigInt(xs.length);
-}
+// Number of latest blocks sampled by eth_feeHistory. Python default 10
+// (impl/evm/base.py:1099).
+const FEE_HISTORY_BLOCK_COUNT = 10;
+
+// Final-tip percentile picked across the sampled blocks after sorting.
+// Python default 90.0 (impl/evm/base.py:1102).
+const FINAL_TIP_PERCENTILE = 90;
+
+// TS-only safety floor applied to any suggested gas price / tip. Python does
+// NOT enforce a minimum: `sorted_tips[idx]` can be 0 on quiet L2 blocks.
+// Silently unmineable transactions are unacceptable for a signing SDK, so
+// TS clamps to 0.05 gwei.
+const MIN_GAS_PRICE_FLOOR = 50_000_000n;
 
 function atLeast(n: bigint, min: bigint): bigint {
   return n < min ? min : n;
@@ -77,16 +92,64 @@ export interface EvmChainInit {
    */
   rpcUrl?: string;
   supportsEip1559?: boolean;
+  /**
+   * Default gas limit for a native (non-ERC20) transfer. Mirrors Python default 21_000
+   * (impl/evm/base.py:479). Scroll overrides to 360_000 etc.
+   *
+   * **Declarative-only in v0**: stored on the chain instance and readable by
+   * consumers, but NOT consumed by `createTransferUnsignedTransaction` yet —
+   * gas fields on the returned `UnsignedEvmTransaction` are populated by the
+   * caller. Wired into the builder in the follow-up architectural PR (Phase 3
+   * of Sinan parity).
+   */
+  nativeTransferGasLimit?: number;
+  /**
+   * Multiplier applied to the eth_gasPrice / effective gas price when building
+   * a native transfer. Mirrors Python default 1.4 (impl/evm/base.py:480).
+   * Scroll overrides to 50.0.
+   *
+   * **Declarative-only in v0** — see `nativeTransferGasLimit` note above.
+   */
+  nativeTransferGasMultiplier?: number;
 }
 
 export class EvmChain extends Chain {
   readonly rpcUrl: string | undefined;
   readonly supportsEip1559: boolean;
+  /**
+   * Default gas limit for native transfers. Matches Python's public attribute
+   * at `impl/evm/base.py:495` — v0 does not consume it inside the TS SDK
+   * (see `createTransferUnsignedTransaction`) but exposes it so consumers
+   * building their own transfer paths get identical numbers to Python. Wired
+   * into the SDK-owned transfer builder in a follow-up branch.
+   */
+  readonly nativeTransferGasLimit: number;
+  /**
+   * Legacy `eth_gasPrice` multiplier for native transfers on non-1559 chains.
+   * Matches Python's public attribute at `impl/evm/base.py:496`. Same
+   * "declarative for consumers, unused internally in v0" note as
+   * `nativeTransferGasLimit`.
+   */
+  readonly nativeTransferGasMultiplier: number;
   private readonly _nativeToken: EvmToken;
   private _provider: JsonRpcProvider | null = null;
   private _resolvedRpcUrl: string | null = null;
 
   constructor(init: EvmChainInit) {
+    // Conflict guard — refuse to construct an EvmChain over a chainId that
+    // the static family seeds have already registered as non-EVM. Prevents
+    // the case where `new EvmChain({ chainId: 728126428, … })` would silently
+    // succeed and then contradict `addressFor(728126428, …)` /
+    // `networkTypeOf(728126428)` (both return TRON). Mirrors
+    // `registerNonEvmChain`'s throw-on-conflict guard.
+    const existing = tryNetworkTypeOf(init.chainId);
+    if (existing !== undefined && existing !== NetworkType.EVM) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `chainId ${init.chainId} is registered as ${existing}; refusing to construct EvmChain for it`,
+        { chainId: init.chainId },
+      );
+    }
     super(
       init.chainId,
       init.name,
@@ -97,7 +160,16 @@ export class EvmChain extends Chain {
     );
     this.rpcUrl = init.rpcUrl;
     this.supportsEip1559 = init.supportsEip1559 ?? true;
+    this.nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;
+    this.nativeTransferGasMultiplier = init.nativeTransferGasMultiplier ?? 1.4;
     this._nativeToken = EvmToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 18);
+    // NOTE: no `registerNonEvmChain(id, EVM)` call — a module-scope write on
+    // 48 pre-baked chains would let a consumer's earlier
+    // `registerNonEvmChain(id, COSMOS)` turn `import '@getomnichain/omnichain'`
+    // into a permanently-poisoned module. Conflict detection lives in a
+    // single place: `registerNonEvmChain` reads `tryNetworkTypeOf` (which
+    // synthesizes EVM for positive-unregistered ids), so claiming a positive
+    // id for a non-EVM family requires `unregisterChain(id)` first.
   }
 
   get nativeToken(): EvmToken {
@@ -105,8 +177,9 @@ export class EvmChain extends Chain {
   }
 
   getErc20Token(symbol: string, contractAddress: string, decimals: number): EvmToken {
-    const checksummed = new EvmAddress(contractAddress).toChecksum();
-    return EvmToken.erc20(this.chainId, symbol, checksummed, decimals);
+    // `EvmToken.erc20` → `new EvmToken` normalizes the identifier internally;
+    // no need to checksum here as well.
+    return EvmToken.erc20(this.chainId, symbol, contractAddress, decimals);
   }
 
   getProvider(): JsonRpcProvider {
@@ -117,63 +190,127 @@ export class EvmChain extends Chain {
     return this._provider;
   }
 
+  /**
+   * Suggest gas fees for a priority tier. Mirrors Python's `_resolve_gas_pricing`
+   * dispatch (impl/evm/base.py:807-833):
+   *
+   *   - legacy chains (`supportsEip1559 === false`): scale `eth_gasPrice` by
+   *     the priority tier's legacy multiplier.
+   *   - 1559 chains: sample eth_feeHistory across the last 10 blocks at the
+   *     tier's reward percentile, sort, pick the p90 across blocks. On empty
+   *     rewards, use 2 gwei. On RPC failure, bubble as `ChainError(RpcError)`
+   *     (Python bubbles too — no defensive fallback).
+   */
   async suggestGas(priority: Priority): Promise<EvmGasEstimate> {
     const provider = this.getProvider();
-    const mult = GAS_MULTIPLIER_PCT[priority];
 
     if (!this.supportsEip1559) {
-      const fee = await provider.getFeeData();
-      const base = fee.gasPrice ?? fee.maxFeePerGas ?? PRIORITY_FEE_FLOOR;
-      const scaled = atLeast((base * mult) / 100n, PRIORITY_FEE_FLOOR);
-      return new EvmGasEstimate({
-        gasPrice: scaled,
-        maxFeePerGas: scaled,
-        maxPriorityFeePerGas: scaled,
-      });
+      const mult = GAS_MULTIPLIER_PCT[priority];
+      // Direct `eth_gasPrice` — one round-trip, matches Python
+      // impl/evm/base.py:831-833. Avoids getFeeData's implicit
+      // `getBlock("latest")` + potential `eth_maxPriorityFeePerGas` extra
+      // calls, and dodges the trap where getFeeData's maxFeePerGas is
+      // `2×baseFee + tip` (not a legacy price) — using that as the legacy
+      // gasPrice would 3-4× overpay.
+      let gasPriceHex: string;
+      try {
+        gasPriceHex = (await provider.send('eth_gasPrice', [])) as string;
+      } catch (err) {
+        throw this.rpcError('legacy eth_gasPrice transport failed', err);
+      }
+      let providerHint: bigint;
+      try {
+        providerHint = BigInt(gasPriceHex);
+      } catch {
+        // Genuinely unparseable response — bubble as RpcError so on-call
+        // triage sees the RPC returned nonsense, not "0 gas price".
+        throw this.rpcError(
+          `legacy eth_gasPrice returned unparseable response`,
+          new Error(`could not parse ${String(gasPriceHex)} as bigint`),
+        );
+      }
+      // Zero-or-negative gasPrice: clamp up to MIN_GAS_PRICE_FLOOR, mirroring
+      // the 1559 branch's floor-on-sub-floor-tips behavior (evm_chain.ts:307).
+      // Python (`impl/evm/base.py:831-833`) multiplies whatever `eth_gasPrice`
+      // returns and never throws; the TS floor is the safety measure that
+      // prevents an unmineable suggestion. Consistent policy across branches.
+      const base = providerHint > 0n ? providerHint : MIN_GAS_PRICE_FLOOR;
+      const scaled = atLeast((base * mult) / 100n, MIN_GAS_PRICE_FLOOR);
+      // Legacy chains: only `gasPrice` is authoritative — matches Python
+      // (`impl/evm/base.py:830-833` returns `EvmGasPricing(gas_price=...)`).
+      // Populating maxFeePerGas/maxPriorityFeePerGas as duplicates would let
+      // a consumer build a type-2 tx paying the full gasPrice as a tip on
+      // top of base fee.
+      return new EvmGasEstimate({ gasPrice: scaled });
     }
 
+    // 1559 path — mirrors omnichain-py get_1559_fees (impl/evm/base.py:1098-1132).
+    // NB: Python reads `base_fee_per_gas` from `eth_getBlock("latest")` (line
+    // 1109-1110); TS reuses `feeHistory.baseFeePerGas[-1]` — the JSON-RPC
+    // "next block projection", up to ±12.5% off. Deliberate: saves an RPC
+    // round-trip. (See the local SINAN questions doc for the upstream
+    // discussion — TS uses feeHistory's projection to skip the extra RPC.)
+    const rewardPercentile = PRIORITY_REWARD_PERCENTILE[priority];
+    let raw: {
+      baseFeePerGas?: string[];
+      gasUsedRatio?: number[];
+      reward?: string[][];
+      oldestBlock?: string;
+    };
+    // Narrow try — only the RPC call. Response-shape and parse errors are
+    // distinct from transport failures and get a distinct ChainError kind.
+    try {
+      raw = (await provider.send('eth_feeHistory', [
+        `0x${FEE_HISTORY_BLOCK_COUNT.toString(16)}`,
+        'latest',
+        [rewardPercentile],
+      ])) as typeof raw;
+    } catch (err) {
+      throw this.rpcError('eth_feeHistory transport failed', err);
+    }
+
+    // Narrow parse — only the shape checks + BigInt() coercions can throw
+    // for structural reasons here. `EvmGasEstimate` construction and the
+    // pure-arithmetic tip selection happen outside so that a defect there
+    // isn't mislabelled as an RPC-response malformed error.
     let latestBaseFee: bigint;
     let tips: bigint[];
     try {
-      const raw = (await provider.send('eth_feeHistory', [
-        '0xa',
-        'latest',
-        [25, 50, 90],
-      ])) as {
-        baseFeePerGas?: string[];
-        gasUsedRatio?: number[];
-        reward?: string[][];
-        oldestBlock?: string;
-      };
       const baseFees = raw.baseFeePerGas;
       if (!Array.isArray(baseFees) || baseFees.length === 0) {
-        throw new Error('eth_feeHistory returned no baseFeePerGas');
+        throw new Error('missing baseFeePerGas');
       }
       latestBaseFee = BigInt(baseFees[baseFees.length - 1] ?? '0x0');
-      const percentileIdx = PRIORITY_PERCENTILE_INDEX[priority];
-      tips = (raw.reward ?? [])
-        .map((row) => row?.[percentileIdx])
+      const rewardRows = Array.isArray(raw.reward) ? raw.reward : [];
+      tips = rewardRows
+        .map((row) => (Array.isArray(row) ? row[0] : undefined))
         .filter((v): v is string => typeof v === 'string')
         .map((v) => BigInt(v));
     } catch (err) {
-      const sanitized = sanitizeMessage(stringifyErr(err), this._resolvedRpcUrl);
-      console.warn(`[${this.name}] eth_feeHistory unavailable, falling back to getFeeData × multiplier: ${sanitized}`);
-      const fee = await provider.getFeeData();
-      const baseMaxPriority = fee.maxPriorityFeePerGas ?? PRIORITY_FEE_FLOOR;
-      const baseMaxFee = fee.maxFeePerGas ?? baseMaxPriority * 2n;
-      const tip = atLeast((baseMaxPriority * mult) / 100n, PRIORITY_FEE_FLOOR);
-      const maxFee = atLeast((baseMaxFee * mult) / 100n, tip);
-      return new EvmGasEstimate({
-        maxPriorityFeePerGas: tip,
-        maxFeePerGas: maxFee,
-      });
+      // Distinct from the RpcError raised by the provider.send catch above:
+      // parse/shape failures indict the response, not the transport. Routed
+      // through rpcError() so the URL sanitizer scrubs the response body.
+      throw this.rpcError(`eth_feeHistory response malformed`, err);
     }
 
-    const priorityTip = tips.length === 0 ? PRIORITY_FEE_FLOOR : avg(tips);
-    const finalPriorityTip = atLeast(priorityTip, PRIORITY_FEE_FLOOR);
-    const maxFeePerGas = atLeast(latestBaseFee * 2n + finalPriorityTip, finalPriorityTip);
+    let selectedTip: bigint;
+    if (tips.length === 0) {
+      selectedTip = EMPTY_REWARD_FALLBACK_TIP;
+    } else {
+      const sortedTips = [...tips].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      const idx = Math.min(
+        Math.floor((sortedTips.length * FINAL_TIP_PERCENTILE) / 100),
+        sortedTips.length - 1,
+      );
+      selectedTip = sortedTips[idx] ?? 0n;
+    }
+
+    // TS safety floor — Python doesn't clamp (see MIN_GAS_PRICE_FLOOR).
+    const finalTip = atLeast(selectedTip, MIN_GAS_PRICE_FLOOR);
+    // Safety buffer: base fee can climb 12.5%/block; caller may wait multiple blocks.
+    const maxFeePerGas = latestBaseFee * 2n + finalTip;
     return new EvmGasEstimate({
-      maxPriorityFeePerGas: finalPriorityTip,
+      maxPriorityFeePerGas: finalTip,
       maxFeePerGas,
     });
   }

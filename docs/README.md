@@ -87,7 +87,8 @@ Each chain owns its own fee-suggestion math; the consumer just passes a
 
 | Chain | Method | Result | RPC call under the hood |
 |---|---|---|---|
-| EVM | `chain.suggestGas(priority)` | `EvmGasEstimate { maxFeePerGas, maxPriorityFeePerGas }` | `eth_feeHistory` percentiles `{SLOW:p25, NORMAL:p50, FAST:p90}` + 0.05 gwei floor; falls back to `getFeeData × multiplier` |
+| EVM (`supportsEip1559`) | `chain.suggestGas(priority)` | `EvmGasEstimate { maxFeePerGas, maxPriorityFeePerGas }` | Single `eth_feeHistory` call at percentile `{SLOW:25, NORMAL:50, FAST:75}` over 10 blocks; sort tips + pick p90; 2 gwei fallback if reward rows empty; `MIN_GAS_PRICE_FLOOR` (0.05 gwei) clamp on the returned tip; RPC failure bubbles as `ChainError(RpcError)` (no defensive fallback) |
+| EVM (legacy — `!supportsEip1559`) | `chain.suggestGas(priority)` | `EvmGasEstimate { gasPrice }` only — `maxFee*` fields **undefined** (Python parity) | `eth_gasPrice` × `{SLOW:1.0, NORMAL:1.2, FAST:1.5}`; clamped up to `MIN_GAS_PRICE_FLOOR`. See `docs/UPGRADE_TO_V0.md#evm-suggestgas-return-shape-for-legacy-chains` for the consumer dispatch pattern. |
 | BTC / UTXO | `chain.suggestFeeRate(priority)` | `number` (sats/vByte) | `feeEstimator.getFeeEstimate(targetBlocks)` with `FAST:1, NORMAL:3, SLOW:6` |
 | Solana | `chain.suggestPriorityFeeMicroLamports(priority)` | `number` (microlamports/CU) | `getRecentPrioritizationFees({ lockedWritableAccounts: [] })` percentiles `{SLOW:p25, NORMAL:p50, FAST:p90}`; `0` on a quiet cluster |
 
@@ -139,33 +140,58 @@ Use `isChainError(err, ChainErrorKinds.InvalidAddress)` to narrow.
 Some addresses look identical across networks (e.g. all `0x…` 20-byte hex
 addresses are valid EVM-shaped, but a real EVM-vs-non-EVM dispatch needs
 context). The module maintains a small registry mapping `chainId →
-NetworkType`. EVM is the default; non-EVM chains register themselves
-when constructed:
+NetworkType` (`network_type.ts`).
 
-- `EvmChain` doesn't register (EVM is the fall-through default)
-- `UtxoChain` constructor calls `registerNonEvmChain(Number(chainId), NetworkType.BTC)`
-- `SolanaChain` constructor calls `registerNonEvmChain(Number(chainId), NetworkType.SOLANA)`
-- `TonAddress` users register their chain IDs manually if needed
+Behavior in v0:
 
-`addressFor(chainId, raw)` reads from this registry to pick the right
-`Address` subclass.
+- **Static seeds at module load** (from `chain_ids.ts`): BTC family
+  (`-1/-2/-3`), Solana family (`-2000/-2001/-2002`), TON family
+  (`-4000/-4001`), Tron family (`728126428/2494104990`).
+- **`networkTypeOf(chainId)`**: returns the registered NetworkType if
+  present. For unregistered positive ids returns `EVM`. For unregistered
+  negative ids throws `ChainError(ChainNotSupported)` — fail-closed so a
+  stale `-100` doesn't silently misroute.
+- **`tryNetworkTypeOf(chainId)`**: non-throwing sibling; returns
+  `undefined` on unregistered negatives.
+- **`registerNonEvmChain(id, type)`**: idempotent for same type; throws
+  `ChainError(InvalidArgument)` on conflict. Since positive ids
+  synthesize EVM by default, claiming a positive id for a non-EVM
+  family requires `unregisterChain(id)` first.
+- **`unregisterChain(id)`** + **`networkTypeRegistrations()`**: escape
+  hatch and diagnostics.
+- Chain constructors (`SolanaChain`, `UtxoChain`) self-register in
+  their constructors. `EvmChain` does NOT self-register (its 48
+  pre-baked entries at module load would otherwise turn a consumer's
+  earlier `registerNonEvmChain(sameId, OTHER)` into an unrecoverable
+  import-time crash).
+
+`addressFor(chainId, raw)` reads from this registry via `networkTypeOf`
+and dispatches to the appropriate `Address` subclass — currently EVM,
+Solana, BTC, TON. TRON and COSMOS families throw `ChainNotSupported`
+(no Address parser yet).
 
 ## Chain IDs
 
 - **EVM chains** use real EVM `chainId` values (1, 42161, 8453, 56, …).
-- **Non-EVM chains** (BTC/LTC/DOGE/TON/SOL) have no universal numeric ID.
-  The caller picks one and passes it to the factory. The chain module does
-  not ship a specific scheme — that's a service-level decision (see each
-  consumer's `networks.service.ts` / config files).
-- The seeded Solana chains use synthetic negative IDs to fit the same
-  `Map<number, Chain>` storage shape consumers use for EVM.
+- **Non-EVM chains** — the SDK now owns a reserved negative-ID range,
+  matching `omnichain-py/chain_ids.py`:
+  - BTC family: `-1` mainnet, `-2` testnet, `-3` signet
+  - LTC `-10`, DOGE `-12`, DASH `-14`, ZEC `-16`, BCH `-18` (mainnets only — testnets for these families are not defined in v0)
+  - Solana `-2000` mainnet, `-2001` testnet, `-2002` devnet
+  - TON `-4000` mainnet, `-4001` testnet
+  Consumers **should not** invent overlapping negative IDs for their own
+  chains — see `docs/UPGRADE_TO_V0.md` for the conflict guard and
+  documented overlaps (notably TON's native `global_id = -3` collides
+  with BTC signet in this SDK).
 
-## Boundary: this module never reads env
+## Boundary: this module reads env only for RPC URL resolution
 
 Constructors take plain config objects (`baseUrl`, `user`, `password`,
-`rpcUrl`, …). Consumers read env / yaml once at boot and pass the
-resolved values in. Adding `process.env` or any `getConfigValue` import
-anywhere under this SDK is a review-blocker.
+`rpcUrl`, …). The **one** exception is RPC URL fallback resolution:
+`EvmChain.readRpcUrl` and `SolanaChain.readRpcUrl` will read
+`<NAME>_RPC_URL` / `EVM_<chainId>_RPC_URL` / `SOLANA_<chainId>_RPC_URL`
+env vars if no `rpcUrl` was passed at construction. Adding a
+`process.env` read anywhere else in this SDK is a review-blocker.
 
 ## Adding a new chain
 

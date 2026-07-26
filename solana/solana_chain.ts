@@ -52,11 +52,20 @@ export interface SolanaChainInit {
    */
   defaultRpcUrl: string;
   /**
-   * Optional override. When set, used verbatim. When omitted, the env-var
-   * `<NAME_UPPERCASE_UNDERSCORED>_RPC_URL` is tried (e.g. `SOLANA_RPC_URL`),
-   * and if that is unset, `defaultRpcUrl` is used.
+   * Optional override. When set, used verbatim. See `readRpcUrl` below for
+   * the full precedence chain (constructor → derived `<NAME>_RPC_URL` →
+   * signed `SOLANA_<chainId>_RPC_URL` → `legacyRpcEnvNames` → `defaultRpcUrl`).
    */
   rpcUrl?: string;
+  /**
+   * Additional env var names to consult during RPC URL resolution, tried
+   * *after* the derived name and the `SOLANA_<chainId>_RPC_URL` fallback
+   * but *before* `defaultRpcUrl`. Used to keep pre-rename env vars working —
+   * e.g. `SolanaMainnet` used to derive `SOLANA_RPC_URL`; after the rename
+   * to `"Solana Mainnet"` the derived name is `SOLANA_MAINNET_RPC_URL`, and
+   * this field lets the old key stay honored.
+   */
+  legacyRpcEnvNames?: readonly string[];
   /** CAIP-2 genesis hash (first 32 chars). Surfaced for the depositron `chainAgnosticName` column. */
   chainAgnosticGenesisHash: string;
 }
@@ -106,6 +115,7 @@ const SOL_PRIORITY_PERCENTILE: Record<Priority, number> = {
 export class SolanaChain extends Chain {
   readonly defaultRpcUrl: string;
   readonly rpcUrl: string | undefined;
+  readonly legacyRpcEnvNames: readonly string[];
   readonly explorerClusterSuffix: string;
   readonly chainAgnosticGenesisHash: string;
   private readonly _nativeToken: SolanaToken;
@@ -122,6 +132,7 @@ export class SolanaChain extends Chain {
     );
     this.defaultRpcUrl = init.defaultRpcUrl;
     this.rpcUrl = init.rpcUrl;
+    this.legacyRpcEnvNames = init.legacyRpcEnvNames ?? [];
     this.explorerClusterSuffix = init.explorerClusterSuffix ?? '';
     this.chainAgnosticGenesisHash = init.chainAgnosticGenesisHash;
     this._nativeToken = SolanaToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 9);
@@ -164,11 +175,39 @@ export class SolanaChain extends Chain {
     return fees[idx];
   }
 
+  /**
+   * Env var name for a Solana chain by chain id — mirrors Python's
+   * `SolanaChain.rpc_url_env_for_chain_id` (impl/solana/base.py:421-423)
+   * exactly, including the signed chainId. Shell operators must set via
+   * dotenv / docker / k8s since `SOLANA_-2000_RPC_URL` is not a settable
+   * name in sh/bash/zsh.
+   */
+  static rpcUrlEnvForChainId(chainId: number): string {
+    return `SOLANA_${chainId}_RPC_URL`;
+  }
+
+  /**
+   * Resolution precedence, mirrors omnichain-py/impl/solana/base.py:424-434
+   * plus a TS-side legacy fallback for consumers with pre-v0 env-var names:
+   *   1. constructor `rpcUrl`
+   *   2. env `<NAME_UPPERCASE_UNDERSCORED>_RPC_URL`
+   *   3. env `SOLANA_<chainId>_RPC_URL` (Python parity — signed)
+   *   4. env from `legacyRpcEnvNames` (if configured — e.g. mainnet checks
+   *      the pre-rename `SOLANA_RPC_URL` here)
+   *   5. `defaultRpcUrl`  (never throws — public cluster)
+   */
   private readRpcUrl(): string {
     if (this.rpcUrl && this.rpcUrl.trim().length > 0) return this.rpcUrl.trim();
-    const envName = this.name.replace(/ /g, '_').toUpperCase() + '_RPC_URL';
-    const fromEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.[envName];
-    if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
+    const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+    const candidates = [
+      this.name.replace(/ /g, '_').toUpperCase() + '_RPC_URL',
+      SolanaChain.rpcUrlEnvForChainId(this.chainId),
+      ...this.legacyRpcEnvNames,
+    ];
+    for (const key of candidates) {
+      const v = env?.[key];
+      if (v && v.trim().length > 0) return v.trim();
+    }
     return this.defaultRpcUrl;
   }
 

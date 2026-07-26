@@ -5,14 +5,15 @@ import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { EvmAddress } from '../evm/evm_address.ts';
 import { SolanaAddress } from '../solana/solana_address.ts';
 import { TonAddress } from '../ton/ton_address.ts';
-// Importing the Solana chains registers their (negative) chainIds as
-// NetworkType.SOLANA via the SolanaChain constructor — same mechanism the BTC
-// chains use — so addressFor/canonicalizeAddress route them correctly.
+// Solana chainIds are statically seeded as NetworkType.SOLANA in
+// network_type.ts (from CHAIN_FAMILY_SOLANA), independent of any import of
+// SolanaChain instances — so addressFor/canonicalizeAddress route them
+// correctly whether or not any concrete SolanaChain constructor has run.
 import {
-  SOLANA_MAINNET_CHAIN_ID,
-  SOLANA_TESTNET_CHAIN_ID,
-  SOLANA_DEVNET_CHAIN_ID,
-} from '../solana/solana_chains.ts';
+  CHAIN_ID_SOLANA_DEVNET as SOLANA_DEVNET_CHAIN_ID,
+  CHAIN_ID_SOLANA_MAINNET as SOLANA_MAINNET_CHAIN_ID,
+  CHAIN_ID_SOLANA_TESTNET as SOLANA_TESTNET_CHAIN_ID,
+} from '../chain_ids.ts';
 
 import { addressFor, canonicalizeAddress, tryCanonicalizeAddress } from '../address.factory.ts';
 import { IsAddress } from '../is_address.decorator.ts';
@@ -40,8 +41,12 @@ describe('addressFor', () => {
     expect(addressFor(TON_CHAIN_ID, VALID_TON_RAW)).toBeInstanceOf(TonAddress);
   });
 
-  it('falls back to EVM when chainId is unregistered', () => {
+  it('positive unregistered chainId defaults to EvmAddress (EIP-155)', () => {
     expect(addressFor(424242, VALID_EVM_LOWER)).toBeInstanceOf(EvmAddress);
+  });
+
+  it('negative unregistered chainId throws ChainError(ChainNotSupported)', () => {
+    expect(() => addressFor(-999999, VALID_EVM_LOWER)).toThrow(/Unregistered non-positive chainId/);
   });
 
   it('dispatches to SolanaAddress for chainIds registered as SOLANA (not EvmAddress)', () => {
