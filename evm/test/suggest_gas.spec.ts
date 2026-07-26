@@ -119,7 +119,7 @@ describe('EvmChain.suggestGas — 1559 path (Python get_1559_fees parity)', () =
     }
   });
 
-  it('missing baseFeePerGas throws ChainError(TransactionDecodeFailed) — distinct kind from transport failure', async () => {
+  it('missing baseFeePerGas throws ChainError(RpcError) — response was malformed', async () => {
     jest.spyOn(Arbitrum, 'getProvider').mockReturnValue(
       stubProvider({ feeHistory: { gasUsedRatio: [], reward: [] } }),
     );
@@ -127,7 +127,8 @@ describe('EvmChain.suggestGas — 1559 path (Python get_1559_fees parity)', () =
       await Arbitrum.suggestGas(Priority.NORMAL);
       throw new Error('expected throw');
     } catch (e) {
-      expect(isChainError(e, ChainErrorKinds.TransactionDecodeFailed)).toBe(true);
+      expect(isChainError(e, ChainErrorKinds.RpcError)).toBe(true);
+      expect((e as Error).message).toMatch(/malformed/);
     }
   });
 });

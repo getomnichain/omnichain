@@ -28,7 +28,7 @@ Trigger: user names a ticket like "RIN-44".
 5. When the code is in a state to review, show the user the file list and a brief summary. Wait for **code approval** before proceeding.
 6. On code approval, run review:
    ```bash
-   python3 code-review/review.py --source feature/<slug> --target main --card <slug>
+   python3 code-review/code_reviewer.py --source feature/<slug> --target main --card <slug>
    ```
    Output appends `cards/<slug>/diff_<N>.diff` and `cards/<slug>/review_<N>.md`. The script exits non-zero if the **Critical** section has real findings.
 7. Show the user the review at `cards/<slug>/review_<N>.md`. Wait for **review approval**.
@@ -66,8 +66,8 @@ Trigger: user says "auto mode", "autopilot", "no approvals", or equivalent, alon
 1. Draft the card (same `make_card.py draft` call). Do NOT wait for approval — the user has opted out of approvals.
 2. Branch: `git checkout -b feature/<slug>` from `main`.
 3. Implement.
-4. Run the review (`review.py …`). Save the iteration log.
-5. If `review.py` exit code is 0 (no Critical findings):
+4. Run the review (`code_reviewer.py …`). Save the iteration log.
+5. If `code_reviewer.py` exit code is 0 (no Critical findings):
    - Push the branch and tell the user the branch is ready for merge. Stop.
 6. If exit code is 1 (Critical findings present):
    - Read `cards/<slug>/review_<N>.md`.
@@ -81,10 +81,10 @@ Use `TodoWrite` to track the iteration count so you don't drift past 5.
 
 ## Important rules across all modes
 
-- **Local refs only.** `review.py` rejects anything that isn't a local branch. If you need fresh `main`, do `git fetch && git checkout main && git pull` first — then re-branch.
+- **Local refs only.** `code_reviewer.py` rejects anything that isn't a local branch. If you need fresh `main`, do `git fetch && git checkout main && git pull` first — then re-branch.
 - **One slug per change.** All artifacts live under `cards/<slug>/`. Never write reviews to the repo root.
-- **Never delete prior iteration logs.** They're the audit trail. `review.py` auto-increments `<N>`.
-- **Don't bypass the gate.** If `review.py` exits 1, the code is not ready to push, regardless of whether you personally agree with the finding. Either fix it or document why it's a false positive in `cards/<slug>/review_<N>.md` and ask the user.
+- **Never delete prior iteration logs.** They're the audit trail. `code_reviewer.py` auto-increments `<N>`.
+- **Don't bypass the gate.** If `code_reviewer.py` exits 1, the code is not ready to push, regardless of whether you personally agree with the finding. Either fix it or document why it's a false positive in `cards/<slug>/review_<N>.md` and ask the user.
 - **Card body lives at `description.md`.** When the user asks "what was this card?", read `cards/<slug>/description.md`, not the YouTrack copy — local is the source of truth during the change.
 - **Determining the slug**: prefer the YouTrack id lowercased (`rin-44`) for Mode A. Prefer a short kebab-case noun phrase for Mode B (`verify-message-signature`).
 

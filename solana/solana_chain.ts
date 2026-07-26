@@ -52,9 +52,9 @@ export interface SolanaChainInit {
    */
   defaultRpcUrl: string;
   /**
-   * Optional override. When set, used verbatim. When omitted, the env-var
-   * `<NAME_UPPERCASE_UNDERSCORED>_RPC_URL` is tried (e.g. `SOLANA_RPC_URL`),
-   * and if that is unset, `defaultRpcUrl` is used.
+   * Optional override. When set, used verbatim. See `readRpcUrl` below for
+   * the full precedence chain (constructor → derived `<NAME>_RPC_URL` →
+   * signed `SOLANA_<chainId>_RPC_URL` → `legacyRpcEnvNames` → `defaultRpcUrl`).
    */
   rpcUrl?: string;
   /**

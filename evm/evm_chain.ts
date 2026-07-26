@@ -9,7 +9,7 @@ import {
   verifyMessage as ethersVerifyMessage,
 } from 'ethers';
 
-import { NetworkType } from '../network_type.ts';
+import { NetworkType, tryNetworkTypeOf } from '../network_type.ts';
 
 import { Chain, CreateTransferRequest, VerifyMessageSignatureRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
@@ -136,6 +136,20 @@ export class EvmChain extends Chain {
   private _resolvedRpcUrl: string | null = null;
 
   constructor(init: EvmChainInit) {
+    // Conflict guard — refuse to construct an EvmChain over a chainId that
+    // the static family seeds have already registered as non-EVM. Prevents
+    // the case where `new EvmChain({ chainId: 728126428, … })` would silently
+    // succeed and then contradict `addressFor(728126428, …)` /
+    // `networkTypeOf(728126428)` (both return TRON). Mirrors
+    // `registerNonEvmChain`'s throw-on-conflict guard.
+    const existing = tryNetworkTypeOf(init.chainId);
+    if (existing !== undefined && existing !== NetworkType.EVM) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `chainId ${init.chainId} is registered as ${existing}; refusing to construct EvmChain for it`,
+        { chainId: init.chainId },
+      );
+    }
     super(
       init.chainId,
       init.name,
@@ -245,12 +259,10 @@ export class EvmChain extends Chain {
         .filter((v): v is string => typeof v === 'string')
         .map((v) => BigInt(v));
     } catch (err) {
-      throw new ChainError(
-        ChainErrorKinds.TransactionDecodeFailed,
-        `eth_feeHistory response malformed: ${stringifyErr(err)}`,
-        { chainId: this.chainId, rpcHost: this.rpcHost() },
-        err instanceof Error ? err : new Error(stringifyErr(err)),
-      );
+      // Distinct from the RpcError raised by the provider.send catch above:
+      // parse/shape failures indict the response, not the transport. Routed
+      // through rpcError() so the URL sanitizer scrubs the response body.
+      throw this.rpcError(`eth_feeHistory response malformed`, err);
     }
 
     let selectedTip: bigint;

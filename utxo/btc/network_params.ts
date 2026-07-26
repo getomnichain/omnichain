@@ -1,5 +1,10 @@
 import { networks } from 'bitcoinjs-lib';
 
+import {
+  CHAIN_ID_BITCOIN_MAINNET,
+  CHAIN_ID_BITCOIN_SIGNET,
+  CHAIN_ID_BITCOIN_TESTNET,
+} from '../../chain_ids.ts';
 import { ChainError, ChainErrorKinds } from '../../errors.ts';
 import {
   BIP32_PURPOSE_P2PKH,
@@ -90,11 +95,27 @@ const btcParamsByChainId = new Map<bigint, BtcNetworkParams>();
 // resolves without any consumer having constructed a BtcChain instance —
 // symmetric with the NetworkType static seed. Custom BTC ids still register
 // via the BtcChain constructor.
-btcParamsByChainId.set(-1n, BITCOIN_MAINNET_PARAMS);
-btcParamsByChainId.set(-2n, BITCOIN_TESTNET_PARAMS);
-btcParamsByChainId.set(-3n, BITCOIN_SIGNET_PARAMS);
+btcParamsByChainId.set(BigInt(CHAIN_ID_BITCOIN_MAINNET), BITCOIN_MAINNET_PARAMS);
+btcParamsByChainId.set(BigInt(CHAIN_ID_BITCOIN_TESTNET), BITCOIN_TESTNET_PARAMS);
+btcParamsByChainId.set(BigInt(CHAIN_ID_BITCOIN_SIGNET), BITCOIN_SIGNET_PARAMS);
 
+/**
+ * Register BTC network params for a chainId. Idempotent for identical params
+ * (same object identity or deep-equal fields); throws
+ * `ChainError(InvalidArgument)` on conflict — silently re-pointing
+ * `addressFor(-1, …)` at a different network's grammar would let a base58
+ * mainnet address validate as testnet and vice versa. Mirrors the guard on
+ * `registerNonEvmChain`.
+ */
 export function registerBtcChainParams(chainId: bigint, params: BtcNetworkParams): void {
+  const existing = btcParamsByChainId.get(chainId);
+  if (existing !== undefined && existing !== params && existing.name !== params.name) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `BTC chainId ${chainId} already registered with params for network '${existing.name}'; refusing to reclassify as '${params.name}'`,
+      { chainId: Number(chainId) },
+    );
+  }
   btcParamsByChainId.set(chainId, params);
 }
 

@@ -16,10 +16,10 @@ Each invocation appends a new iteration to cards/<slug>/:
 so the cycle (review → fix → re-review) is logged on disk.
 
 Usage:
-    python3 review.py --source <source-branch> --target <target-branch> --card <slug>
+    python3 code_reviewer.py --source <source-branch> --target <target-branch> --card <slug>
 
 Example:
-    python3 review.py --source feature/verify-msg-sig --target main --card verify-message-signature
+    python3 code_reviewer.py --source feature/verify-msg-sig --target main --card verify-message-signature
 
 Exit codes:
     0 — review ran and the Critical section is empty.

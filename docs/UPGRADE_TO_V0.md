@@ -145,7 +145,7 @@ migrations will land in a separate section here.
   routed through the wrong grammar (e.g. base58 Solana → BTC).
 - **Consumer action**: `import`-time crash if your custom chain uses an ID
   that collides with a seeded family. Static seeds shipped in v0:
-  - BTC family: `-1`, `-2`, `-3`, `-10`, `-12`, `-14`, `-16`, `-18`
+  - BTC family (statically routed): `-1`, `-2`, `-3` only. LTC/DOGE/DASH/ZEC/BCH (`-10/-12/-14/-16/-18`) are exported as chain-ID constants but NOT seeded — their address grammars differ from BTC's, so `networkTypeOf` on those ids throws until a `UtxoChain` instance is constructed and calls `registerNonEvmChain`.
   - Solana family: `-2000`, `-2001`, `-2002` (legacy `-100/-101/-102` are NOT seeded — migrate first)
   - TON family: `-4000`, `-4001`
   - Tron family: `728126428`, `2494104990`
