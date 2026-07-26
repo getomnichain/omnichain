@@ -110,12 +110,22 @@ export function networkTypeRegistrations(): ReadonlyMap<number, NetworkType> {
  * that also reflects consumer registrations.
  */
 export function networkTypeOf(chainId: number): NetworkType {
+  if (!Number.isInteger(chainId)) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `chainId must be an integer (got ${chainId})`,
+      { chainId },
+    );
+  }
   const registered = networkTypeRegistry.get(chainId);
   if (registered !== undefined) return registered;
+  // Positive integers default to EVM (EIP-155). `0` is not a valid EIP-155
+  // chainId (0-conflict is why EIP-155 exists) — treat like an unregistered
+  // negative and fail closed.
   if (chainId > 0) return NetworkType.EVM;
   throw new ChainError(
     ChainErrorKinds.ChainNotSupported,
-    `Unregistered non-EVM chainId ${chainId} — no NetworkType known`,
+    `Unregistered non-positive chainId ${chainId} — no NetworkType known`,
     { chainId },
   );
 }
@@ -128,6 +138,7 @@ export function networkTypeOf(chainId: number): NetworkType {
  * error type rather than a try/catch around every lookup).
  */
 export function tryNetworkTypeOf(chainId: number): NetworkType | undefined {
+  if (!Number.isInteger(chainId)) return undefined;
   const registered = networkTypeRegistry.get(chainId);
   if (registered !== undefined) return registered;
   if (chainId > 0) return NetworkType.EVM;

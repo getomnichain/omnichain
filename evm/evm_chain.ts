@@ -206,30 +206,34 @@ export class EvmChain extends Chain {
 
     if (!this.supportsEip1559) {
       const mult = GAS_MULTIPLIER_PCT[priority];
-      // Wrap the ethers call so transport errors flow through rpcError()
-      // (URL sanitizer + typed ChainError). Otherwise a raw ethers throw
-      // that includes the RPC URL leaks the API key. Symmetric with the
-      // 1559 branch which sends a bare provider.send in its own try.
-      let fee: Awaited<ReturnType<JsonRpcProvider['getFeeData']>>;
+      // Direct `eth_gasPrice` — one round-trip, matches Python
+      // impl/evm/base.py:831-833. Avoids getFeeData's implicit
+      // `getBlock("latest")` + potential `eth_maxPriorityFeePerGas` extra
+      // calls, and dodges the trap where getFeeData's maxFeePerGas is
+      // `2×baseFee + tip` (not a legacy price) — using that as the legacy
+      // gasPrice would 3-4× overpay.
+      let gasPriceHex: string;
       try {
-        fee = await provider.getFeeData();
+        gasPriceHex = (await provider.send('eth_gasPrice', [])) as string;
       } catch (err) {
-        throw this.rpcError('legacy getFeeData transport failed', err);
+        throw this.rpcError('legacy eth_gasPrice transport failed', err);
       }
-      // If the provider returned no data at all, bubble as RpcError rather
-      // than degrade silently to a 0.05 gwei suggestion on a chain where the
-      // real price could be 50 gwei (nonce-blocking pending tx with no
-      // signal). MIN_GAS_PRICE_FLOOR is retained only as a floor for
-      // observed-but-tiny prices.
-      if (fee.gasPrice == null && fee.maxFeePerGas == null) {
+      let providerHint: bigint;
+      try {
+        providerHint = BigInt(gasPriceHex);
+      } catch {
         throw this.rpcError(
-          'legacy getFeeData returned null gasPrice AND maxFeePerGas',
-          new Error('no usable gas price in provider response'),
+          `legacy eth_gasPrice returned unparseable response`,
+          new Error(`could not parse ${String(gasPriceHex)} as bigint`),
         );
       }
-      const providerHint = fee.gasPrice ?? fee.maxFeePerGas ?? 0n;
-      const base = providerHint > 0n ? providerHint : MIN_GAS_PRICE_FLOOR;
-      const scaled = atLeast((base * mult) / 100n, MIN_GAS_PRICE_FLOOR);
+      if (providerHint <= 0n) {
+        throw this.rpcError(
+          'legacy eth_gasPrice returned zero/negative',
+          new Error(`eth_gasPrice returned ${String(providerHint)}`),
+        );
+      }
+      const scaled = atLeast((providerHint * mult) / 100n, MIN_GAS_PRICE_FLOOR);
       // Legacy chains: only `gasPrice` is authoritative — matches Python
       // (`impl/evm/base.py:830-833` returns `EvmGasPricing(gas_price=...)`).
       // Populating maxFeePerGas/maxPriorityFeePerGas as duplicates would let

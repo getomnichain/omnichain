@@ -47,15 +47,38 @@ export function canonicalizeAddress(chainId: number, raw: string): string {
   return addressFor(chainId, raw).canonical();
 }
 
+/**
+ * Total function — never throws. Returns the raw input on any failure
+ * (address-format error, unsupported chain, malformed args).
+ *
+ * Callers that need to fail loudly on stale/unsupported chainIds while
+ * still tolerating address-format errors should use
+ * `canonicalizeAddressStrict` instead.
+ */
 export function tryCanonicalizeAddress(chainId: number, raw: string): string {
   try {
     return canonicalizeAddress(chainId, raw);
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Swallows address-format errors (returns raw input) but re-throws
+ * `ChainError(ChainNotSupported)` so a stale chainId (e.g. un-migrated
+ * legacy Solana `-100`) fails loudly rather than passing a bogus routing
+ * signal downstream. Use in application code where an unsupported chain
+ * is a hard error the caller wants to surface, and address-format
+ * errors are reported by a separate validation layer.
+ *
+ * NOT for class-transformer `@Transform` callbacks — a throw there also
+ * fires during response serialization when an entity carries a stale
+ * chainId, killing every read of a legacy row.
+ */
+export function canonicalizeAddressStrict(chainId: number, raw: string): string {
+  try {
+    return canonicalizeAddress(chainId, raw);
   } catch (e) {
-    // `try*` swallows address-format errors (returns the raw input so the
-    // caller can pass it through unchanged). It does NOT swallow
-    // `ChainNotSupported` — a stale chainId (e.g. un-migrated legacy
-    // Solana `-100`) must fail loudly rather than pass a bogus routing
-    // signal downstream un-normalized.
     if (isChainError(e, ChainErrorKinds.ChainNotSupported)) throw e;
     return raw;
   }

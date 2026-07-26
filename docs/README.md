@@ -87,7 +87,8 @@ Each chain owns its own fee-suggestion math; the consumer just passes a
 
 | Chain | Method | Result | RPC call under the hood |
 |---|---|---|---|
-| EVM | `chain.suggestGas(priority)` | `EvmGasEstimate { maxFeePerGas, maxPriorityFeePerGas }` | `eth_feeHistory` percentiles `{SLOW:p25, NORMAL:p50, FAST:p90}` + 0.05 gwei floor; falls back to `getFeeData × multiplier` |
+| EVM (`supportsEip1559`) | `chain.suggestGas(priority)` | `EvmGasEstimate { maxFeePerGas, maxPriorityFeePerGas }` | Single `eth_feeHistory` call at percentile `{SLOW:25, NORMAL:50, FAST:75}` over 10 blocks; sort tips + pick p90; 2 gwei fallback if reward rows empty; `MIN_GAS_PRICE_FLOOR` (0.05 gwei) clamp on the returned tip; RPC failure bubbles as `ChainError(RpcError)` (no defensive fallback) |
+| EVM (legacy — `!supportsEip1559`) | `chain.suggestGas(priority)` | `EvmGasEstimate { gasPrice }` only — `maxFee*` fields **undefined** (Python parity) | `eth_gasPrice` × `{SLOW:1.0, NORMAL:1.2, FAST:1.5}`; clamped up to `MIN_GAS_PRICE_FLOOR`. See `docs/UPGRADE_TO_V0.md#evm-suggestgas-return-shape-for-legacy-chains` for the consumer dispatch pattern. |
 | BTC / UTXO | `chain.suggestFeeRate(priority)` | `number` (sats/vByte) | `feeEstimator.getFeeEstimate(targetBlocks)` with `FAST:1, NORMAL:3, SLOW:6` |
 | Solana | `chain.suggestPriorityFeeMicroLamports(priority)` | `number` (microlamports/CU) | `getRecentPrioritizationFees({ lockedWritableAccounts: [] })` percentiles `{SLOW:p25, NORMAL:p50, FAST:p90}`; `0` on a quiet cluster |
 
