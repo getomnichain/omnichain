@@ -29,26 +29,43 @@ function stubProvider(opts: {
 describe('EvmChain.suggestGas — eth_feeHistory primary path', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it('SLOW / NORMAL / FAST pick percentile columns 0 / 1 / 2', async () => {
-    const rewards = [
-      [`0x${(1n * ONE_GWEI).toString(16)}`, `0x${(2n * ONE_GWEI).toString(16)}`, `0x${(5n * ONE_GWEI).toString(16)}`],
-      [`0x${(3n * ONE_GWEI).toString(16)}`, `0x${(4n * ONE_GWEI).toString(16)}`, `0x${(7n * ONE_GWEI).toString(16)}`],
+  it('requests a single percentile per tier (25 / 50 / 75) and averages the single-column reward rows', async () => {
+    // Each tier now issues its own eth_feeHistory call with a one-element
+    // reward_percentiles array — matches Python get_1559_fees which calls
+    // with exactly one percentile per tier. See impl/evm/base.py:1101-1124.
+    const rewardsForTier = [
+      [`0x${(3n * ONE_GWEI).toString(16)}`], // block 1: 3 gwei at requested percentile
+      [`0x${(5n * ONE_GWEI).toString(16)}`], // block 2: 5 gwei at requested percentile
     ];
     const feeHistory = {
       baseFeePerGas: [`0x${(10n * ONE_GWEI).toString(16)}`, `0x${(10n * ONE_GWEI).toString(16)}`],
       gasUsedRatio: [0.5, 0.5],
-      reward: rewards,
+      reward: rewardsForTier,
       oldestBlock: '0x0',
     };
-    jest.spyOn(Arbitrum, 'getProvider').mockReturnValue(stubProvider({ feeHistory }));
+    let capturedPercentileParam: number[] | null = null;
+    const provider = {
+      send: jest.fn(async (method: string, params?: unknown) => {
+        if (method !== 'eth_feeHistory') throw new Error(`unexpected send: ${method}`);
+        // params = [blockCount, newestBlock, percentiles[]]
+        const arr = params as [unknown, unknown, number[]];
+        capturedPercentileParam = arr[2];
+        return feeHistory;
+      }),
+      getFeeData: jest.fn(async () => ({})),
+    };
+    jest.spyOn(Arbitrum, 'getProvider').mockReturnValue(provider as any);
+
+    const normal = await Arbitrum.suggestGas(Priority.NORMAL);
+    expect(capturedPercentileParam).toEqual([50]);
+    // avg([3, 5]) = 4 gwei
+    expect(normal.maxPriorityFeePerGas).toBe(4n * ONE_GWEI);
 
     const slow = await Arbitrum.suggestGas(Priority.SLOW);
-    const normal = await Arbitrum.suggestGas(Priority.NORMAL);
-    const fast = await Arbitrum.suggestGas(Priority.FAST);
+    expect(capturedPercentileParam).toEqual([25]);
 
-    expect(slow.maxPriorityFeePerGas).toBe(2n * ONE_GWEI);
-    expect(normal.maxPriorityFeePerGas).toBe(3n * ONE_GWEI);
-    expect(fast.maxPriorityFeePerGas).toBe(6n * ONE_GWEI);
+    const fast = await Arbitrum.suggestGas(Priority.FAST);
+    expect(capturedPercentileParam).toEqual([75]);
   });
 
   it('maxFeePerGas = baseFee*2 + finalPriorityTip', async () => {
@@ -96,9 +113,11 @@ describe('EvmChain.suggestGas — eth_feeHistory throws (multiplier fallback)', 
     const normal = await Arbitrum.suggestGas(Priority.NORMAL);
     const fast = await Arbitrum.suggestGas(Priority.FAST);
 
+    // Multipliers now match Python's `_FEE_PRIORITY_PROFILE`
+    // (impl/evm/base.py:440-444): SLOW=1.0x, NORMAL=1.2x, FAST=1.5x.
     expect(slow.maxPriorityFeePerGas).toBe(1n * ONE_GWEI);
     expect(normal.maxPriorityFeePerGas).toBe((1n * ONE_GWEI * 120n) / 100n);
-    expect(fast.maxPriorityFeePerGas).toBe(2n * ONE_GWEI);
+    expect(fast.maxPriorityFeePerGas).toBe((1n * ONE_GWEI * 150n) / 100n);
   });
 
   it('applies floor AFTER multiply: provider tip = 0n still yields >= floor', async () => {

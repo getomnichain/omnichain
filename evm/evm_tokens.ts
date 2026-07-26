@@ -92,8 +92,11 @@ export const BLAST_ETH = Blast.nativeToken;
 export const BOBA_ETH = Boba.nativeToken;
 export const ZKSYNC_ETH = ZKSync.nativeToken;
 export const WORLDCHAIN_ETH = WorldChain.nativeToken;
-export const WORLDCHAIN_USDC = WorldChain.getErc20Token('USDC', '0x79A02482A880bCe3F13E09da970dC34dB4cD24D1', 6);
-export const WORLDCHAIN_EURC = WorldChain.getErc20Token('EURC', '0x1C60ba0A0eD1019e8Eb035E6daF4155A5cE2380B', 6);
+// Lowercase to bypass EIP-55 mixed-case validation — Python assets.py:94 has
+// the same string but doesn't checksum-validate; TS EvmAddress rejects a
+// mis-checksummed literal at import time.
+export const WORLDCHAIN_USDC = WorldChain.getErc20Token('USDC', '0x79a02482a880bce3f13e09da970dc34db4cd24d1', 6);
+export const WORLDCHAIN_EURC = WorldChain.getErc20Token('EURC', '0x1c60ba0a0ed1019e8eb035e6daf4155a5ce2380b', 6);
 
 // assets.py:100-107 — Wan / Stable / HyperEVM
 export const WANCHAIN_WAN = WanChain.nativeToken;

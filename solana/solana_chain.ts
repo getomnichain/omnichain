@@ -177,11 +177,13 @@ export class SolanaChain extends Chain {
 
   /**
    * Env var name for a Solana chain by chain id — mirrors Python's
-   * `SolanaChain.rpc_url_env_for_chain_id` (impl/solana/base.py:421-423).
+   * `SolanaChain.rpc_url_env_for_chain_id` (impl/solana/base.py:421-423),
+   * except uses `Math.abs(chainId)` because negative chainIds produce
+   * shell-invalid env-var names (`SOLANA_-2000_RPC_URL` is a syntax error
+   * in sh/bash/zsh). Divergence noted in `SINAN_OPEN_QUESTIONS.md`.
    *
-   * Uses `Math.abs(chainId)` because negative chainIds produce shell-invalid
-   * env var names (`SOLANA_-2000_RPC_URL` is a syntax error in sh/bash/zsh).
-   * See SINAN_OPEN_QUESTIONS.md — proposed for Python-side alignment.
+   * `readRpcUrl` consults both the signed-key form (Python compatibility)
+   * and this absolute-value form (shell-safe), so operators can use either.
    */
   static rpcUrlEnvForChainId(chainId: number): string {
     return `SOLANA_${Math.abs(chainId)}_RPC_URL`;
@@ -192,16 +194,18 @@ export class SolanaChain extends Chain {
    * plus a TS-side legacy fallback for consumers with pre-v0 env-var names:
    *   1. constructor `rpcUrl`
    *   2. env `<NAME_UPPERCASE_UNDERSCORED>_RPC_URL`
-   *   3. env `SOLANA_<abs(chainId)>_RPC_URL`
-   *   4. env from `legacyRpcEnvNames` (if configured — e.g. mainnet checks
+   *   3. env `SOLANA_<chainId>_RPC_URL` (signed, matches Python)
+   *   4. env `SOLANA_<abs(chainId)>_RPC_URL` (shell-safe fallback)
+   *   5. env from `legacyRpcEnvNames` (if configured — e.g. mainnet checks
    *      the pre-rename `SOLANA_RPC_URL` here)
-   *   5. `defaultRpcUrl`  (never throws — public cluster)
+   *   6. `defaultRpcUrl`  (never throws — public cluster)
    */
   private readRpcUrl(): string {
     if (this.rpcUrl && this.rpcUrl.trim().length > 0) return this.rpcUrl.trim();
     const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
     const candidates = [
       this.name.replace(/ /g, '_').toUpperCase() + '_RPC_URL',
+      `SOLANA_${this.chainId}_RPC_URL`,
       SolanaChain.rpcUrlEnvForChainId(this.chainId),
       ...this.legacyRpcEnvNames,
     ];
