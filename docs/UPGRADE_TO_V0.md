@@ -175,6 +175,28 @@ migrations will land in a separate section here.
 
 ---
 
+## EVM `suggestGas` return shape for legacy chains
+
+- **What**: on chains where `supportsEip1559 === false` (`OkxChain`,
+  `Shimmer`, `Metis`, `PolygonZKEvm`, `IotaEvm`, `Aurora`),
+  `suggestGas(priority)` now returns an `EvmGasEstimate` with `gasPrice`
+  populated and `maxFeePerGas` / `maxPriorityFeePerGas` **`undefined`** —
+  matching Python `impl/evm/base.py:830-833` (`EvmGasPricing(gas_price=…)`).
+- **Rationale**: populating all three fields as duplicates of `gasPrice`
+  lets a consumer build a type-2 transaction that pays the full
+  `gasPrice` as a tip *on top of* base fee — a silent 2× overpay on the
+  legacy branch.
+- **Consumer action**: any signer that always signs EIP-1559 (type-2) tx
+  must dispatch on `supportsEip1559` (or on the presence of
+  `maxFeePerGas`) and fall back to a legacy (type-0) transaction on
+  those chains:
+  ```ts
+  const gas = await chain.suggestGas(Priority.NORMAL);
+  const tx = chain.supportsEip1559
+    ? { type: 2, maxFeePerGas: gas.maxFeePerGas!, maxPriorityFeePerGas: gas.maxPriorityFeePerGas!, ... }
+    : { type: 0, gasPrice: gas.gasPrice!, ... };
+  ```
+
 ## EVM priority tiers
 
 - **What**: `EvmChain.suggestGas` aligned to Python `_FEE_PRIORITY_PROFILE`:

@@ -199,8 +199,9 @@ export const CHAIN_ID_AURORA = 1313161554;
 /**
  * Sign/family test — returns `true` for any positive integer chainId that
  * isn't a Tron chain. Does NOT assert that the chainId corresponds to a
- * pre-baked `EvmChain` in `evm_chains.ts`. Consumers wanting a support check
- * should look up the chain in `ALL_EVM_CHAINS`.
+ * pre-baked `EvmChain`. Consumers wanting a support check should look up the
+ * chain in `ALL_DECLARED_EVM_CHAINS` (48 pre-baked chains); the smaller
+ * `ALL_EVM_CHAINS` is the pre-v0 "wired" set of 4 kept for backward compat.
  *
  * **Caveat on all `is*` predicates**: they operate on the immutable Python-
  * parity family sets in this file. `networkTypeOf()` (in `network_type.ts`)

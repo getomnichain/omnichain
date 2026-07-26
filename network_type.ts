@@ -86,3 +86,17 @@ export function networkTypeOf(chainId: number): NetworkType {
     { chainId },
   );
 }
+
+/**
+ * Non-throwing variant of `networkTypeOf`. Returns `undefined` instead of
+ * throwing `ChainError(ChainNotSupported)` for unregistered negative
+ * chainIds. Use when the caller legitimately needs "unknown" as a valid
+ * outcome (e.g. a pre-validation guard that wants to route to a custom
+ * error type rather than a try/catch around every lookup).
+ */
+export function tryNetworkTypeOf(chainId: number): NetworkType | undefined {
+  const registered = networkTypeRegistry.get(chainId);
+  if (registered !== undefined) return registered;
+  if (chainId > 0) return NetworkType.EVM;
+  return undefined;
+}

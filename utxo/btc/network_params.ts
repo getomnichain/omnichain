@@ -86,6 +86,14 @@ export function btcParamsByName(name: BtcNetworkName): BtcNetworkParams {
 
 const btcParamsByChainId = new Map<bigint, BtcNetworkParams>();
 
+// Static seed for the canonical BTC chainIds so `addressFor(-1, 'bc1q…')`
+// resolves without any consumer having constructed a BtcChain instance —
+// symmetric with the NetworkType static seed. Custom BTC ids still register
+// via the BtcChain constructor.
+btcParamsByChainId.set(-1n, BITCOIN_MAINNET_PARAMS);
+btcParamsByChainId.set(-2n, BITCOIN_TESTNET_PARAMS);
+btcParamsByChainId.set(-3n, BITCOIN_SIGNET_PARAMS);
+
 export function registerBtcChainParams(chainId: bigint, params: BtcNetworkParams): void {
   btcParamsByChainId.set(chainId, params);
 }

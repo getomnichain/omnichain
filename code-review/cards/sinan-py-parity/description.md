@@ -35,6 +35,22 @@ Every change in this branch cites its counterpart in the Python source (file:lin
 - New `solana/solana_tokens.ts`: SOLANA_USDC / EURC / WSOL / PYUSD / USDT + devnet variants.
 - Barrel updates: `chain_ids` at root, `solana_tokens` in solana barrel.
 
+**Additional behavioral changes shipped in this branch** (surfaced across review iterations 1-8, all Python-parity or documented safety measures):
+
+- `networkTypeOf(chainId)` throws `ChainError(ChainNotSupported)` for unregistered negative chainIds (was silent EVM fallback). New non-throwing sibling `tryNetworkTypeOf(chainId): NetworkType | undefined` for callers that legitimately need totality.
+- `registerNonEvmChain` throws `ChainError(InvalidArgument)` on family conflict (was last-writer-wins).
+- Static seeds in `network_type.ts` for BTC (`-1/-2/-3`), Solana, TON, Tron families — routing works without any chain instance constructed.
+- `btcParamsForChainId` throws `ChainError(ChainNotSupported)` (was bare Error); BTC params for `-1/-2/-3` are statically pre-seeded.
+- `NetworkType.TRON` enum value added; `addressFor` fail-closes for TRON/COSMOS (was fall-through to EvmAddress); switch is exhaustive.
+- `Token.strictEquals(other)` (includes decimals) and `Token.sameAsset(other)` (identifier-only) helpers.
+- `EvmToken` constructor normalizes `identifier` to EIP-55 checksum (breaking for consumers persisting a specific casing).
+- `requiresZeroResetApproval(token)` predicate.
+- `migrateLegacySolanaChainId(id)` helper (`-100/-101/-102` → `-2000/-2001/-2002`); legacy IDs deliberately NOT registered as aliases (fail-closed).
+- `SolanaChain.legacyRpcEnvNames` init field (`SolanaMainnet` honors pre-rename `SOLANA_RPC_URL`).
+- `IsAddress` decorator distinguishes `ChainNotSupported` from address-format errors in its message.
+- `suggestGas` rewritten: single-percentile `eth_feeHistory` request, sort-then-p90 tip selection (Python parity), 2-gwei empty-reward fallback, RPC transport failure bubbles as `ChainError(RpcError)`, parse failure as `ChainError(TransactionDecodeFailed)`, no defensive `getFeeData` fallback. Legacy branch returns `gasPrice` only (matches `EvmGasPricing(gas_price=…)`); consumers dispatch signing on `supportsEip1559`.
+- `MIN_GAS_PRICE_FLOOR` (0.05 gwei) clamps both branches — TS safety measure Python doesn't have.
+
 ### Excluded (Phase 3+ — follow-up branch)
 
 - **Decimal amount type** in `createTransferUnsignedTransaction` (Python takes `Decimal`, TS still takes `bigint`).
