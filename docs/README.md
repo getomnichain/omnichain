@@ -176,7 +176,7 @@ Solana, BTC, TON. TRON and COSMOS families throw `ChainNotSupported`
 - **Non-EVM chains** — the SDK now owns a reserved negative-ID range,
   matching `omnichain-py/chain_ids.py`:
   - BTC family: `-1` mainnet, `-2` testnet, `-3` signet
-  - LTC `-10/-11`, DOGE `-12/-13`, DASH `-14/-15`, ZEC `-16/-17`, BCH `-18/-19`
+  - LTC `-10`, DOGE `-12`, DASH `-14`, ZEC `-16`, BCH `-18` (mainnets only — testnets for these families are not defined in v0)
   - Solana `-2000` mainnet, `-2001` testnet, `-2002` devnet
   - TON `-4000` mainnet, `-4001` testnet
   Consumers **should not** invent overlapping negative IDs for their own

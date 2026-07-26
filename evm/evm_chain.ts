@@ -222,18 +222,20 @@ export class EvmChain extends Chain {
       try {
         providerHint = BigInt(gasPriceHex);
       } catch {
+        // Genuinely unparseable response — bubble as RpcError so on-call
+        // triage sees the RPC returned nonsense, not "0 gas price".
         throw this.rpcError(
           `legacy eth_gasPrice returned unparseable response`,
           new Error(`could not parse ${String(gasPriceHex)} as bigint`),
         );
       }
-      if (providerHint <= 0n) {
-        throw this.rpcError(
-          'legacy eth_gasPrice returned zero/negative',
-          new Error(`eth_gasPrice returned ${String(providerHint)}`),
-        );
-      }
-      const scaled = atLeast((providerHint * mult) / 100n, MIN_GAS_PRICE_FLOOR);
+      // Zero-or-negative gasPrice: clamp up to MIN_GAS_PRICE_FLOOR, mirroring
+      // the 1559 branch's floor-on-sub-floor-tips behavior (evm_chain.ts:307).
+      // Python (`impl/evm/base.py:831-833`) multiplies whatever `eth_gasPrice`
+      // returns and never throws; the TS floor is the safety measure that
+      // prevents an unmineable suggestion. Consistent policy across branches.
+      const base = providerHint > 0n ? providerHint : MIN_GAS_PRICE_FLOOR;
+      const scaled = atLeast((base * mult) / 100n, MIN_GAS_PRICE_FLOOR);
       // Legacy chains: only `gasPrice` is authoritative — matches Python
       // (`impl/evm/base.py:830-833` returns `EvmGasPricing(gas_price=...)`).
       // Populating maxFeePerGas/maxPriorityFeePerGas as duplicates would let

@@ -189,19 +189,16 @@ describe('EvmChain.suggestGas — !supportsEip1559 legacy branch', () => {
     }
   });
 
-  it('legacy branch throws RpcError when eth_gasPrice returns 0x0', async () => {
+  it('legacy branch clamps zero eth_gasPrice up to MIN_GAS_PRICE_FLOOR (symmetric with 1559 sub-floor tip)', async () => {
+    const MIN_FLOOR = 50_000_000n; // 0.05 gwei
     Object.defineProperty(Arbitrum, 'supportsEip1559', { value: false, configurable: true });
     try {
       jest.spyOn(Arbitrum, 'getProvider').mockReturnValue({
         send: jest.fn(async () => '0x0'),
         getFeeData: jest.fn(),
       } as any);
-      try {
-        await Arbitrum.suggestGas(Priority.SLOW);
-        throw new Error('expected throw');
-      } catch (e) {
-        expect(isChainError(e, ChainErrorKinds.RpcError)).toBe(true);
-      }
+      const gas = await Arbitrum.suggestGas(Priority.SLOW);
+      expect(gas.gasPrice).toBe(MIN_FLOOR);
     } finally {
       Object.defineProperty(Arbitrum, 'supportsEip1559', { value: true, configurable: true });
     }

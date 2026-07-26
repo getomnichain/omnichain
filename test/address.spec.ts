@@ -46,7 +46,7 @@ describe('addressFor', () => {
   });
 
   it('negative unregistered chainId throws ChainError(ChainNotSupported)', () => {
-    expect(() => addressFor(-999999, VALID_EVM_LOWER)).toThrow(/Unregistered non-EVM chainId/);
+    expect(() => addressFor(-999999, VALID_EVM_LOWER)).toThrow(/Unregistered non-positive chainId/);
   });
 
   it('dispatches to SolanaAddress for chainIds registered as SOLANA (not EvmAddress)', () => {
