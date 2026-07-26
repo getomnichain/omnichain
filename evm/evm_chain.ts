@@ -173,9 +173,12 @@ export class EvmChain extends Chain {
     if (!this.supportsEip1559) {
       const mult = GAS_MULTIPLIER_PCT[priority];
       const fee = await provider.getFeeData();
-      // Nullish-coalescing does NOT catch 0n; explicit falsy check keeps
-      // MIN_GAS_PRICE_FLOOR effective when the provider returns a zero fee.
-      const base = fee.gasPrice ?? fee.maxFeePerGas ?? 0n;
+      // Symmetric with the 1559 branch: when the provider returns null/0 for
+      // gasPrice AND maxFeePerGas, use the 2-gwei fallback (matches the
+      // 1559 EMPTY_REWARD_FALLBACK_TIP so the two paths degrade identically).
+      // MIN_GAS_PRICE_FLOOR still clamps the scaled result.
+      const providerHint = fee.gasPrice ?? fee.maxFeePerGas ?? 0n;
+      const base = providerHint > 0n ? providerHint : EMPTY_REWARD_FALLBACK_TIP;
       const scaled = atLeast((base * mult) / 100n, MIN_GAS_PRICE_FLOOR);
       return new EvmGasEstimate({
         gasPrice: scaled,

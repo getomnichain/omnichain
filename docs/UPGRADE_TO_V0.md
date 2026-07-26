@@ -60,7 +60,7 @@ migrations will land in a separate section here.
 - **What**: `SolanaChain.readRpcUrl` fallback chain expanded:
   1. constructor `rpcUrl`
   2. env `<NAME_UPPERCASE_UNDERSCORED>_RPC_URL`
-  3. env `SOLANA_<abs(chainId)>_RPC_URL` (new, e.g. `SOLANA_-2000_RPC_URL`)
+  3. env `SOLANA_<chainId>_RPC_URL` (signed, matches Python — e.g. `SOLANA_-2000_RPC_URL`)
   4. env from `legacyRpcEnvNames` (per-instance)
   5. `defaultRpcUrl` (public cluster)
 - **Python source**: `impl/solana/base.py:420-434`
@@ -95,6 +95,25 @@ migrations will land in a separate section here.
   `strictEquals` if you also want decimals asserted. The non-ASCII `₮`
   will also affect ASCII-only log pipelines and DB columns.
 
+### `EvmToken.identifier` is always EIP-55 checksummed
+
+- **What**: the `EvmToken` constructor now normalizes `identifier` to EIP-55
+  checksum form (previously round-tripped whatever the caller passed).
+  `new EvmToken(1, 'USDT', '0xdac17f95…', 6).identifier` is now
+  `'0xdAC17F958D2ee523a2206206994597C13D831ec7'`.
+- **Rationale**: without this, a consumer-built lowercase USDT wouldn't
+  `sameAsset`-match the pre-baked `ETHEREUM_USDT`, and
+  `requiresZeroResetApproval` would silently return `false`.
+- **Consumer action**: audit any code that stores `token.identifier` in a
+  DB column with a canonical-lowercase convention, or compares
+  `token.identifier` against a raw hex string. Case-normalize on the
+  consumer side, or key everything on `.toLowerCase()`.
+- **BalanceChange casing note**: `BalanceChange.address` is emitted
+  lowercase (wire-friendly), while `BalanceChange.token.identifier` is now
+  EIP-55. Do not compare the two casings directly — pass through
+  `EvmAddress(x).toChecksum()` or `.toLowerCase()` for whichever
+  convention you use.
+
 ### `requiresZeroResetApproval(token)` predicate
 
 - **What**: new export replacing the array-based membership check for
@@ -106,6 +125,22 @@ migrations will land in a separate section here.
   exported.
 
 ---
+
+## `registerNonEvmChain` throws on family conflict
+
+- **What**: attempting to register a chainId with a `NetworkType` different
+  from an existing registration (either from the static family seed or a
+  prior instance construction) now throws
+  `ChainError(InvalidArgument)` at construction time.
+- **Rationale**: a silently-flipped family causes address parsing to be
+  routed through the wrong grammar (e.g. base58 Solana → BTC).
+- **Consumer action**: `import`-time crash if your custom chain uses an ID
+  that collides with a seeded family. Static seeds shipped in v0:
+  - BTC family: `-1`, `-2`, `-3`, `-10`, `-12`, `-14`, `-16`, `-18`
+  - Solana family: `-2000`, `-2001`, `-2002` (+ legacy aliases `-100`, `-101`, `-102`)
+  - TON family: `-4000`, `-4001`
+  - Tron family: `728126428`, `2494104990`
+- Diff your custom chainIds against these before upgrading.
 
 ## `networkTypeOf` fail-closed for unregistered negative chainIds
 
@@ -144,7 +179,7 @@ migrations will land in a separate section here.
   Avalanche, Celo, Linea, Scroll, Blast, Sei, Monad, Sonic, HyperEVM,
   MegaETH, Mantle, ZKSync, ZetaChain, etc.). Each mirrors Python
   `impl/evm/chains.py` line-for-line.
-- 35 pre-baked EVM tokens (`evm_tokens.ts`) mirroring
+- 54 pre-baked EVM tokens (`evm_tokens.ts`) mirroring
   `impl/evm/assets.py`.
 - New root module `chain_ids.ts` exports every constant Python's
   `chain_ids.py` defines: BTC family (`-1..-3`), LTC (`-10`), DOGE (`-12`),
