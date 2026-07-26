@@ -31,12 +31,17 @@ const networkTypeRegistry = new Map<number, NetworkType>();
 // Seed the registry statically for families that have a working address
 // parser in v0. Only BTC (bech32 + base58 with BTC HRPs), Solana, TON, Tron.
 //
-// LTC/DOGE/DASH/ZEC/BCH are NOT seeded: their address grammars differ from
-// BTC's (different HRPs, different version bytes, CashAddr for BCH,
-// t-addr/z-addr for ZEC). Static-seeding them as BTC would route their
-// addresses through the BTC parser and either reject valid inputs or,
-// worse, silently misinterpret them. They fail closed via the negative-id
-// throw until a chain instance registers per-chain params.
+// LTC/DOGE/DASH/ZEC/BCH are NOT statically seeded: their address grammars
+// differ from BTC's (different HRPs, different version bytes, CashAddr for
+// BCH, t-addr/z-addr for ZEC). `networkTypeOf` on those ids throws until a
+// chain instance is constructed.
+//
+// **Known v0 gap**: `UtxoChain`'s constructor currently registers *every*
+// UTXO coin as `NetworkType.BTC`, so `addressFor(-10, 'ltc1q…')` (after
+// constructing a Litecoin chain) throws from `btcParamsForChainId` — the
+// only currently-workable path is `chain.validateAddress(raw)` on the chain
+// instance itself. Full LTC/DOGE `addressFor` support requires per-family
+// NetworkType values (deferred; noted in the migration guide).
 for (const id of BTC_ADDRESS_GRAMMAR_IDS) networkTypeRegistry.set(id, NetworkType.BTC);
 for (const id of CHAIN_FAMILY_SOLANA) networkTypeRegistry.set(id, NetworkType.SOLANA);
 for (const id of CHAIN_FAMILY_TON) networkTypeRegistry.set(id, NetworkType.TON);

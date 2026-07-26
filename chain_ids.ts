@@ -35,13 +35,12 @@ export const CHAIN_FAMILY_UTXO: ReadonlySet<number> = new Set([
 /**
  * True for any chainId in the static UTXO family set (Python parity).
  *
- * **Divergence warning**: `networkTypeOf` currently routes only
- * `-1/-2/-3` (BTC family) statically; LTC (`-10`), DOGE (`-12`), DASH
- * (`-14`), ZCASH (`-16`), BCH (`-18`) return `true` here but throw
- * `ChainError(ChainNotSupported)` from `networkTypeOf` and `addressFor`
- * until a chain instance registers them. Do not use `isUtxo` as a routing
- * precondition — use `tryNetworkTypeOf` or check family-specific chain
- * registration.
+ * **Divergence warning**: `networkTypeOf` currently routes only `-1/-2/-3`
+ * (BTC) statically. `LTC (-10)`, `DOGE (-12)`, `DASH (-14)`, `ZCASH (-16)`,
+ * `BCH (-18)` return `true` here for family membership, but v0 has no
+ * `addressFor` path for them — construct the chain instance and call
+ * `chain.validateAddress(raw)` directly. Do not use `isUtxo` as a routing
+ * precondition; use `tryNetworkTypeOf` or per-chain registration checks.
  */
 export function isUtxo(chainId: number): boolean {
   return CHAIN_FAMILY_UTXO.has(chainId);

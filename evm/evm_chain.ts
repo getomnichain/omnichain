@@ -9,7 +9,7 @@ import {
   verifyMessage as ethersVerifyMessage,
 } from 'ethers';
 
-import { NetworkType, tryNetworkTypeOf } from '../network_type.ts';
+import { NetworkType, registerNonEvmChain, tryNetworkTypeOf } from '../network_type.ts';
 
 import { Chain, CreateTransferRequest, VerifyMessageSignatureRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
@@ -163,6 +163,11 @@ export class EvmChain extends Chain {
     this.nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;
     this.nativeTransferGasMultiplier = init.nativeTransferGasMultiplier ?? 1.4;
     this._nativeToken = EvmToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 18);
+    // Register EVM claim so a later `registerNonEvmChain(chainId, SOLANA)`
+    // (etc.) hits the conflict guard rather than silently reclassifying the
+    // chainId while an EvmChain instance is live for it. Symmetric with the
+    // constructor-side registrations in SolanaChain and UtxoChain.
+    registerNonEvmChain(init.chainId, NetworkType.EVM);
   }
 
   get nativeToken(): EvmToken {
@@ -199,20 +204,35 @@ export class EvmChain extends Chain {
 
     if (!this.supportsEip1559) {
       const mult = GAS_MULTIPLIER_PCT[priority];
-      const fee = await provider.getFeeData();
+      // Wrap the ethers call so transport errors flow through rpcError()
+      // (URL sanitizer + typed ChainError). Otherwise a raw ethers throw
+      // that includes the RPC URL leaks the API key. Symmetric with the
+      // 1559 branch which sends a bare provider.send in its own try.
+      let fee: Awaited<ReturnType<JsonRpcProvider['getFeeData']>>;
+      try {
+        fee = await provider.getFeeData();
+      } catch (err) {
+        throw this.rpcError('legacy getFeeData transport failed', err);
+      }
+      // If the provider returned no data at all, bubble as RpcError rather
+      // than degrade silently to a 0.05 gwei suggestion on a chain where the
+      // real price could be 50 gwei (nonce-blocking pending tx with no
+      // signal). MIN_GAS_PRICE_FLOOR is retained only as a floor for
+      // observed-but-tiny prices.
+      if (fee.gasPrice == null && fee.maxFeePerGas == null) {
+        throw this.rpcError(
+          'legacy getFeeData returned null gasPrice AND maxFeePerGas',
+          new Error('no usable gas price in provider response'),
+        );
+      }
       const providerHint = fee.gasPrice ?? fee.maxFeePerGas ?? 0n;
-      // Symmetric with the 1559 branch: when the provider gives no useful
-      // data, degrade to MIN_GAS_PRICE_FLOOR × mult rather than throw. Both
-      // branches always return a suggestion; the floor keeps the value
-      // mineable on low-price L2s without over-paying (0.05 gwei × 1.5 =
-      // 0.075 gwei worst case at FAST).
       const base = providerHint > 0n ? providerHint : MIN_GAS_PRICE_FLOOR;
       const scaled = atLeast((base * mult) / 100n, MIN_GAS_PRICE_FLOOR);
       // Legacy chains: only `gasPrice` is authoritative — matches Python
-      // (`impl/evm/base.py:830-833` returns `EvmGasPricing(gas_price=...)`
-      // for the legacy branch). Populating maxFeePerGas/maxPriorityFeePerGas
-      // as duplicates of gasPrice would let a consumer build a type-2 tx
-      // that pays the full gasPrice as a tip *on top of* base fee.
+      // (`impl/evm/base.py:830-833` returns `EvmGasPricing(gas_price=...)`).
+      // Populating maxFeePerGas/maxPriorityFeePerGas as duplicates would let
+      // a consumer build a type-2 tx paying the full gasPrice as a tip on
+      // top of base fee.
       return new EvmGasEstimate({ gasPrice: scaled });
     }
 

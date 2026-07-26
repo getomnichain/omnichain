@@ -1,4 +1,4 @@
-import { ChainError, ChainErrorKinds } from './errors.ts';
+import { ChainError, ChainErrorKinds, isChainError } from './errors.ts';
 import { NetworkType, networkTypeOf } from './network_type.ts';
 
 import { Address } from './address.ts';
@@ -50,7 +50,13 @@ export function canonicalizeAddress(chainId: number, raw: string): string {
 export function tryCanonicalizeAddress(chainId: number, raw: string): string {
   try {
     return canonicalizeAddress(chainId, raw);
-  } catch {
+  } catch (e) {
+    // `try*` swallows address-format errors (returns the raw input so the
+    // caller can pass it through unchanged). It does NOT swallow
+    // `ChainNotSupported` — a stale chainId (e.g. un-migrated legacy
+    // Solana `-100`) must fail loudly rather than pass a bogus routing
+    // signal downstream un-normalized.
+    if (isChainError(e, ChainErrorKinds.ChainNotSupported)) throw e;
     return raw;
   }
 }

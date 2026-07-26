@@ -170,16 +170,41 @@ describe('EvmChain.suggestGas — !supportsEip1559 legacy branch', () => {
     }
   });
 
-  it('legacy branch floors to MIN_GAS_PRICE_FLOOR when provider returns null/0 gasPrice', async () => {
-    const MIN_FLOOR = 50_000_000n; // 0.05 gwei
+  it('legacy branch throws RpcError when provider returns null gasPrice AND null maxFeePerGas', async () => {
     Object.defineProperty(Arbitrum, 'supportsEip1559', { value: false, configurable: true });
     try {
       jest.spyOn(Arbitrum, 'getProvider').mockReturnValue(
-        stubProvider({ feeData: { gasPrice: null } }),
+        stubProvider({ feeData: { gasPrice: null, maxFeePerGas: null } }),
       );
-      const gas = await Arbitrum.suggestGas(Priority.SLOW);
-      // MIN_FLOOR × 1.0 (SLOW multiplier) = MIN_FLOOR
-      expect(gas.gasPrice).toBe(MIN_FLOOR);
+      try {
+        await Arbitrum.suggestGas(Priority.SLOW);
+        throw new Error('expected throw');
+      } catch (e) {
+        expect(isChainError(e, ChainErrorKinds.RpcError)).toBe(true);
+      }
+    } finally {
+      Object.defineProperty(Arbitrum, 'supportsEip1559', { value: true, configurable: true });
+    }
+  });
+
+  it('legacy branch bubbles RpcError with sanitized URL when getFeeData transport throws', async () => {
+    Object.defineProperty(Arbitrum, 'supportsEip1559', { value: false, configurable: true });
+    try {
+      jest.spyOn(Arbitrum, 'getProvider').mockReturnValue({
+        send: jest.fn(),
+        getFeeData: jest.fn(async () => {
+          throw new Error('boom https://secret.example/API_KEY_123_deadbeef/rpc');
+        }),
+      } as any);
+      try {
+        await Arbitrum.suggestGas(Priority.SLOW);
+        throw new Error('expected throw');
+      } catch (e) {
+        expect(isChainError(e, ChainErrorKinds.RpcError)).toBe(true);
+        // URL sanitizer strips the full URL down to protocol://host, so the
+        // API-key path is not present in the surfaced message.
+        expect((e as Error).message).not.toContain('API_KEY_123_deadbeef');
+      }
     } finally {
       Object.defineProperty(Arbitrum, 'supportsEip1559', { value: true, configurable: true });
     }
