@@ -8,3 +8,6 @@ coverage/
 .idea/
 
 *.log
+UPGRADING.md
+INTEGRATOR_MIGRATION_v0.md
+SINAN_OPEN_QUESTIONS.md

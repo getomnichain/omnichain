@@ -27,17 +27,21 @@ import { EvmAddress } from './evm_address.ts';
 import { EvmToken } from './evm_token.ts';
 import { UnsignedEvmTransaction } from './unsigned_evm_transaction.ts';
 
-// Order matches eth_feeHistory request: [25, 50, 90] → 0, 1, 2.
-const PRIORITY_PERCENTILE_INDEX: Record<Priority, number> = {
-  [Priority.SLOW]: 0,
-  [Priority.NORMAL]: 1,
-  [Priority.FAST]: 2,
+// Priority profile mirrors omnichain-py/impl/evm/base.py:440-444
+// (`_FEE_PRIORITY_PROFILE`): EIP-1559 reward-percentile for get_1559_fees,
+// legacy multiplier for eth_gasPrice scaling.
+const PRIORITY_REWARD_PERCENTILE: Record<Priority, number> = {
+  [Priority.SLOW]: 25,
+  [Priority.NORMAL]: 50,
+  [Priority.FAST]: 75,
 };
 
+// Legacy gas-price multiplier per priority tier (Python NORMAL=1.2 preserved).
+// Expressed as basis points × 100 so integer bigint arithmetic works.
 const GAS_MULTIPLIER_PCT: Record<Priority, bigint> = {
   [Priority.SLOW]: 100n,
   [Priority.NORMAL]: 120n,
-  [Priority.FAST]: 200n,
+  [Priority.FAST]: 150n,
 };
 
 const PRIORITY_FEE_FLOOR = 50_000_000n;
@@ -77,11 +81,19 @@ export interface EvmChainInit {
    */
   rpcUrl?: string;
   supportsEip1559?: boolean;
+  /** Default gas limit for a native (non-ERC20) transfer. Mirrors Python default 21_000
+   *  (impl/evm/base.py:479). Scroll overrides to 360_000 etc. */
+  nativeTransferGasLimit?: number;
+  /** Multiplier applied to the eth_gasPrice / effective gas price when building a native
+   *  transfer. Mirrors Python default 1.4 (impl/evm/base.py:480). Scroll overrides to 50.0. */
+  nativeTransferGasMultiplier?: number;
 }
 
 export class EvmChain extends Chain {
   readonly rpcUrl: string | undefined;
   readonly supportsEip1559: boolean;
+  readonly nativeTransferGasLimit: number;
+  readonly nativeTransferGasMultiplier: number;
   private readonly _nativeToken: EvmToken;
   private _provider: JsonRpcProvider | null = null;
   private _resolvedRpcUrl: string | null = null;
@@ -97,6 +109,8 @@ export class EvmChain extends Chain {
     );
     this.rpcUrl = init.rpcUrl;
     this.supportsEip1559 = init.supportsEip1559 ?? true;
+    this.nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;
+    this.nativeTransferGasMultiplier = init.nativeTransferGasMultiplier ?? 1.4;
     this._nativeToken = EvmToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 18);
   }
 
@@ -135,10 +149,11 @@ export class EvmChain extends Chain {
     let latestBaseFee: bigint;
     let tips: bigint[];
     try {
+      const rewardPercentile = PRIORITY_REWARD_PERCENTILE[priority];
       const raw = (await provider.send('eth_feeHistory', [
         '0xa',
         'latest',
-        [25, 50, 90],
+        [rewardPercentile],
       ])) as {
         baseFeePerGas?: string[];
         gasUsedRatio?: number[];
@@ -150,9 +165,9 @@ export class EvmChain extends Chain {
         throw new Error('eth_feeHistory returned no baseFeePerGas');
       }
       latestBaseFee = BigInt(baseFees[baseFees.length - 1] ?? '0x0');
-      const percentileIdx = PRIORITY_PERCENTILE_INDEX[priority];
+      // We requested one percentile, so each reward row has one entry at index 0.
       tips = (raw.reward ?? [])
-        .map((row) => row?.[percentileIdx])
+        .map((row) => row?.[0])
         .filter((v): v is string => typeof v === 'string')
         .map((v) => BigInt(v));
     } catch (err) {

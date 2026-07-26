@@ -34,12 +34,19 @@ export abstract class Token {
     return this.identifier === undefined;
   }
 
+  /**
+   * Identity is `(chainId, symbol, identifier)` — decimals is deliberately
+   * NOT part of equality. Mirrors omnichain-py/base/base.py:60-65
+   * (`AbstractAsset.__eq__`). Two Token instances with the same chain / symbol
+   * / identifier but different declared decimals compare equal; consumers
+   * that hash tokens should key on identifier alone if they need to
+   * disambiguate decimals variants.
+   */
   equals(other: Token): boolean {
     return (
       this.chainId === other.chainId &&
-      this.identifier === other.identifier &&
       this.symbol === other.symbol &&
-      this.decimals === other.decimals
+      this.identifier === other.identifier
     );
   }
 

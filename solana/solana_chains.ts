@@ -1,21 +1,32 @@
+import {
+  CHAIN_ID_SOLANA_DEVNET,
+  CHAIN_ID_SOLANA_MAINNET,
+  CHAIN_ID_SOLANA_TESTNET,
+} from '../chain_ids.ts';
 import { SolanaChain } from './solana_chain.ts';
 
 /**
- * Solana has no EIP-155 chain ID. Depositron assigns synthetic negative IDs in the same
- * scheme as BTC (-1..-4) and LTC (-10/-11): Solana mainnet = -100, testnet = -101, devnet
- * = -102. CAIP-2 identifies them by the first 32 chars of the genesis block hash.
+ * Solana chain constants and pre-baked instances. Mirrors
+ * omnichain-py/src/omnichain/impl/solana/chains.py.
+ *
+ * Chain IDs match Python's -2000/-2001/-2002 scheme (chain_ids.py:43-45).
+ * Chain names include the cluster suffix ("Solana Mainnet", "Solana Testnet",
+ * "Solana Devnet") so `<NAME>_RPC_URL` env-var derivation is unambiguous.
  */
-export const SOLANA_MAINNET_CHAIN_ID = -100;
-export const SOLANA_TESTNET_CHAIN_ID = -101;
-export const SOLANA_DEVNET_CHAIN_ID = -102;
 
-// Predefined factories don't set rpcUrl — the SolanaChain fallback chain is:
-//   <NAME_UPPERCASE_UNDERSCORED>_RPC_URL env, then defaultRpcUrl (public cluster).
-// Solana never throws "not configured"; the public cluster below is always reachable.
+// Re-export for backward-compat with any consumer that used the old local names.
+export const SOLANA_MAINNET_CHAIN_ID = CHAIN_ID_SOLANA_MAINNET;
+export const SOLANA_TESTNET_CHAIN_ID = CHAIN_ID_SOLANA_TESTNET;
+export const SOLANA_DEVNET_CHAIN_ID = CHAIN_ID_SOLANA_DEVNET;
+
+// Predefined factories don't set rpcUrl — SolanaChain's fallback chain is:
+//   <NAME_UPPERCASE_UNDERSCORED>_RPC_URL env,
+//   then SOLANA_<chainId>_RPC_URL env (mirrors Python impl/solana/base.py:424-434),
+//   then defaultRpcUrl (public cluster). Solana never throws "not configured".
 
 export const SolanaMainnet = new SolanaChain({
-  chainId: SOLANA_MAINNET_CHAIN_ID,
-  name: 'Solana',
+  chainId: CHAIN_ID_SOLANA_MAINNET,
+  name: 'Solana Mainnet',
   blockTimeSeconds: 0.4,
   explorerBaseUrl: 'https://solscan.io',
   nativeSymbol: 'SOL',
@@ -24,7 +35,7 @@ export const SolanaMainnet = new SolanaChain({
 });
 
 export const SolanaTestnet = new SolanaChain({
-  chainId: SOLANA_TESTNET_CHAIN_ID,
+  chainId: CHAIN_ID_SOLANA_TESTNET,
   name: 'Solana Testnet',
   blockTimeSeconds: 0.4,
   explorerBaseUrl: 'https://solscan.io',
@@ -35,7 +46,7 @@ export const SolanaTestnet = new SolanaChain({
 });
 
 export const SolanaDevnet = new SolanaChain({
-  chainId: SOLANA_DEVNET_CHAIN_ID,
+  chainId: CHAIN_ID_SOLANA_DEVNET,
   name: 'Solana Devnet',
   blockTimeSeconds: 0.4,
   explorerBaseUrl: 'https://solscan.io',

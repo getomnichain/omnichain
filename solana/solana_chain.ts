@@ -164,11 +164,32 @@ export class SolanaChain extends Chain {
     return fees[idx];
   }
 
+  /**
+   * Env var name for a Solana chain by chain id — mirrors Python's
+   * `SolanaChain.rpc_url_env_for_chain_id` (impl/solana/base.py:421-423).
+   */
+  static rpcUrlEnvForChainId(chainId: number): string {
+    return `SOLANA_${chainId}_RPC_URL`;
+  }
+
+  /**
+   * Resolution precedence, mirrors omnichain-py/impl/solana/base.py:424-434:
+   *   1. constructor `rpcUrl`
+   *   2. env `<NAME_UPPERCASE_UNDERSCORED>_RPC_URL`
+   *   3. env `SOLANA_<chainId>_RPC_URL`
+   *   4. `defaultRpcUrl`  (never throws — public cluster)
+   */
   private readRpcUrl(): string {
     if (this.rpcUrl && this.rpcUrl.trim().length > 0) return this.rpcUrl.trim();
-    const envName = this.name.replace(/ /g, '_').toUpperCase() + '_RPC_URL';
-    const fromEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.[envName];
-    if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
+    const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+    const candidates = [
+      this.name.replace(/ /g, '_').toUpperCase() + '_RPC_URL',
+      SolanaChain.rpcUrlEnvForChainId(this.chainId),
+    ];
+    for (const key of candidates) {
+      const v = env?.[key];
+      if (v && v.trim().length > 0) return v.trim();
+    }
     return this.defaultRpcUrl;
   }
 
