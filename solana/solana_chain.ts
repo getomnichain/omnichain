@@ -562,7 +562,7 @@ export class SolanaChain extends Chain {
     const tipSlot = await connection.getSlot('confirmed');
     const confirmations = Math.max(0, tipSlot - slot);
     const status = tx.meta?.err ? TransactionStatusTypes.Failed : TransactionStatusTypes.Success;
-    const balanceChanges = this.decodeBalanceChanges(tx);
+    const balanceChanges = this._decodeBalanceChanges(tx);
     const gasFee: GasFee | null = tx.meta
       ? { token: this._nativeToken, amount: BigInt(tx.meta.fee) }
       : null;
@@ -734,8 +734,12 @@ export class SolanaChain extends Chain {
     return instructions;
   }
 
-  /** Decodes per-account lamport deltas + SPL pre/post token-balance diffs into BalanceChange[]. */
-  private decodeBalanceChanges(
+  /**
+   * Decodes per-account lamport deltas + SPL pre/post token-balance diffs into
+   * BalanceChange[]. Marked internal via naming rather than TS `private` so that
+   * chain-agnostic unit tests can exercise it without spinning up a Connection.
+   */
+  _decodeBalanceChanges(
     tx: NonNullable<Awaited<ReturnType<Connection['getTransaction']>>>,
   ): BalanceChange[] {
     const changes: BalanceChange[] = [];
@@ -753,13 +757,19 @@ export class SolanaChain extends Chain {
       const postTok = tx.meta.postTokenBalances ?? [];
       const tokenKey = (b: (typeof preTok)[number]) =>
         `${b.accountIndex}|${b.mint}`;
-      const byKey = new Map<string, { pre: bigint; post: bigint; mint: string; owner?: string }>();
+      // Track the token account's owner (a wallet) and the mint's decimals,
+      // both surfaced verbatim by getTransaction's parsed token-balance meta.
+      const byKey = new Map<
+        string,
+        { pre: bigint; post: bigint; mint: string; owner: string | null; decimals: number }
+      >();
       for (const b of preTok) {
         byKey.set(tokenKey(b), {
           pre: BigInt(b.uiTokenAmount.amount),
           post: 0n,
           mint: b.mint,
-          owner: b.owner ?? undefined,
+          owner: b.owner ?? null,
+          decimals: b.uiTokenAmount.decimals,
         });
       }
       for (const b of postTok) {
@@ -767,20 +777,33 @@ export class SolanaChain extends Chain {
         const cur = byKey.get(k);
         if (cur) {
           cur.post = BigInt(b.uiTokenAmount.amount);
+          // Prefer the post-owner if the pre entry lacked one (account
+          // freshly initialized inside the tx).
+          if (cur.owner === null && b.owner) cur.owner = b.owner;
         } else {
           byKey.set(k, {
             pre: 0n,
             post: BigInt(b.uiTokenAmount.amount),
             mint: b.mint,
-            owner: b.owner ?? undefined,
+            owner: b.owner ?? null,
+            decimals: b.uiTokenAmount.decimals,
           });
         }
       }
-      for (const { pre: p, post: q, mint, owner } of byKey.values()) {
+      for (const { pre: p, post: q, mint, owner, decimals } of byKey.values()) {
         const delta = q - p;
         if (delta === 0n) continue;
-        const splToken = new SolanaToken(this.chainId, '', mint, 0);
-        changes.push({ address: owner ?? mint, token: splToken, amount: delta });
+        // Skip entries where the token-account owner is unknown — filling in
+        // the mint as if it were a wallet address would be actively wrong.
+        // Matches Python's behavior in impl/solana/base.py:704-706.
+        if (owner === null) continue;
+        // Symbol is not surfaced by getTransaction; use an UNKNOWN placeholder
+        // built from the first four mint characters. Mirrors the EVM decoder's
+        // UNKNOWN_<hex-slice> shape (evm_chain.ts:480) so consumers can spot
+        // unresolved tokens uniformly.
+        const symbol = `UNKNOWN_${mint.slice(0, 4)}`;
+        const splToken = new SolanaToken(this.chainId, symbol, mint, decimals);
+        changes.push({ address: owner, token: splToken, amount: delta });
       }
     }
     return changes;
