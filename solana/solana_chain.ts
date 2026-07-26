@@ -18,10 +18,7 @@ import {
   getMint,
 } from '@solana/spl-token';
 
-import { KeyObject, createPublicKey, verify as nodeVerify } from 'node:crypto';
-import bs58 from 'bs58';
-
-import { Chain, CreateTransferRequest, VerifyMessageSignatureRequest } from '../chain.base.ts';
+import { Chain, CreateTransferRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
@@ -620,24 +617,6 @@ export class SolanaChain extends Chain {
     return this.getConnection().getSlot('confirmed');
   }
 
-  async verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean> {
-    try {
-      const rawSigner = bs58.decode(req.signer);
-      if (rawSigner.length !== 32) return false;
-      const signerKey: KeyObject = createPublicKey({
-        key: Buffer.concat([ED25519_SPKI_PREFIX, Buffer.from(rawSigner)]),
-        format: 'der',
-        type: 'spki',
-      });
-      const sigBytes = parseSolanaSignature(req.signature);
-      if (sigBytes.length !== 64) return false;
-      const messageBytes = Buffer.from(req.message, 'utf8');
-      return nodeVerify(null, messageBytes, signerKey, sigBytes);
-    } catch {
-      return false;
-    }
-  }
-
   /**
    * Resolves the token program owner for a given mint. Token-2022 mints are owned by
    * TOKEN_2022_PROGRAM_ID; classic SPL by TOKEN_PROGRAM_ID. Required for `transferChecked`
@@ -859,14 +838,4 @@ function emptyStatus(status: TransactionStatus['status']): TransactionStatus {
     gasFee: null,
     errorInfo: null,
   };
-}
-
-const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
-
-function parseSolanaSignature(raw: string): Uint8Array {
-  const hexCandidate = raw.startsWith('0x') ? raw.slice(2) : raw;
-  if (/^[0-9a-fA-F]+$/.test(hexCandidate) && hexCandidate.length === 128) {
-    return Buffer.from(hexCandidate, 'hex');
-  }
-  return bs58.decode(raw);
 }

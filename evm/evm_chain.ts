@@ -5,13 +5,11 @@ import {
   JsonRpcProvider,
   TransactionReceipt,
   TransactionResponse,
-  getAddress,
-  verifyMessage as ethersVerifyMessage,
 } from 'ethers';
 
 import { NetworkType, tryNetworkTypeOf } from '../network_type.ts';
 
-import { Chain, CreateTransferRequest, VerifyMessageSignatureRequest } from '../chain.base.ts';
+import { Chain, CreateTransferRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { Priority } from '../priority.ts';
 import { EvmGasEstimate } from './evm_gas_estimate.ts';
@@ -446,22 +444,6 @@ export class EvmChain extends Chain {
     } catch (err) {
       throw this.rpcError('Failed to read chain tip', err);
     }
-  }
-
-  async verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean> {
-    let recovered: string;
-    try {
-      recovered = ethersVerifyMessage(req.message, req.signature);
-    } catch {
-      return false;
-    }
-    let expected: string;
-    try {
-      expected = getAddress(req.signer);
-    } catch {
-      return false;
-    }
-    return recovered === expected;
   }
 
   async getTransactionStatus(txHash: string): Promise<TransactionStatus> {
