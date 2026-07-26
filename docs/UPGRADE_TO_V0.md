@@ -145,11 +145,19 @@ migrations will land in a separate section here.
   routed through the wrong grammar (e.g. base58 Solana → BTC).
 - **Consumer action**: `import`-time crash if your custom chain uses an ID
   that collides with a seeded family. Static seeds shipped in v0:
-  - BTC family (statically routed): `-1`, `-2`, `-3` only. LTC/DOGE/DASH/ZEC/BCH (`-10/-12/-14/-16/-18`) are exported as chain-ID constants but NOT seeded — their address grammars differ from BTC's, so `networkTypeOf` on those ids throws until a `UtxoChain` instance is constructed and calls `registerNonEvmChain`.
+  - BTC family (statically routed): `-1`, `-2`, `-3` only. LTC/DOGE/DASH/ZEC/BCH (`-10/-12/-14/-16/-18`) are exported as chain-ID constants and have `UtxoChain` factories, but v0 has **no `addressFor` support** for them — each `UtxoChain` currently registers as `NetworkType.BTC`, which routes through `btcParamsForChainId` and throws for the non-BTC ids. Use `chain.validateAddress(raw)` directly on the constructed chain instance until per-family `NetworkType` values land.
   - Solana family: `-2000`, `-2001`, `-2002` (legacy `-100/-101/-102` are NOT seeded — migrate first)
   - TON family: `-4000`, `-4001`
   - Tron family: `728126428`, `2494104990`
 - Diff your custom chainIds against these before upgrading.
+- **Positive chainId collisions**: `EvmChain` construction now also
+  registers its `chainId` as `NetworkType.EVM`. So `evm_chains.ts`
+  performs 48 registry writes at module load. If a consumer has claimed
+  one of those positive chainIds for a different family (e.g. Cosmos
+  Sei on `1329`), that consumer's earlier `registerNonEvmChain(1329,
+  COSMOS)` will conflict with the SDK's `EvmChain({ chainId: 1329 })`
+  at import time. Escape hatch: `unregisterChain(1329)` before
+  re-registering, or `networkTypeRegistrations()` to pre-flight diff.
 
 ## Tron chainIds no longer route to `EvmAddress`
 

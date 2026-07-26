@@ -100,12 +100,15 @@ btcParamsByChainId.set(BigInt(CHAIN_ID_BITCOIN_TESTNET), BITCOIN_TESTNET_PARAMS)
 btcParamsByChainId.set(BigInt(CHAIN_ID_BITCOIN_SIGNET), BITCOIN_SIGNET_PARAMS);
 
 /**
- * Register BTC network params for a chainId. Idempotent for identical params
- * (same object identity or deep-equal fields); throws
- * `ChainError(InvalidArgument)` on conflict — silently re-pointing
- * `addressFor(-1, …)` at a different network's grammar would let a base58
- * mainnet address validate as testnet and vice versa. Mirrors the guard on
- * `registerNonEvmChain`.
+ * Register BTC network params for a chainId. Idempotent when the new params
+ * name matches the existing entry's name; throws `ChainError(InvalidArgument)`
+ * when the names differ.
+ *
+ * **Known gap**: the guard compares `name` only, not per-field. A consumer
+ * passing `{ ...BITCOIN_MAINNET_PARAMS, hrp: 'XX' }` (same name, different
+ * HRP) would silently replace the seeded mainnet entry. Deep-equal per
+ * field is deferred; callers customising params should use a distinct
+ * chainId rather than override a seeded one.
  */
 export function registerBtcChainParams(chainId: bigint, params: BtcNetworkParams): void {
   const existing = btcParamsByChainId.get(chainId);
@@ -122,9 +125,14 @@ export function registerBtcChainParams(chainId: bigint, params: BtcNetworkParams
 export function btcParamsForChainId(chainId: bigint): BtcNetworkParams {
   const params = btcParamsByChainId.get(chainId);
   if (!params) {
+    // Do NOT tell the caller to register — for non-BTC UTXO chainIds
+    // (LTC/DOGE/etc.), registering BITCOIN_MAINNET_PARAMS here would let
+    // BTC addresses validate as if they belonged to the wrong chain.
+    // The v0 workaround is `chain.validateAddress(raw)` on the chain
+    // instance directly; see docs/UPGRADE_TO_V0.md.
     throw new ChainError(
       ChainErrorKinds.ChainNotSupported,
-      `No BTC network params registered for chainId ${chainId}; construct a BtcChain with that id first`,
+      `No BTC network params registered for chainId ${chainId}`,
       { chainId: Number(chainId) },
     );
   }

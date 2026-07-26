@@ -67,6 +67,28 @@ export function registerNonEvmChain(chainId: number, networkType: NetworkType): 
 }
 
 /**
+ * Remove a chainId from the network-type registry. Advanced — intended for
+ * test isolation and for consumers who need to reclassify a chainId that
+ * collides with a family seed (e.g. treating a Cosmos-labelled positive
+ * chainId as EVM). Silent no-op if the chainId isn't registered.
+ *
+ * After `unregisterChain(id)`, `networkTypeOf(id)` returns EVM for positive
+ * ids and throws for negatives (same as an id that was never seeded).
+ */
+export function unregisterChain(chainId: number): void {
+  networkTypeRegistry.delete(chainId);
+}
+
+/**
+ * Snapshot of the current registry. Read-only; mutations don't affect the
+ * live registry. Useful for consumer startup diagnostics ("show me every
+ * chainId this SDK will route and how").
+ */
+export function networkTypeRegistrations(): ReadonlyMap<number, NetworkType> {
+  return new Map(networkTypeRegistry);
+}
+
+/**
  * Resolve the NetworkType for a chainId.
  *
  * - Static seeds (UTXO / Solana / TON / Tron families from `chain_ids.ts`)
