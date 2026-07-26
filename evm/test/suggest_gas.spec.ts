@@ -154,15 +154,16 @@ describe('EvmChain.suggestGas — !supportsEip1559 legacy branch', () => {
     }
   });
 
-  it('populates gasPrice, maxFeePerGas, and maxPriorityFeePerGas identically (legacy shape)', async () => {
+  it('populates gasPrice only — leaves maxFeePerGas/maxPriorityFeePerGas undefined (Python parity)', async () => {
     Object.defineProperty(Arbitrum, 'supportsEip1559', { value: false, configurable: true });
     try {
       jest.spyOn(Arbitrum, 'getProvider').mockReturnValue(
         stubProvider({ feeData: { gasPrice: 5n * ONE_GWEI } }),
       );
       const gas = await Arbitrum.suggestGas(Priority.NORMAL);
-      expect(gas.gasPrice).toBe(gas.maxFeePerGas);
-      expect(gas.maxFeePerGas).toBe(gas.maxPriorityFeePerGas);
+      expect(gas.gasPrice).toBe((5n * ONE_GWEI * 120n) / 100n);
+      expect(gas.maxFeePerGas).toBeUndefined();
+      expect(gas.maxPriorityFeePerGas).toBeUndefined();
     } finally {
       Object.defineProperty(Arbitrum, 'supportsEip1559', { value: true, configurable: true });
     }

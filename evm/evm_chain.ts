@@ -116,12 +116,21 @@ export interface EvmChainInit {
 export class EvmChain extends Chain {
   readonly rpcUrl: string | undefined;
   readonly supportsEip1559: boolean;
-  // Internal — declarative-only in v0. NOT read by any SDK code path yet.
-  // Wired into the transfer builder in the follow-up Phase 3 branch. Kept
-  // as private fields (not readonly public) so consumers can't read an
-  // authoritative-looking value the SDK doesn't currently honor.
-  private readonly _nativeTransferGasLimit: number;
-  private readonly _nativeTransferGasMultiplier: number;
+  /**
+   * Default gas limit for native transfers. Matches Python's public attribute
+   * at `impl/evm/base.py:495` — v0 does not consume it inside the TS SDK
+   * (see `createTransferUnsignedTransaction`) but exposes it so consumers
+   * building their own transfer paths get identical numbers to Python. Wired
+   * into the SDK-owned transfer builder in a follow-up branch.
+   */
+  readonly nativeTransferGasLimit: number;
+  /**
+   * Legacy `eth_gasPrice` multiplier for native transfers on non-1559 chains.
+   * Matches Python's public attribute at `impl/evm/base.py:496`. Same
+   * "declarative for consumers, unused internally in v0" note as
+   * `nativeTransferGasLimit`.
+   */
+  readonly nativeTransferGasMultiplier: number;
   private readonly _nativeToken: EvmToken;
   private _provider: JsonRpcProvider | null = null;
   private _resolvedRpcUrl: string | null = null;
@@ -137,8 +146,8 @@ export class EvmChain extends Chain {
     );
     this.rpcUrl = init.rpcUrl;
     this.supportsEip1559 = init.supportsEip1559 ?? true;
-    this._nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;
-    this._nativeTransferGasMultiplier = init.nativeTransferGasMultiplier ?? 1.4;
+    this.nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;
+    this.nativeTransferGasMultiplier = init.nativeTransferGasMultiplier ?? 1.4;
     this._nativeToken = EvmToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 18);
   }
 
@@ -185,11 +194,12 @@ export class EvmChain extends Chain {
       // 0.075 gwei worst case at FAST).
       const base = providerHint > 0n ? providerHint : MIN_GAS_PRICE_FLOOR;
       const scaled = atLeast((base * mult) / 100n, MIN_GAS_PRICE_FLOOR);
-      return new EvmGasEstimate({
-        gasPrice: scaled,
-        maxFeePerGas: scaled,
-        maxPriorityFeePerGas: scaled,
-      });
+      // Legacy chains: only `gasPrice` is authoritative — matches Python
+      // (`impl/evm/base.py:830-833` returns `EvmGasPricing(gas_price=...)`
+      // for the legacy branch). Populating maxFeePerGas/maxPriorityFeePerGas
+      // as duplicates of gasPrice would let a consumer build a type-2 tx
+      // that pays the full gasPrice as a tip *on top of* base fee.
+      return new EvmGasEstimate({ gasPrice: scaled });
     }
 
     // 1559 path — mirrors omnichain-py get_1559_fees (impl/evm/base.py:1098-1132).
