@@ -1,4 +1,5 @@
 import { Psbt } from 'bitcoinjs-lib';
+import Decimal from 'decimal.js';
 
 import { Chain, CreateTransferRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
@@ -6,10 +7,11 @@ import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
 import { Token } from '../token.ts';
 import {
-  BalanceChange,
-  TransactionStatus,
+  AssetBalanceChange,
+  NestedBalanceChanges,
   TransactionStatusTypes,
 } from '../transaction_status.ts';
+import { UtxoTransactionStatus } from './utxo_transaction_status.ts';
 
 import './ecc.ts';
 import {
@@ -213,49 +215,60 @@ export class UtxoChain extends Chain {
     return this.chainTipProvider.getChainTipHeight();
   }
 
-  async getTransactionStatus(txHash: string): Promise<TransactionStatus> {
+  async getTransactionStatus(txHash: string): Promise<UtxoTransactionStatus> {
     try {
       const tx = await this.rawTxProvider.getTransaction(txHash);
-      const status =
-        tx.confirmations === 0
-          ? TransactionStatusTypes.Pending
-          : TransactionStatusTypes.Success;
+      const isPending = tx.confirmations === 0;
 
+      if (isPending) {
+        return new UtxoTransactionStatus({
+          chainId: this.chainId,
+          status: TransactionStatusTypes.Pending,
+          confirmationAt: null,
+          balanceChanges: null,
+          confirmations: 0,
+        });
+      }
+
+      // Outputs-only per-address native deltas. Full input-side accounting
+      // to compute net native change (Python's `_native_balance_changes`
+      // parity) is deferred — see SINAN_OPEN_QUESTIONS.md.
+      const balanceChanges: NestedBalanceChanges = new Map();
       const perAddressSats = new Map<string, bigint>();
       for (const out of tx.vout) {
         if (!out.address) continue;
         perAddressSats.set(
           out.address,
-          (perAddressSats.get(out.address) ?? 0n) + BigInt(out.valueSats)
+          (perAddressSats.get(out.address) ?? 0n) + BigInt(out.valueSats),
         );
       }
-      const balanceChanges: BalanceChange[] = [];
-      for (const [address, amount] of perAddressSats) {
-        balanceChanges.push({ address, token: this._nativeToken, amount });
+      for (const [address, sats] of perAddressSats) {
+        const hr = new Decimal(sats.toString()).div(
+          new Decimal(10).pow(this._nativeToken.decimals),
+        );
+        AssetBalanceChange.upsert(
+          balanceChanges,
+          address,
+          this._nativeToken,
+          new AssetBalanceChange(hr, this._nativeToken.decimals),
+        );
       }
 
-      return {
-        status,
-        confirmations: tx.confirmations,
-        blockNumber: tx.blockHeight,
-        txTimestamp: tx.blockTime,
+      return new UtxoTransactionStatus({
+        chainId: this.chainId,
+        status: TransactionStatusTypes.Success,
+        confirmationAt: tx.blockTime,
         balanceChanges,
-        gasFee:
-          tx.fees !== null
-            ? { token: this._nativeToken, amount: BigInt(tx.fees.absoluteSats) }
-            : null,
-        errorInfo: null,
-      };
+        confirmations: tx.confirmations,
+      });
     } catch (err) {
-      return {
+      return new UtxoTransactionStatus({
+        chainId: this.chainId,
         status: TransactionStatusTypes.NotFound,
-        confirmations: 0,
-        blockNumber: null,
-        txTimestamp: null,
-        balanceChanges: [],
-        gasFee: null,
-        errorInfo: { reason: (err as Error).message },
-      };
+        confirmationAt: null,
+        balanceChanges: null,
+        error: { reason: (err as Error).message },
+      });
     }
   }
 

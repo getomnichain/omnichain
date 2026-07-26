@@ -14,13 +14,16 @@ import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { Priority } from '../priority.ts';
 import { EvmGasEstimate } from './evm_gas_estimate.ts';
 import {
-  BalanceChange,
-  GasFee,
+  AssetBalanceChange,
+  NestedBalanceChanges,
   TransactionErrorInfo,
-  TransactionStatus,
-  TransactionStatusType,
   TransactionStatusTypes,
 } from '../transaction_status.ts';
+import {
+  EvmParsedTransactionLog,
+  EvmTransactionGasFees,
+  EvmTransactionStatus,
+} from './evm_transaction_status.ts';
 import { EvmAddress } from './evm_address.ts';
 import { EvmToken } from './evm_token.ts';
 import { UnsignedEvmTransaction } from './unsigned_evm_transaction.ts';
@@ -446,38 +449,67 @@ export class EvmChain extends Chain {
     }
   }
 
-  async getTransactionStatus(txHash: string): Promise<TransactionStatus> {
+  async getTransactionStatus(txHash: string): Promise<EvmTransactionStatus> {
     const provider = this.getProvider();
     let tx: TransactionResponse | null = null;
     let receipt: TransactionReceipt | null = null;
-    let latestBlock: number = 0;
     try {
-      [tx, receipt, latestBlock] = await Promise.all([
+      [tx, receipt] = await Promise.all([
         provider.getTransaction(txHash),
         provider.getTransactionReceipt(txHash),
-        provider.getBlockNumber(),
       ]);
     } catch (err) {
       throw this.rpcError(`Failed to read tx ${txHash}`, err, { txHash });
     }
 
-    if (tx === null && receipt === null) return emptyStatus(TransactionStatusTypes.NotFound);
-    if (receipt === null) return emptyStatus(TransactionStatusTypes.Pending);
+    if (tx === null && receipt === null) return EvmTransactionStatus.notFound(this.chainId, null);
+    if (receipt === null) return EvmTransactionStatus.pending(this.chainId);
 
-    const statusType: TransactionStatusType =
-      receipt.status === 1 ? TransactionStatusTypes.Success : TransactionStatusTypes.Failed;
-    const confirmations = Math.max(0, latestBlock - receipt.blockNumber + 1);
-    const gasFeeAmount = receipt.gasUsed * receipt.gasPrice;
-    const gasFee: GasFee = { token: this._nativeToken, amount: gasFeeAmount };
+    const succeeded = receipt.status === 1;
 
-    const nativeValue =
-      statusType === TransactionStatusTypes.Success ? (tx?.value ?? 0n) : 0n;
-    let balanceChanges: BalanceChange[];
+    let inclusionAt: Date = new Date(0);
+    try {
+      const block = await provider.getBlock(receipt.blockNumber);
+      if (block?.timestamp !== undefined) {
+        inclusionAt = new Date(Number(block.timestamp) * 1000);
+      }
+    } catch {
+      // leave inclusionAt as epoch
+    }
+
+    const fees = new EvmTransactionGasFees({
+      gasLimit: tx?.gasLimit ?? receipt.gasUsed,
+      gasLimitUsed: receipt.gasUsed,
+      effectiveGasPrice: receipt.gasPrice,
+      gasPrice: tx?.gasPrice ?? undefined,
+      maxFeePerGas: tx?.maxFeePerGas ?? undefined,
+      maxPriorityFeePerGas: tx?.maxPriorityFeePerGas ?? undefined,
+    });
+
+    const logs: EvmParsedTransactionLog[] = (receipt.logs ?? []).map(
+      (l) => new EvmParsedTransactionLog(l.address, [...l.topics], l.data),
+    );
+
+    if (!succeeded) {
+      const errorInfo = (await extractRevertInfo(provider, tx, receipt)) ?? {
+        code: 'REVERTED',
+      };
+      return EvmTransactionStatus.failed({
+        chainId: this.chainId,
+        inclusionAt,
+        error: errorInfo,
+        fees,
+      });
+    }
+
+    const nativeValue = tx?.value ?? 0n;
+    let balanceChanges: NestedBalanceChanges;
     try {
       balanceChanges = await this.decodeBalanceChanges({
         from: tx ? tx.from : (receipt.from ?? ''),
         to: tx?.to ?? receipt.to ?? null,
         value: nativeValue,
+        gasCost: fees.totalGasInWei,
         receipt,
       });
     } catch (err) {
@@ -490,39 +522,23 @@ export class EvmChain extends Chain {
       );
     }
 
-    const errorInfo: TransactionErrorInfo | null =
-      statusType === TransactionStatusTypes.Failed
-        ? await extractRevertInfo(provider, tx, receipt)
-        : null;
-
-    let txTimestamp: Date | null = null;
-    try {
-      const block = await provider.getBlock(receipt.blockNumber);
-      if (block?.timestamp !== undefined) {
-        txTimestamp = new Date(Number(block.timestamp) * 1000);
-      }
-    } catch {
-      txTimestamp = null;
-    }
-
-    return {
-      status: statusType,
-      confirmations,
-      blockNumber: receipt.blockNumber,
-      txTimestamp,
+    return EvmTransactionStatus.successful({
+      chainId: this.chainId,
+      inclusionAt,
       balanceChanges,
-      gasFee,
-      errorInfo,
-    };
+      logs,
+      fees,
+    });
   }
 
   async decodeBalanceChanges(args: {
     from: string;
     to: string | null;
     value: bigint;
+    gasCost: bigint;
     receipt: TransactionReceipt;
-  }): Promise<BalanceChange[]> {
-    const { from, to, value, receipt } = args;
+  }): Promise<NestedBalanceChanges> {
+    const { from, to, value, gasCost, receipt } = args;
     if (!receipt || !Array.isArray(receipt.logs)) {
       throw new ChainError(
         ChainErrorKinds.TransactionDecodeFailed,
@@ -531,13 +547,17 @@ export class EvmChain extends Chain {
       );
     }
 
-    const changes = new Map<string, bigint>();
+    const rawChanges = new Map<string, Map<string, bigint>>();
     const fromAddr = (from ?? '').toLowerCase();
     const toAddr = to ? to.toLowerCase() : null;
 
+    // Sender's native debit = value + gasCost (matches Python
+    // impl/evm/base.py:_get_balance_changes fee-inclusive semantics).
+    if (fromAddr) {
+      addRaw(rawChanges, fromAddr, '', -(value + gasCost));
+    }
     if (value > 0n && toAddr && toAddr !== fromAddr) {
-      addChange(changes, '', fromAddr, -value);
-      addChange(changes, '', toAddr, value);
+      addRaw(rawChanges, toAddr, '', value);
     }
 
     const tokenContracts = new Set<string>();
@@ -569,20 +589,24 @@ export class EvmChain extends Chain {
 
     for (const t of transferLogs) {
       if (t.from !== t.to) {
-        addChange(changes, t.contract, t.from, -t.amount);
-        addChange(changes, t.contract, t.to, t.amount);
+        addRaw(rawChanges, t.from, t.contract, -t.amount);
+        addRaw(rawChanges, t.to, t.contract, t.amount);
       }
     }
 
-    const result: BalanceChange[] = [];
-    for (const [key, amount] of changes) {
-      if (amount === 0n) continue;
-      const sep = key.indexOf('|');
-      const tokenKey = key.slice(0, sep);
-      const address = key.slice(sep + 1);
-      const token = tokenKey === '' ? this._nativeToken : tokensByContract.get(tokenKey);
-      if (!token) continue;
-      result.push({ address, token, amount });
+    const result: NestedBalanceChanges = new Map();
+    for (const [wallet, perTokenAddr] of rawChanges) {
+      for (const [tokenAddr, delta] of perTokenAddr) {
+        if (delta === 0n) continue;
+        const token = tokenAddr === '' ? this._nativeToken : tokensByContract.get(tokenAddr);
+        if (!token) continue;
+        AssetBalanceChange.upsert(
+          result,
+          wallet,
+          token,
+          AssetBalanceChange.fromMr(delta, token.decimals),
+        );
+      }
     }
     return result;
   }
@@ -626,21 +650,18 @@ export class EvmChain extends Chain {
   }
 }
 
-function addChange(map: Map<string, bigint>, tokenKey: string, address: string, delta: bigint): void {
-  const key = `${tokenKey}|${address}`;
-  map.set(key, (map.get(key) ?? 0n) + delta);
-}
-
-function emptyStatus(status: TransactionStatusType): TransactionStatus {
-  return {
-    status,
-    confirmations: null,
-    blockNumber: null,
-    txTimestamp: null,
-    balanceChanges: [],
-    gasFee: null,
-    errorInfo: null,
-  };
+function addRaw(
+  container: Map<string, Map<string, bigint>>,
+  wallet: string,
+  tokenAddr: string,
+  delta: bigint,
+): void {
+  let perToken = container.get(wallet);
+  if (!perToken) {
+    perToken = new Map();
+    container.set(wallet, perToken);
+  }
+  perToken.set(tokenAddr, (perToken.get(tokenAddr) ?? 0n) + delta);
 }
 
 const ERROR_STRING_SELECTOR = '0x08c379a0';

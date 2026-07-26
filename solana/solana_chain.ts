@@ -23,11 +23,13 @@ import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
 import {
-  BalanceChange,
-  GasFee,
-  TransactionStatus,
-  TransactionStatusTypes,
+  AssetBalanceChange,
+  NestedBalanceChanges,
 } from '../transaction_status.ts';
+import {
+  SolanaTransactionFees,
+  SolanaTransactionStatus,
+} from './solana_transaction_status.ts';
 import { SolanaAddress } from './solana_address.ts';
 import { SolanaToken } from './solana_token.ts';
 import { UnsignedSolanaTransaction } from './unsigned_solana_transaction.ts';
@@ -568,7 +570,7 @@ export class SolanaChain extends Chain {
     return /blockhash not found|expired blockhash|blockhash.*expired/i.test(msg);
   }
 
-  async getTransactionStatus(txHash: string): Promise<TransactionStatus> {
+  async getTransactionStatus(txHash: string): Promise<SolanaTransactionStatus> {
     const connection = this.getConnection();
     let tx;
     try {
@@ -586,31 +588,71 @@ export class SolanaChain extends Chain {
     }
     if (!tx) {
       // Could be still propagating (Processed but not yet Confirmed); fall back to signature
-      // status before declaring NotFound.
+      // status before declaring NotFound. Fees/logs cannot be reconstructed from a
+      // signature-status alone, so success/failed cases from this fallback path
+      // still map to pending/notFound with no fees.
       const sig = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
-      if (!sig || !sig.value) return emptyStatus(TransactionStatusTypes.NotFound);
-      if (sig.value.confirmationStatus === 'finalized' || sig.value.confirmationStatus === 'confirmed') {
-        return emptyStatus(sig.value.err ? TransactionStatusTypes.Failed : TransactionStatusTypes.Success);
+      if (!sig || !sig.value) return SolanaTransactionStatus.notFound(this.chainId);
+      if (
+        sig.value.confirmationStatus === 'finalized' ||
+        sig.value.confirmationStatus === 'confirmed'
+      ) {
+        // Signature reports settled but full tx isn't fetchable — treat as
+        // notFound with the reported err (if any) rather than success without
+        // fees/balance-changes.
+        return SolanaTransactionStatus.notFound(
+          this.chainId,
+          sig.value.err ? { code: 'REVERTED', reason: JSON.stringify(sig.value.err) } : null,
+        );
       }
-      return emptyStatus(TransactionStatusTypes.Pending);
+      return SolanaTransactionStatus.pending(this.chainId);
     }
-    const slot = tx.slot;
-    const tipSlot = await connection.getSlot('confirmed');
-    const confirmations = Math.max(0, tipSlot - slot);
-    const status = tx.meta?.err ? TransactionStatusTypes.Failed : TransactionStatusTypes.Success;
+
+    if (!tx.meta) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionDecodeFailed,
+        `Solana tx ${txHash} returned without meta — cannot construct fees`,
+        { chainId: this.chainId, txHash },
+      );
+    }
+
+    const accounts = tx.transaction.message.staticAccountKeys.map((k) => k.toBase58());
+    const feePayer = accounts[0] ?? '';
+    if (feePayer.length === 0) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionDecodeFailed,
+        `Solana tx ${txHash} has no fee_payer account`,
+        { chainId: this.chainId, txHash },
+      );
+    }
+    const feeLamports = BigInt(tx.meta.fee);
+    const computeUnitsConsumed = BigInt(tx.meta.computeUnitsConsumed ?? 0);
+    const preLamports = BigInt(tx.meta.preBalances?.[0] ?? 0);
+    const postLamports = BigInt(tx.meta.postBalances?.[0] ?? 0);
+    const fees = new SolanaTransactionFees({
+      feePayer,
+      feeLamports,
+      computeUnitsConsumed: computeUnitsConsumed > 0n ? computeUnitsConsumed : 1n,
+      netLamportsChangeByFeePayer: postLamports - preLamports,
+    });
+    const inclusionAt = tx.blockTime ? new Date(tx.blockTime * 1000) : new Date(0);
+
+    if (tx.meta.err) {
+      return SolanaTransactionStatus.failed({
+        chainId: this.chainId,
+        inclusionAt,
+        error: { code: 'REVERTED', reason: JSON.stringify(tx.meta.err) },
+        fees,
+      });
+    }
+
     const balanceChanges = this._decodeBalanceChanges(tx);
-    const gasFee: GasFee | null = tx.meta
-      ? { token: this._nativeToken, amount: BigInt(tx.meta.fee) }
-      : null;
-    return {
-      status,
-      confirmations,
-      blockNumber: slot,
-      txTimestamp: tx.blockTime ? new Date(tx.blockTime * 1000) : null,
+    return SolanaTransactionStatus.successful({
+      chainId: this.chainId,
+      inclusionAt,
       balanceChanges,
-      gasFee,
-      errorInfo: tx.meta?.err ? { code: 'REVERTED' } : null,
-    };
+      fees,
+    });
   }
 
   async getChainTipHeight(): Promise<number> {
@@ -759,83 +801,80 @@ export class SolanaChain extends Chain {
    */
   _decodeBalanceChanges(
     tx: NonNullable<Awaited<ReturnType<Connection['getTransaction']>>>,
-  ): BalanceChange[] {
-    const changes: BalanceChange[] = [];
+  ): NestedBalanceChanges {
+    const result: NestedBalanceChanges = new Map();
+    if (!tx.meta) return result;
+
     const accounts = tx.transaction.message.staticAccountKeys.map((k) => k.toBase58());
-    if (tx.meta) {
-      const pre = tx.meta.preBalances ?? [];
-      const post = tx.meta.postBalances ?? [];
-      for (let i = 0; i < accounts.length; i++) {
-        const delta = BigInt(post[i] ?? 0) - BigInt(pre[i] ?? 0);
-        if (delta !== 0n) {
-          changes.push({ address: accounts[i], token: this._nativeToken, amount: delta });
-        }
-      }
-      const preTok = tx.meta.preTokenBalances ?? [];
-      const postTok = tx.meta.postTokenBalances ?? [];
-      const tokenKey = (b: (typeof preTok)[number]) =>
-        `${b.accountIndex}|${b.mint}`;
-      // Track the token account's owner (a wallet) and the mint's decimals,
-      // both surfaced verbatim by getTransaction's parsed token-balance meta.
-      const byKey = new Map<
-        string,
-        { pre: bigint; post: bigint; mint: string; owner: string | null; decimals: number }
-      >();
-      for (const b of preTok) {
-        byKey.set(tokenKey(b), {
-          pre: BigInt(b.uiTokenAmount.amount),
-          post: 0n,
+    const pre = tx.meta.preBalances ?? [];
+    const post = tx.meta.postBalances ?? [];
+    for (let i = 0; i < accounts.length; i++) {
+      const delta = BigInt(post[i] ?? 0) - BigInt(pre[i] ?? 0);
+      if (delta === 0n) continue;
+      AssetBalanceChange.upsert(
+        result,
+        accounts[i],
+        this._nativeToken,
+        AssetBalanceChange.fromMr(delta, this._nativeToken.decimals),
+      );
+    }
+
+    const preTok = tx.meta.preTokenBalances ?? [];
+    const postTok = tx.meta.postTokenBalances ?? [];
+    const tokenKey = (b: (typeof preTok)[number]) => `${b.accountIndex}|${b.mint}`;
+    // Track the token account's owner (a wallet) and the mint's decimals,
+    // both surfaced verbatim by getTransaction's parsed token-balance meta.
+    const byKey = new Map<
+      string,
+      { pre: bigint; post: bigint; mint: string; owner: string | null; decimals: number }
+    >();
+    for (const b of preTok) {
+      byKey.set(tokenKey(b), {
+        pre: BigInt(b.uiTokenAmount.amount),
+        post: 0n,
+        mint: b.mint,
+        owner: b.owner ?? null,
+        decimals: b.uiTokenAmount.decimals,
+      });
+    }
+    for (const b of postTok) {
+      const k = tokenKey(b);
+      const cur = byKey.get(k);
+      if (cur) {
+        cur.post = BigInt(b.uiTokenAmount.amount);
+        // Prefer the post-owner if the pre entry lacked one (account
+        // freshly initialized inside the tx).
+        if (cur.owner === null && b.owner) cur.owner = b.owner;
+      } else {
+        byKey.set(k, {
+          pre: 0n,
+          post: BigInt(b.uiTokenAmount.amount),
           mint: b.mint,
           owner: b.owner ?? null,
           decimals: b.uiTokenAmount.decimals,
         });
       }
-      for (const b of postTok) {
-        const k = tokenKey(b);
-        const cur = byKey.get(k);
-        if (cur) {
-          cur.post = BigInt(b.uiTokenAmount.amount);
-          // Prefer the post-owner if the pre entry lacked one (account
-          // freshly initialized inside the tx).
-          if (cur.owner === null && b.owner) cur.owner = b.owner;
-        } else {
-          byKey.set(k, {
-            pre: 0n,
-            post: BigInt(b.uiTokenAmount.amount),
-            mint: b.mint,
-            owner: b.owner ?? null,
-            decimals: b.uiTokenAmount.decimals,
-          });
-        }
-      }
-      for (const { pre: p, post: q, mint, owner, decimals } of byKey.values()) {
-        const delta = q - p;
-        if (delta === 0n) continue;
-        // Skip entries where the token-account owner is unknown — filling in
-        // the mint as if it were a wallet address would be actively wrong.
-        // Matches Python's behavior in impl/solana/base.py:704-706.
-        if (owner === null) continue;
-        // Symbol is not surfaced by getTransaction; use an UNKNOWN placeholder
-        // built from the first four mint characters. Mirrors the EVM decoder's
-        // UNKNOWN_<hex-slice> shape (evm_chain.ts:480) so consumers can spot
-        // unresolved tokens uniformly.
-        const symbol = `UNKNOWN_${mint.slice(0, 4)}`;
-        const splToken = new SolanaToken(this.chainId, symbol, mint, decimals);
-        changes.push({ address: owner, token: splToken, amount: delta });
-      }
     }
-    return changes;
+    for (const { pre: p, post: q, mint, owner, decimals } of byKey.values()) {
+      const delta = q - p;
+      if (delta === 0n) continue;
+      // Skip entries where the token-account owner is unknown — filling in
+      // the mint as if it were a wallet address would be actively wrong.
+      // Matches Python's behavior in impl/solana/base.py:704-706.
+      if (owner === null) continue;
+      // Symbol is not surfaced by getTransaction; use an UNKNOWN placeholder
+      // built from the first four mint characters. Mirrors the EVM decoder's
+      // UNKNOWN_<hex-slice> shape (evm_chain.ts:480) so consumers can spot
+      // unresolved tokens uniformly.
+      const symbol = `UNKNOWN_${mint.slice(0, 4)}`;
+      const splToken = new SolanaToken(this.chainId, symbol, mint, decimals);
+      AssetBalanceChange.upsert(
+        result,
+        owner,
+        splToken,
+        AssetBalanceChange.fromMr(delta, decimals),
+      );
+    }
+    return result;
   }
-}
-
-function emptyStatus(status: TransactionStatus['status']): TransactionStatus {
-  return {
-    status,
-    confirmations: 0,
-    blockNumber: null,
-    txTimestamp: null,
-    balanceChanges: [],
-    gasFee: null,
-    errorInfo: null,
-  };
 }
