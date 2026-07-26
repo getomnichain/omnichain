@@ -66,10 +66,10 @@ migrations will land in a separate section here.
 - **Python source**: `impl/solana/base.py:420-434`
 - **Consumer action**: additive — existing setups keep working. Consumers
   can now set `SOLANA_2000_RPC_URL` for per-cluster overrides.
-- **Note**: TS uses `Math.abs(chainId)` in the key because negative chainIds
-  produce shell-invalid env-var names. Python uses signed IDs (both are
-  consulted for safety). Divergence raised upstream in
-  `SINAN_OPEN_QUESTIONS.md`.
+- **Note**: TS matches Python's signed-chainId env-var name exactly
+  (`SOLANA_-2000_RPC_URL`). Shell operators (bash/zsh/sh can't set that
+  key syntax) must use dotenv, Docker, or k8s to inject it. Divergence
+  noted in `SINAN_OPEN_QUESTIONS.md` for upstream discussion.
 
 ---
 
@@ -128,11 +128,11 @@ migrations will land in a separate section here.
   - Legacy multiplier: `SLOW=1.0×`, `NORMAL=1.2×`, `FAST=1.5×` (was 2.0×)
 - **Python source**: `impl/evm/base.py:440-444`
 - **Consumer action**: `FAST` fee suggestions become materially lower.
-- **Known deviations from Python** (tracked in `SINAN_OPEN_QUESTIONS.md`):
-  - TS averages the reward-tip rows; Python sorts and picks p90.
-  - TS uses a 0.05 gwei empty-reward floor; Python uses 2 gwei.
-  - TS applies the legacy-multiplier on the 1559 fallback path; Python only
-    on the pure legacy path.
+- **1559 aggregation**: sort tips across the 10 sampled blocks, pick the p90
+  element. Python parity (`impl/evm/base.py:1122-1125`).
+- **Empty-reward fallback**: 2 gwei (`impl/evm/base.py:1124`).
+- **RPC failure**: bubbles as `ChainError(RpcError)` — no defensive
+  `getFeeData × multiplier` fallback. Python bubbles too.
 
 ---
 
