@@ -51,15 +51,21 @@ for (const id of CHAIN_FAMILY_TRON) networkTypeRegistry.set(id, NetworkType.TRON
  * Register (or re-register) a chainId's NetworkType. Idempotent for the SAME
  * NetworkType; throws `ChainError(InvalidArgument)` on a conflict — silently
  * flipping a chainId's family would let `addressFor` parse addresses under
- * the wrong rules (e.g. a Solana chainId becoming BTC would run base58
- * addresses through BTC's address grammar).
+ * the wrong rules.
+ *
+ * Uses the synthesized `tryNetworkTypeOf` for the conflict check, so
+ * "positive ids are EVM unless explicitly unregistered" is a single rule
+ * enforced in one place. Import-order-independent: whether or not the
+ * `EvmChain` catalogue has evaluated yet, `registerNonEvmChain(1329,
+ * COSMOS)` throws unless the consumer has called `unregisterChain(1329)`
+ * first.
  */
 export function registerNonEvmChain(chainId: number, networkType: NetworkType): void {
-  const existing = networkTypeRegistry.get(chainId);
+  const existing = tryNetworkTypeOf(chainId);
   if (existing !== undefined && existing !== networkType) {
     throw new ChainError(
       ChainErrorKinds.InvalidArgument,
-      `chainId ${chainId} already registered as ${existing}; refusing to reclassify as ${networkType}`,
+      `chainId ${chainId} already registered as ${existing}; refusing to reclassify as ${networkType}. Call unregisterChain(${chainId}) first if this is intentional.`,
       { chainId },
     );
   }

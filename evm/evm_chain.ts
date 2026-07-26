@@ -9,7 +9,7 @@ import {
   verifyMessage as ethersVerifyMessage,
 } from 'ethers';
 
-import { NetworkType, registerNonEvmChain, tryNetworkTypeOf } from '../network_type.ts';
+import { NetworkType, tryNetworkTypeOf } from '../network_type.ts';
 
 import { Chain, CreateTransferRequest, VerifyMessageSignatureRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
@@ -163,11 +163,13 @@ export class EvmChain extends Chain {
     this.nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;
     this.nativeTransferGasMultiplier = init.nativeTransferGasMultiplier ?? 1.4;
     this._nativeToken = EvmToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 18);
-    // Register EVM claim so a later `registerNonEvmChain(chainId, SOLANA)`
-    // (etc.) hits the conflict guard rather than silently reclassifying the
-    // chainId while an EvmChain instance is live for it. Symmetric with the
-    // constructor-side registrations in SolanaChain and UtxoChain.
-    registerNonEvmChain(init.chainId, NetworkType.EVM);
+    // NOTE: no `registerNonEvmChain(id, EVM)` call — a module-scope write on
+    // 48 pre-baked chains would let a consumer's earlier
+    // `registerNonEvmChain(id, COSMOS)` turn `import '@getomnichain/omnichain'`
+    // into a permanently-poisoned module. Conflict detection lives in a
+    // single place: `registerNonEvmChain` reads `tryNetworkTypeOf` (which
+    // synthesizes EVM for positive-unregistered ids), so claiming a positive
+    // id for a non-EVM family requires `unregisterChain(id)` first.
   }
 
   get nativeToken(): EvmToken {

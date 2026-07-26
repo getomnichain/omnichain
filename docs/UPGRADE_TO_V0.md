@@ -150,14 +150,27 @@ migrations will land in a separate section here.
   - TON family: `-4000`, `-4001`
   - Tron family: `728126428`, `2494104990`
 - Diff your custom chainIds against these before upgrading.
-- **Positive chainId collisions**: `EvmChain` construction now also
-  registers its `chainId` as `NetworkType.EVM`. So `evm_chains.ts`
-  performs 48 registry writes at module load. If a consumer has claimed
-  one of those positive chainIds for a different family (e.g. Cosmos
-  Sei on `1329`), that consumer's earlier `registerNonEvmChain(1329,
-  COSMOS)` will conflict with the SDK's `EvmChain({ chainId: 1329 })`
-  at import time. Escape hatch: `unregisterChain(1329)` before
-  re-registering, or `networkTypeRegistrations()` to pre-flight diff.
+- **Positive chainId conflicts** — `registerNonEvmChain` treats every
+  positive id as EVM by default (via `tryNetworkTypeOf`), so
+  `registerNonEvmChain(1329, COSMOS)` throws unless
+  `unregisterChain(1329)` has been called first. Order-independent — the
+  SDK barrel does NOT self-register EVM chainIds at module load, so
+  `import '@getomnichain/omnichain'` succeeds regardless of the
+  consumer's prior registrations. Pre-flight diff with
+  `networkTypeRegistrations()`.
+- **Chain-ID collision hazard**: the SDK now reserves negative-ID ranges
+  from Python's `chain_ids.py` (BTC `-1..-3`, Solana `-2000..-2002`,
+  TON `-4000..-4001`). Notable overlaps consumers must NOT reuse:
+  - TON's canonical testnet `global_id` in native TON tooling is `-3`,
+    but the SDK seeds `-3` as `BTC signet`. Use `CHAIN_ID_TON_TESTNET`
+    (`-4001`) for TON in this SDK.
+  - Constructing `bitcoinRegtestChain({ chainId: -3, … })` (any
+    non-signet params under `-3`) now throws from
+    `registerBtcChainParams`. Use a distinct chainId for regtest.
+- **COSMOS chainIds no longer route to `EvmAddress`**: consumers that
+  had registered a Cosmos chainId and relied on `0x…` validation now
+  see `ChainError(ChainNotSupported)` from `addressFor` / `false` from
+  `@IsAddress`. Same fail-closed rationale as Tron.
 
 ## Tron chainIds no longer route to `EvmAddress`
 
