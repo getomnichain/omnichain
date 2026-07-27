@@ -100,6 +100,16 @@ export class AssetBalanceChange {
     }
     const existing = perWallet.get(hash);
     if (!existing) {
+      // Symmetric with the zero-net merge branch below: don't create a
+      // "no change" row for a zero delta. balanceChangesExcludingFees
+      // can hit this when a fee_payer with no existing row is credited
+      // with fee_lamports === 0n (subsidised chains). If the perWallet
+      // Map was just created for this insert, drop it to keep the
+      // container empty.
+      if (change.balanceChangeMr === 0n) {
+        if (perWallet.size === 0) balanceChanges.delete(wallet);
+        return;
+      }
       perWallet.set(hash, { token, change });
       return;
     }
@@ -123,7 +133,6 @@ export class AssetBalanceChange {
 export interface TransactionErrorInfo {
   code?: string;
   reason?: string;
-  cause?: unknown;
 }
 
 export interface TransactionStatusInit {

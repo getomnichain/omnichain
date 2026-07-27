@@ -10,7 +10,7 @@ import {
 import { NetworkType, tryNetworkTypeOf } from '../network_type.ts';
 
 import { Chain, CreateTransferRequest } from '../chain.base.ts';
-import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { Priority } from '../priority.ts';
 import { EvmGasEstimate } from './evm_gas_estimate.ts';
 import {
@@ -93,6 +93,15 @@ export interface EvmChainInit {
   rpcUrl?: string;
   supportsEip1559?: boolean;
   /**
+   * OP-stack rollups (Optimism/Base/Unichain/WorldChain/Boba/Sonic and
+   * similar) charge an additional L1 data fee returned as `l1Fee` on the
+   * raw receipt JSON. Ethers v6 strips `l1Fee`/`l1GasUsed`/`l1GasPrice`
+   * from its parsed `TransactionReceipt` shape (whitelist-based), so
+   * reading it requires a raw `eth_getTransactionReceipt` call. Flag
+   * defaults to `false`; enable on chains that carry the L1 fee.
+   */
+  hasL1Fee?: boolean;
+  /**
    * Default gas limit for a native (non-ERC20) transfer. Mirrors Python default 21_000
    * (impl/evm/base.py:479). Scroll overrides to 360_000 etc.
    *
@@ -116,6 +125,7 @@ export interface EvmChainInit {
 export class EvmChain extends Chain {
   readonly rpcUrl: string | undefined;
   readonly supportsEip1559: boolean;
+  readonly hasL1Fee: boolean;
   /**
    * Default gas limit for native transfers. Matches Python's public attribute
    * at `impl/evm/base.py:495` — v0 does not consume it inside the TS SDK
@@ -160,6 +170,7 @@ export class EvmChain extends Chain {
     );
     this.rpcUrl = init.rpcUrl;
     this.supportsEip1559 = init.supportsEip1559 ?? true;
+    this.hasL1Fee = init.hasL1Fee ?? false;
     this.nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;
     this.nativeTransferGasMultiplier = init.nativeTransferGasMultiplier ?? 1.4;
     this._nativeToken = EvmToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 18);
@@ -478,30 +489,33 @@ export class EvmChain extends Chain {
       // pass through consumer SLA/age math as a real inclusion time.
     }
 
-    // OP-stack rollups (Optimism/Base/Unichain/WorldChain/Boba/Sonic and
-    // similar) charge an additional L1 data fee that the receipt exposes
-    // as `l1Fee` (bigint). It's a real debit from the sender's native
-    // balance and must be included in `gasCost` for balanceChanges to
-    // match the on-chain delta. Non-OP receipts don't have the field.
-    const l1Fee = ((): bigint => {
-      const raw = (receipt as unknown as { l1Fee?: unknown }).l1Fee;
-      if (typeof raw === 'bigint') return raw;
-      if (typeof raw === 'string' && raw.length > 0) {
-        try {
-          return BigInt(raw);
-        } catch {
-          return 0n;
-        }
+    // OP-stack rollups charge an L1 data fee (`l1Fee` on the raw receipt).
+    // ethers v6 strips it in its parsed TransactionReceipt shape, so a
+    // second raw fetch is required. Gated on `hasL1Fee` to avoid the extra
+    // round-trip on L1 chains.
+    let l1Fee = 0n;
+    if (this.hasL1Fee) {
+      try {
+        const raw = (await provider.send('eth_getTransactionReceipt', [txHash])) as
+          | Record<string, unknown>
+          | null;
+        const rawL1 = raw?.l1Fee;
+        if (typeof rawL1 === 'string' && rawL1.length > 0) l1Fee = BigInt(rawL1);
+        else if (typeof rawL1 === 'bigint') l1Fee = rawL1;
+        else if (typeof rawL1 === 'number') l1Fee = BigInt(rawL1);
+      } catch {
+        // Fall through with l1Fee=0. Consumers on hasL1Fee chains should
+        // treat a null/undefined `fees.l1FeeWei` as "provider did not
+        // surface it"; the sender native debit will be approximate on
+        // those receipts.
       }
-      if (typeof raw === 'number') return BigInt(raw);
-      return 0n;
-    })();
-    // gasLimit: prefer tx.gasLimit (the actual limit set by sender); fall
-    // back to receipt.gasUsed only when tx is unavailable — noted as
-    // "derived when tx body missing" (a wart pending a nullable field
-    // decision in a later card).
+    }
+    // gasLimit: the sender-set limit from tx.gasLimit. `null` when the tx
+    // body isn't available (pruned/receipt-only) — falling back to
+    // receipt.gasUsed here would fabricate a "100% utilization" that
+    // consumers can't distinguish from a real observation.
     const fees = new EvmTransactionGasFees({
-      gasLimit: tx?.gasLimit ?? receipt.gasUsed,
+      gasLimit: tx?.gasLimit ?? null,
       gasLimitUsed: receipt.gasUsed,
       effectiveGasPrice: receipt.gasPrice,
       gasPrice: tx?.gasPrice ?? undefined,
@@ -754,22 +768,3 @@ function envCandidatesFor(name: string, chainId: number): string[] {
   return [normalized, `EVM_${chainId}_RPC_URL`];
 }
 
-function sanitizeMessage(message: string, rpcUrl: string | null): string {
-  if (!rpcUrl) return message;
-  let host: string;
-  try {
-    const u = new URL(rpcUrl);
-    host = `${u.protocol}//${u.host}`;
-  } catch {
-    return message.replaceAll(rpcUrl, '<rpc>');
-  }
-  return message.replaceAll(rpcUrl, host);
-}
-
-function sanitizeCause(cause: unknown, rpcUrl: string | null): Error | undefined {
-  if (!(cause instanceof Error)) return undefined;
-  const safe = new Error(sanitizeMessage(cause.message, rpcUrl));
-  safe.name = cause.name;
-  if (cause.stack) safe.stack = sanitizeMessage(cause.stack, rpcUrl);
-  return safe;
-}

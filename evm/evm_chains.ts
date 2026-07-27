@@ -35,6 +35,7 @@ export const Optimism = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://optimistic.etherscan.io',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:22-28
@@ -81,6 +82,7 @@ export const Unichain = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://uniscan.xyz',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:58-64
@@ -108,6 +110,7 @@ export const Sonic = new EvmChain({
   blockTimeSeconds: 1,
   explorerBaseUrl: 'https://sonicscan.org',
   nativeSymbol: 'S',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:79-86
@@ -145,6 +148,7 @@ export const Boba = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://bobascan.com',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:108-114
@@ -163,6 +167,7 @@ export const WorldChain = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://worldscan.org',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:122-128
@@ -292,6 +297,7 @@ export const Base = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://basescan.org',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:223-230 — Python uses name="IOTA" (env: IOTA_RPC_URL)

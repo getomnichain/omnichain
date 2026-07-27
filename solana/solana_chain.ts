@@ -19,7 +19,7 @@ import {
 } from '@solana/spl-token';
 
 import { Chain, CreateTransferRequest } from '../chain.base.ts';
-import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
 import {
@@ -572,6 +572,17 @@ export class SolanaChain extends Chain {
 
   async getTransactionStatus(txHash: string): Promise<SolanaTransactionStatus> {
     const connection = this.getConnection();
+    // Best-effort read of the current rpc URL for message/cause scrubbing.
+    // readRpcUrl throws when nothing is configured; there'd be no
+    // network call in that case, but defensive null keeps the sanitizer
+    // total.
+    let scrubUrl: string | null = null;
+    try {
+      scrubUrl = this.readRpcUrl();
+    } catch {
+      scrubUrl = null;
+    }
+
     let tx;
     try {
       tx = await connection.getTransaction(txHash, {
@@ -579,11 +590,12 @@ export class SolanaChain extends Chain {
         maxSupportedTransactionVersion: 0,
       });
     } catch (err) {
+      const rawMsg = err instanceof Error ? err.message : String(err);
       throw new ChainError(
         ChainErrorKinds.RpcError,
-        `Failed to read Solana tx ${txHash}: ${(err as Error).message}`,
+        sanitizeMessage(`Failed to read Solana tx ${txHash}: ${rawMsg}`, scrubUrl),
         { chainId: this.chainId, txHash },
-        err,
+        sanitizeCause(err, scrubUrl),
       );
     }
     if (!tx) {
@@ -595,11 +607,12 @@ export class SolanaChain extends Chain {
       try {
         sig = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
       } catch (err) {
+        const rawMsg = err instanceof Error ? err.message : String(err);
         throw new ChainError(
           ChainErrorKinds.RpcError,
-          `Failed to read Solana signature status ${txHash}: ${err instanceof Error ? err.message : String(err)}`,
+          sanitizeMessage(`Failed to read Solana signature status ${txHash}: ${rawMsg}`, scrubUrl),
           { chainId: this.chainId, txHash },
-          err,
+          sanitizeCause(err, scrubUrl),
         );
       }
       if (!sig || !sig.value) return SolanaTransactionStatus.notFound(this.chainId);

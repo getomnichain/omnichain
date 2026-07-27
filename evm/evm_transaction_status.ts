@@ -8,7 +8,13 @@ import {
 } from '../transaction_status.ts';
 
 export interface EvmTransactionGasFeesInit {
-  gasLimit: bigint;
+  /**
+   * The sender-set gas limit (`tx.gasLimit`). Nullable because the tx body
+   * may be unavailable (pruned node, receipt-only fetch); passing
+   * `gasLimitUsed` here as a fallback would fabricate a "100% utilization"
+   * that consumers can't distinguish from a real observation.
+   */
+  gasLimit: bigint | null;
   gasLimitUsed: bigint;
   effectiveGasPrice: bigint;
   gasPrice?: bigint;
@@ -24,7 +30,7 @@ export interface EvmTransactionGasFeesInit {
 }
 
 export class EvmTransactionGasFees {
-  readonly gasLimit: bigint;
+  readonly gasLimit: bigint | null;
   readonly gasLimitUsed: bigint;
   readonly effectiveGasPrice: bigint;
   readonly gasPrice: bigint | undefined;
@@ -37,10 +43,10 @@ export class EvmTransactionGasFees {
     // Zero-gas / subsidised environments and pruned-node receipts return 0
     // for one or more of these fields; throwing there would turn
     // getTransactionStatus from "returns a status" into "throws".
-    if (init.gasLimit < 0n) {
+    if (init.gasLimit !== null && init.gasLimit < 0n) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        `EvmTransactionGasFees.gasLimit must be >= 0, got ${init.gasLimit}`,
+        `EvmTransactionGasFees.gasLimit must be >= 0 or null, got ${init.gasLimit}`,
       );
     }
     if (init.gasLimitUsed < 0n) {

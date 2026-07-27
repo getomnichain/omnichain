@@ -26,8 +26,8 @@ export type EvmGasEstimateInit = EvmLegacyGasEstimateInit | EvmEip1559GasEstimat
  * the wrong branch got runtime `undefined` with a non-null assertion
  * silencing the type system.
  *
- * Type-guards: `isLegacy(g)` and `isEip1559(g)` narrow the estimate to
- * its concrete shape at the call site.
+ * Type-guards: `isLegacyGasEstimate(g)` and `isEip1559GasEstimate(g)`
+ * narrow the estimate to its concrete shape at the call site.
  */
 export class EvmGasEstimate {
   readonly kind: EvmGasEstimateKind;

@@ -154,6 +154,19 @@ UTXO transactions return `status: 'Pending'` with `balanceChanges: null`
 path so BTC/LTC/DOGE consumers can still enumerate per-address output
 credits for 0-conf deposit detection.
 
+**UTXO `balanceChanges` semantics — gross credits, NOT net deltas**
+On EVM and Solana, `balanceChanges` are **net per-wallet deltas** (fee-
+inclusive on both). On UTXO, they are **gross output credits per
+receiving address** — the SDK cannot debit inputs because the raw-tx
+provider surface today returns only `vin.txid` + `vout`, without
+per-input address/value. Consequence: a hot-wallet withdrawal records
+that wallet's own **change output** as a positive `AssetBalanceChange`,
+NOT a net debit. A consumer iterating `balanceChanges` uniformly across
+chains — treating each row as a receipt — will book phantom deposits on
+every UTXO spend. Special-case UTXO or cross-reference `outputs` before
+booking. Full input-side accounting comes in the later phase that
+widens the UTXO provider surface.
+
 **UTXO NotFound signal** — `UtxoChain.getTransactionStatus` returns
 `UtxoTransactionStatus` with `status: 'NotFound'` for two provider-
 recognised not-found signals: Esplora/axios HTTP 404, and Bitcoin Core
@@ -229,17 +242,30 @@ consistent. See `SINAN_OPEN_QUESTIONS.md`.
 ## Changed: `EvmGasEstimate` — discriminated by `kind`
 
 Consumer dispatch on `chain.supportsEip1559` is no longer needed — the
-estimate carries its own shape tag.
+estimate is a class whose `kind` field discriminates which fee fields
+are populated. The four fee fields on the class are all `bigint | undefined`
+regardless of `kind` (TS class field types are structural, not narrowable
+by an in-class discriminant), so consumers **must** narrow through the
+exported guards to get typed access:
 
 ```ts
-type EvmGasEstimate =
-  | { kind: 'legacy';   units?: bigint; gasPrice: bigint }
-  | { kind: 'eip1559';  units?: bigint; maxFeePerGas: bigint; maxPriorityFeePerGas: bigint };
+import { isLegacyGasEstimate, isEip1559GasEstimate } from 'omnichain';
+
+// Class shape (bigint | undefined for each fee field):
+class EvmGasEstimate {
+  kind: 'legacy' | 'eip1559';
+  units: bigint | undefined;
+  gasPrice: bigint | undefined;
+  maxFeePerGas: bigint | undefined;
+  maxPriorityFeePerGas: bigint | undefined;
+}
 
 if (isEip1559GasEstimate(estimate)) {
+  // estimate.maxFeePerGas / maxPriorityFeePerGas are narrowed to bigint here.
   tx.maxFeePerGas = estimate.maxFeePerGas;
   tx.maxPriorityFeePerGas = estimate.maxPriorityFeePerGas;
 } else if (isLegacyGasEstimate(estimate)) {
+  // estimate.gasPrice is narrowed to bigint here.
   tx.gasPrice = estimate.gasPrice;
 }
 ```
