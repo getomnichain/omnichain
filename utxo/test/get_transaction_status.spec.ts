@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import { Transaction } from 'bitcoinjs-lib';
 
 import {
   CHAIN_ID_BITCOIN_MAINNET,
@@ -17,10 +18,23 @@ import {
 import type { RawTransactionView } from '../utxo.ts';
 import { UtxoChain } from '../utxo_chain.ts';
 
-// Real ~500-byte BTC tx hex for a virtualSize() sanity check. Consumers'
-// bitcoinjs-lib install parses this without any network calls.
-const REAL_TX_HEX =
-  '0100000001b76b41013a08add56bb2c8f96b16b12e6c4b96f3b9f2b4a7f6f39fbc27ffb18c000000006a47304402203a86a8f2f9c5d2b8b1e1e7d5f4c6a5b4a6c7d5b3c9a1e7f8f3d5a6b7c8d9e0f1022053c4b6a5c8d7e6f5b4a3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f10121026ec9a0f8a75f0d4b6c3d5e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8ffffffff0210270000000000001976a914b8a5c9d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b888ac00e1f505000000001976a914a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b088ac00000000';
+/** Build a real serialisable BTC tx hex programmatically. Prior hardcoded
+ * value in iter-5 was not a valid bitcoinjs-lib parse target and silently
+ * dropped the vsize test to the malformed-hex fallback. */
+const REAL_TX_HEX: string = (() => {
+  const tx = new Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.alloc(32, 1), 0);
+  // OP_DUP OP_HASH160 <20-byte hash> OP_EQUALVERIFY OP_CHECKSIG (P2PKH)
+  const p2pkh = Buffer.concat([
+    Buffer.from([0x76, 0xa9, 0x14]),
+    Buffer.alloc(20, 2),
+    Buffer.from([0x88, 0xac]),
+  ]);
+  tx.addOutput(p2pkh, 10000);
+  tx.addOutput(p2pkh, 100000000);
+  return tx.toHex();
+})();
 
 function makeProvider(overrides: {
   getTransaction?: () => Promise<RawTransactionView>;
@@ -217,6 +231,15 @@ describe('UtxoChain.getTransactionStatus — happy paths', () => {
     // vsize computed from the real hex.
     expect(typeof s.fees?.vsize).toBe('number');
     expect(s.fees?.vsize).toBeGreaterThan(0);
+  });
+
+  it('malformed tx.hex → vsize: null fallback (does not crash the status call)', async () => {
+    const chain = stubChain(async () => realTx({ hex: 'not-parseable-hex' }));
+    const s = await chain.getTransactionStatus('deadbeef');
+    expect(s.status).toBe(TransactionStatusTypes.Success);
+    expect(s.fees?.vsize).toBeNull();
+    // satsPerVByte should also degrade to null when vsize is null.
+    expect(s.fees?.satsPerVByte).toBeNull();
   });
 
   it('confirmed → Success with per-address output credits keyed by address', async () => {

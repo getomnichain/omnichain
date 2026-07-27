@@ -122,19 +122,31 @@ btcParamsByChainId.set(BigInt(CHAIN_ID_BITCOIN_SIGNET), BITCOIN_SIGNET_PARAMS);
  */
 export function registerBtcChainParams(chainId: bigint, params: BtcNetworkParams): void {
   const existing = btcParamsByChainId.get(chainId);
+  const isReserved = RESERVED_SEED_CHAIN_IDS.has(chainId);
   if (existing !== undefined && existing !== params) {
     if (!btcParamsShapeMatches(existing, params)) {
-      const reserved = RESERVED_SEED_CHAIN_IDS.has(chainId);
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        reserved
+        isReserved
           ? `BTC chainId ${chainId} is a reserved static seed; refusing to re-register with different params ('${existing.name}' vs '${params.name}'). Pick a distinct chainId for custom BTC-shaped params.`
           : `BTC chainId ${chainId} already registered with different identity-relevant params ('${existing.name}' vs '${params.name}'). Consumer must unregister first if intentional.`,
         { chainId: Number(chainId) },
       );
     }
+    // Reserved-id shape-match: return WITHOUT overwriting. The seed
+    // stays canonical (identity-equal to the exported BITCOIN_*_PARAMS
+    // constant); a consumer clone with the right shape doesn't replace
+    // the reference. Prevents post-registration mutation of the seed
+    // (`supportedDerivationPurposes.add(99)` on the passed clone would
+    // otherwise reach the seeded entry).
+    if (isReserved) return;
   }
-  btcParamsByChainId.set(chainId, params);
+  // Consumer-registered ids: defensive-copy the Set so caller mutations
+  // after registration can't reach the stored params.
+  btcParamsByChainId.set(chainId, {
+    ...params,
+    supportedDerivationPurposes: new Set(params.supportedDerivationPurposes),
+  });
 }
 
 /**

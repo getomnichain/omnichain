@@ -161,11 +161,20 @@ decodes these into a `NestedBalanceChanges` — the same nested Map shape EVM em
 and returns a `SolanaTransactionStatus` (extends `TransactionStatus`) with `fees:
 SolanaTransactionFees` alongside. Wallet keys are the raw base58 (case-sensitive).
 
-Fallback path: if `getTransaction` returns null but `getSignatureStatus` reports
-`finalized`/`confirmed` with `err` set, the SDK returns `SolanaTransactionStatus.failed`
-with `fees: null` (the settled-but-unfetchable case — fees can't be reconstructed from
-sig-status alone). Otherwise Pending, so consumers keep polling rather than treating a
-settled deposit as NotFound.
+Fallback path when `getTransaction` returns null:
+- `getSignatureStatus` yields no value at all → `NotFound`.
+- `getSignatureStatus` reports `finalized`/`confirmed` with `err` set →
+  `SolanaTransactionStatus.failed` with `fees: null` (settled-but-
+  unfetchable — fees can't be reconstructed from sig-status alone).
+- `getSignatureStatus` reports `processed` or is otherwise settled
+  without `err` → `Pending` so consumers keep polling rather than
+  treating a settled deposit as NotFound.
+- If `getTransaction` returns a body but `tx.meta === null` → `Pending`
+  as well.
+
+Consumers should treat Solana `NotFound` as retryable, not terminal —
+signature-status can lag full-tx availability on a heavily load-
+balanced RPC.
 
 The `balanceChangesExcludingFees(nativeAsset)` helper strips Solana's fee_payer debit
 from the emitted changes for callers who want gross-of-fee movements. It validates that

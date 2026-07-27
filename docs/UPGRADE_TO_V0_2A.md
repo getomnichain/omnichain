@@ -200,16 +200,23 @@ this RPC node" case:
   eviction, a load-balanced/lagging RPC node, or a tx that was
   broadcast through a different node. Consumers must NOT treat EVM
   `NotFound` as terminal — implement a bounded retry with backoff.
-- **Solana** — returns `Pending` in the equivalent case (unfetchable
-  full tx + no signature-status result → keep polling).
+- **Solana** — returns `NotFound` when both `getTransaction` returns
+  null AND `getSignatureStatus` reports no value at all. Returns
+  `Pending` only when the full tx is unfetchable but the signature
+  status is `processed`/absent, OR when `tx.meta` is null. Returns
+  `Failed` (with `fees: null`) when the signature status reports
+  `finalized`/`confirmed` with `err` set but the full body is
+  unfetchable. Consumers should still poll again on Solana `NotFound`
+  before treating it as terminal — signature-status can lag full-tx
+  availability on a heavily load-balanced RPC.
 - **UTXO** — returns `NotFound` only on definitive provider signals
   (404 / -5 with mempool-or-blockchain); everything else throws
-  `RpcError`.
+  `RpcError`. Consumers can treat UTXO `NotFound` as terminal.
 
-This asymmetry is deliberate but not uniform — a follow-up card is
-tracked to make EVM's fallback path match Solana's Pending-on-uncertain.
-Until then, treat `NotFound` as "poll again before deciding" on EVM,
-"terminal" on UTXO.
+Rule of thumb: **only UTXO `NotFound` is safe to treat as terminal**.
+EVM and Solana both need bounded-retry semantics for `NotFound`.
+A follow-up card is tracked to unify EVM's fallback to
+Pending-on-uncertain.
 
 **Factory ergonomic divergence** — three subclass factories mirror
 Python exactly, which yields three different notFound construction

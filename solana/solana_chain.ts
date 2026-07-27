@@ -674,7 +674,22 @@ export class SolanaChain extends Chain {
       });
     }
 
-    const balanceChanges = this._decodeBalanceChanges(tx);
+    // Wrap the decoder so a malformed uiTokenAmount.amount / pre/postBalance
+    // (BigInt(...) throws SyntaxError on non-numeric strings) surfaces as
+    // ChainError(TransactionDecodeFailed) rather than a raw SyntaxError.
+    // Mirrors evm_chain.ts:decodeBalanceChanges catch.
+    let balanceChanges;
+    try {
+      balanceChanges = this._decodeBalanceChanges(tx);
+    } catch (err) {
+      if (err instanceof ChainError) throw err;
+      throw new ChainError(
+        ChainErrorKinds.TransactionDecodeFailed,
+        `Failed to decode Solana tx ${txHash}: ${err instanceof Error ? err.message : String(err)}`,
+        { chainId: this.chainId, txHash },
+        err instanceof Error ? err : undefined,
+      );
+    }
     return SolanaTransactionStatus.successful({
       chainId: this.chainId,
       inclusionAt,

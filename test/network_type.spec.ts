@@ -7,8 +7,15 @@ import {
   unregisterChain,
 } from '../network_type.ts';
 
-// Use a chainId that isn't in any static family seed.
-const SCRATCH = 987654321;
+// Use a NEGATIVE chainId that isn't in any static family seed.
+// A positive id would fail because `registerNonEvmChain` refuses any
+// re-classification: positive ids are implicitly EVM per EIP-155
+// (tryNetworkTypeOf returns EVM for them without any registration), so
+// attempting to register e.g. `987654321` as SOLANA is a real conflict.
+// The "consumer wants a positive id classified as SOLANA/TON" flow
+// requires an explicit `unregisterChain(id)` first — covered in its
+// own test below.
+const SCRATCH = -987654321;
 
 describe('registerNonEvmChain — integer guard (iter-15 minor #1)', () => {
   afterEach(() => unregisterChain(SCRATCH));
@@ -111,11 +118,33 @@ describe('unregisterChain', () => {
     expect(() => unregisterChain(SCRATCH)).not.toThrow();
   });
 
-  it('removes a consumer registration', () => {
+  it('removes a consumer registration (negative id → ChainNotSupported after unregister)', () => {
     registerNonEvmChain(SCRATCH, NetworkType.SOLANA);
     expect(networkTypeOf(SCRATCH)).toBe(NetworkType.SOLANA);
     unregisterChain(SCRATCH);
-    // After removal, positive id defaults back to EVM.
-    expect(networkTypeOf(SCRATCH)).toBe(NetworkType.EVM);
+    try {
+      networkTypeOf(SCRATCH);
+      fail('expected throw — negative unregistered id must fail closed');
+    } catch (err) {
+      expect(isChainError(err, ChainErrorKinds.ChainNotSupported)).toBe(true);
+    }
+  });
+
+  it('positive-id reclassification requires unregisterChain first', () => {
+    const positiveId = 424242;
+    // Positive ids are implicitly EVM (EIP-155), so a direct
+    // registerNonEvmChain(positiveId, SOLANA) throws.
+    try {
+      registerNonEvmChain(positiveId, NetworkType.SOLANA);
+      fail('expected throw');
+    } catch (err) {
+      expect(isChainError(err, ChainErrorKinds.InvalidArgument)).toBe(true);
+    }
+    // After unregisterChain, the same call succeeds.
+    unregisterChain(positiveId);
+    expect(() => registerNonEvmChain(positiveId, NetworkType.SOLANA)).not.toThrow();
+    expect(networkTypeOf(positiveId)).toBe(NetworkType.SOLANA);
+    // Cleanup — restore the EIP-155 default.
+    unregisterChain(positiveId);
   });
 });

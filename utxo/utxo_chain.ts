@@ -295,81 +295,113 @@ export class UtxoChain extends Chain {
       );
     }
 
-    // Populate outputs on both pending AND confirmed paths — a 0-conf
-    // mempool tx still has visible outputs, and BTC/LTC/DOGE deposit
-    // detectors need them. balanceChanges stays null on Pending per the
-    // TransactionStatus base invariant.
-    const outputs: UtxoTransactionOutput[] = tx.vout.map(
-      (o) =>
-        new UtxoTransactionOutput({
-          scriptPubkeyHex: o.scriptPubKeyHex,
-          address: o.address,
-          valueSats: BigInt(o.valueSats),
-        }),
-    );
-    // Derive vsize from the raw hex — bitcoinjs-lib is already a dep and
-    // both Esplora + Bitcoin Core populate tx.hex. Falls back to null on
-    // malformed hex so the status still returns.
-    let vsize: number | null = null;
-    try {
-      if (tx.hex && tx.hex.length > 0) {
-        vsize = Transaction.fromHex(tx.hex).virtualSize();
-      }
-    } catch {
-      vsize = null;
-    }
-    const fees =
-      tx.fees !== null
-        ? new UtxoTransactionFees({ absoluteSats: BigInt(tx.fees.absoluteSats), vsize })
-        : null;
-
-    const isPending = tx.confirmations === 0;
-    if (isPending) {
+    // Bitcoin Core reports `confirmations: -1` for a conflicted/RBF-
+    // replaced tx (a reorged-out deposit). Do not run the shape asserts
+    // that would throw InvalidArgument on the way out — surface as
+    // NotFound so the status poll doesn't crash.
+    if (tx.confirmations < 0) {
       return new UtxoTransactionStatus({
         chainId: this.chainId,
-        status: TransactionStatusTypes.Pending,
+        status: TransactionStatusTypes.NotFound,
         confirmationAt: null,
         balanceChanges: null,
-        confirmations: 0,
+        error: {
+          code: 'CONFLICTED',
+          reason: `Provider reports confirmations=${tx.confirmations} (RBF-replaced / reorged)`,
+        },
+      });
+    }
+
+    // Wrap the decode block so a non-integer valueSats/absoluteSats from a
+    // consumer's provider tool (BTC-float→sats overflow) or a
+    // Transaction.fromHex failure surfaces as a typed
+    // ChainError(TransactionDecodeFailed) rather than a raw RangeError.
+    // Mirrors evm_chain.ts:decodeBalanceChanges catch.
+    try {
+      // Populate outputs on both pending AND confirmed paths — a 0-conf
+      // mempool tx still has visible outputs, and BTC/LTC/DOGE deposit
+      // detectors need them. balanceChanges stays null on Pending per the
+      // TransactionStatus base invariant.
+      const outputs: UtxoTransactionOutput[] = tx.vout.map(
+        (o) =>
+          new UtxoTransactionOutput({
+            scriptPubkeyHex: o.scriptPubKeyHex,
+            address: o.address,
+            valueSats: BigInt(o.valueSats),
+          }),
+      );
+      // Derive vsize from the raw hex — bitcoinjs-lib is already a dep
+      // and both Esplora + Bitcoin Core populate tx.hex. Falls back to
+      // null on malformed hex so the status still returns.
+      let vsize: number | null = null;
+      try {
+        if (tx.hex && tx.hex.length > 0) {
+          vsize = Transaction.fromHex(tx.hex).virtualSize();
+        }
+      } catch {
+        vsize = null;
+      }
+      const fees =
+        tx.fees !== null
+          ? new UtxoTransactionFees({ absoluteSats: BigInt(tx.fees.absoluteSats), vsize })
+          : null;
+
+      const isPending = tx.confirmations === 0;
+      if (isPending) {
+        return new UtxoTransactionStatus({
+          chainId: this.chainId,
+          status: TransactionStatusTypes.Pending,
+          confirmationAt: null,
+          balanceChanges: null,
+          confirmations: 0,
+          outputs,
+          vsize,
+          fees,
+        });
+      }
+
+      // Outputs-only per-address native deltas. Full input-side accounting
+      // to compute net native change (Python's `_native_balance_changes`
+      // parity) is deferred — the raw-tx provider currently returns only
+      // vin.txid+vout, no address/value/scriptPubKeyHex. Noted in
+      // SINAN_OPEN_QUESTIONS.md.
+      const balanceChanges: NestedBalanceChanges = new Map();
+      const perAddressSats = new Map<string, bigint>();
+      for (const out of tx.vout) {
+        if (!out.address) continue;
+        perAddressSats.set(
+          out.address,
+          (perAddressSats.get(out.address) ?? 0n) + BigInt(out.valueSats),
+        );
+      }
+      for (const [address, sats] of perAddressSats) {
+        AssetBalanceChange.upsert(
+          balanceChanges,
+          address,
+          this._nativeToken,
+          AssetBalanceChange.fromMr(sats, this._nativeToken.decimals),
+        );
+      }
+
+      return new UtxoTransactionStatus({
+        chainId: this.chainId,
+        status: TransactionStatusTypes.Success,
+        confirmationAt: tx.blockTime,
+        balanceChanges,
+        confirmations: tx.confirmations,
         outputs,
         vsize,
         fees,
       });
-    }
-
-    // Outputs-only per-address native deltas. Full input-side accounting
-    // to compute net native change (Python's `_native_balance_changes`
-    // parity) is deferred — the raw-tx provider currently returns only
-    // vin.txid+vout, no address/value/scriptPubKeyHex. Noted in
-    // SINAN_OPEN_QUESTIONS.md.
-    const balanceChanges: NestedBalanceChanges = new Map();
-    const perAddressSats = new Map<string, bigint>();
-    for (const out of tx.vout) {
-      if (!out.address) continue;
-      perAddressSats.set(
-        out.address,
-        (perAddressSats.get(out.address) ?? 0n) + BigInt(out.valueSats),
+    } catch (err) {
+      if (err instanceof ChainError) throw err;
+      throw new ChainError(
+        ChainErrorKinds.TransactionDecodeFailed,
+        `Failed to decode UTXO tx ${txHash}: ${err instanceof Error ? err.message : String(err)}`,
+        { chainId: this.chainId, txHash },
+        err instanceof Error ? err : undefined,
       );
     }
-    for (const [address, sats] of perAddressSats) {
-      AssetBalanceChange.upsert(
-        balanceChanges,
-        address,
-        this._nativeToken,
-        AssetBalanceChange.fromMr(sats, this._nativeToken.decimals),
-      );
-    }
-
-    return new UtxoTransactionStatus({
-      chainId: this.chainId,
-      status: TransactionStatusTypes.Success,
-      confirmationAt: tx.blockTime,
-      balanceChanges,
-      confirmations: tx.confirmations,
-      outputs,
-      vsize,
-      fees,
-    });
   }
 
   async createTransferUnsignedTransaction(
