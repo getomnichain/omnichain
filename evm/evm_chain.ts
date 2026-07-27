@@ -475,6 +475,17 @@ export class EvmChain extends Chain {
 
     if (tx === null && receipt === null) return EvmTransactionStatus.notFound(this.chainId, null);
     if (receipt === null) return EvmTransactionStatus.pending(this.chainId);
+    // Receipt exists but the tx body doesn't — real race on load-balanced/
+    // pruned RPC endpoints where getTransactionReceipt succeeds while
+    // getTransactionByHash returns null. `tx.value` and `tx.to` are load-
+    // bearing for the native transfer legs of decodeBalanceChanges; falling
+    // back to `?? 0n` / `?? null` would emit a Success with a silently
+    // truncated balanceChanges map (recipient row missing entirely,
+    // sender debit off by the transfer value). Python parity: omnichain-py's
+    // impl/evm/base.py accesses `tx.value` directly and blows up on a
+    // missing body. TS returns Pending — receipt-only is transient node
+    // state; the consumer's next poll will land on a node with the full tx.
+    if (tx === null) return EvmTransactionStatus.pending(this.chainId);
 
     const succeeded = receipt.status === 1;
 
