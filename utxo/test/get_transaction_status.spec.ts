@@ -31,8 +31,8 @@ const REAL_TX_HEX: string = (() => {
     Buffer.alloc(20, 2),
     Buffer.from([0x88, 0xac]),
   ]);
-  tx.addOutput(p2pkh, 10000);
-  tx.addOutput(p2pkh, 100000000);
+  tx.addOutput(p2pkh, 10_000n);
+  tx.addOutput(p2pkh, 100_000_000n);
   return tx.toHex();
 })();
 
