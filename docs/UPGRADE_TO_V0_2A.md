@@ -21,39 +21,96 @@ implementations (EVM / Solana / BTC) are gone.
 `grep verify_message_signature omnichain-py/` returns zero matches — the
 TS extension had no Python counterpart.
 
-**Consumer migration** — use each ecosystem's library directly:
+**Consumer migration** — each snippet below is a fail-closed boolean
+replacement matching the exact contract the deleted methods honored
+(`try { … } catch { return false }`, malformed signer/signature ⇒
+`false`). Drop-in for any consumer that was consuming the boolean
+directly (e.g. affiliate-claim gating in `pluton-back-end`).
 
 **EVM (ethers v6):**
 ```ts
 import { verifyMessage as ethersVerifyMessage, getAddress } from 'ethers';
-const recovered = ethersVerifyMessage(message, signature);
-const isValid = recovered === getAddress(signerAddress);
+
+function verifyEvmPersonalSign(message: string, signature: string, signer: string): boolean {
+  let recovered: string;
+  try {
+    recovered = ethersVerifyMessage(message, signature);
+  } catch {
+    return false;
+  }
+  let expected: string;
+  try {
+    expected = getAddress(signer);
+  } catch {
+    return false;
+  }
+  return recovered === expected;
+}
 ```
 
 **Solana (@solana/web3.js + node crypto):**
 ```ts
-import { createPublicKey, verify as nodeVerify } from 'node:crypto';
+import { createPublicKey, verify as nodeVerify, KeyObject } from 'node:crypto';
 import bs58 from 'bs58';
-const rawSigner = bs58.decode(signerAddress);
-if (rawSigner.length !== 32) return false;
-const spkiPrefix = Buffer.from('302a300506032b6570032100', 'hex');
-const signerKey = createPublicKey({
-  key: Buffer.concat([spkiPrefix, Buffer.from(rawSigner)]),
-  format: 'der',
-  type: 'spki',
-});
-const sigBytes = bs58.decode(signature);
-if (sigBytes.length !== 64) return false;
-const isValid = nodeVerify(null, Buffer.from(message, 'utf8'), signerKey, sigBytes);
+
+const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+
+// Match the deleted parseSolanaSignature: accept 128-char hex (with or
+// without 0x prefix) as well as base58. Solana wallets emit both.
+function parseSolanaSignature(raw: string): Uint8Array {
+  const hexCandidate = raw.startsWith('0x') ? raw.slice(2) : raw;
+  if (/^[0-9a-fA-F]+$/.test(hexCandidate) && hexCandidate.length === 128) {
+    return Buffer.from(hexCandidate, 'hex');
+  }
+  return bs58.decode(raw);
+}
+
+function verifyEd25519Message(message: string, signature: string, signer: string): boolean {
+  try {
+    const rawSigner = bs58.decode(signer);
+    if (rawSigner.length !== 32) return false;
+    const signerKey: KeyObject = createPublicKey({
+      key: Buffer.concat([ED25519_SPKI_PREFIX, Buffer.from(rawSigner)]),
+      format: 'der',
+      type: 'spki',
+    });
+    const sigBytes = parseSolanaSignature(signature);
+    if (sigBytes.length !== 64) return false;
+    return nodeVerify(null, Buffer.from(message, 'utf8'), signerKey, sigBytes);
+  } catch {
+    return false;
+  }
+}
 ```
 
 **BTC (bitcoinjs-message):**
 ```ts
 import * as bitcoinMessage from 'bitcoinjs-message';
-const isValid = bitcoinMessage.verify(
-  message, signerAddress, signature,
-  chain.params.networkInfo.messagePrefix, true,
-);
+import type { BtcChain } from 'omnichain';
+
+// `chain` is a BtcChain instance so we can reject mainnet-shaped
+// signers against a testnet chain (and vice versa) — the network-address
+// check the deleted UtxoChain.verifyMessageSignature performed BEFORE
+// calling bitcoinjs-message.
+function verifyBtcSignedMessage(
+  chain: BtcChain,
+  message: string,
+  signature: string,
+  signer: string,
+): boolean {
+  if (!chain.validateAddress(signer)) return false;
+  try {
+    return bitcoinMessage.verify(
+      message,
+      signer,
+      signature,
+      chain.params.networkInfo.messagePrefix,
+      true,
+    );
+  } catch {
+    return false;
+  }
+}
 ```
 
 ## New: `TransactionStatus` hierarchy — per-network subclasses

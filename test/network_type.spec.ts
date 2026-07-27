@@ -130,21 +130,26 @@ describe('unregisterChain', () => {
     }
   });
 
-  it('positive-id reclassification requires unregisterChain first', () => {
+  it('positive chainIds are EVM by construction (EIP-155) and cannot be reclassified', () => {
     const positiveId = 424242;
-    // Positive ids are implicitly EVM (EIP-155), so a direct
-    // registerNonEvmChain(positiveId, SOLANA) throws.
+    // Direct registration throws — tryNetworkTypeOf synthesizes EVM for
+    // any positive integer, so SOLANA would conflict.
     try {
       registerNonEvmChain(positiveId, NetworkType.SOLANA);
       fail('expected throw');
     } catch (err) {
       expect(isChainError(err, ChainErrorKinds.InvalidArgument)).toBe(true);
     }
-    // After unregisterChain, the same call succeeds.
+    // unregisterChain does NOT open a reclassification hole — the
+    // positive-id EIP-155 default is re-synthesized on every lookup,
+    // so the same conflict fires again. Matches omnichain-py's static
+    // family-set model (no reclassification API upstream).
     unregisterChain(positiveId);
-    expect(() => registerNonEvmChain(positiveId, NetworkType.SOLANA)).not.toThrow();
-    expect(networkTypeOf(positiveId)).toBe(NetworkType.SOLANA);
-    // Cleanup — restore the EIP-155 default.
-    unregisterChain(positiveId);
+    try {
+      registerNonEvmChain(positiveId, NetworkType.SOLANA);
+      fail('expected throw — positive-id reclassification is not supported');
+    } catch (err) {
+      expect(isChainError(err, ChainErrorKinds.InvalidArgument)).toBe(true);
+    }
   });
 });

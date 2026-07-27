@@ -53,12 +53,15 @@ for (const id of CHAIN_FAMILY_TRON) networkTypeRegistry.set(id, NetworkType.TRON
  * flipping a chainId's family would let `addressFor` parse addresses under
  * the wrong rules.
  *
- * Uses the synthesized `tryNetworkTypeOf` for the conflict check, so
- * "positive ids are EVM unless explicitly unregistered" is a single rule
- * enforced in one place. Import-order-independent: whether or not the
- * `EvmChain` catalogue has evaluated yet, `registerNonEvmChain(1329,
- * COSMOS)` throws unless the consumer has called `unregisterChain(1329)`
- * first.
+ * **Positive chainIds are EVM by construction (EIP-155) and cannot be
+ * reclassified.** `unregisterChain(id)` only removes an explicit
+ * registration entry; `tryNetworkTypeOf` still synthesizes `EVM` for any
+ * positive integer, so a subsequent
+ * `registerNonEvmChain(<positive>, SOLANA)` still conflicts and throws.
+ * Matches `omnichain-py`'s static family sets in
+ * `chain_ids.py` — the Python side has no reclassification hook at all.
+ * Consumers who need a non-EVM chain must use a distinct (negative)
+ * chainId reserved by the family seed.
  */
 export function registerNonEvmChain(chainId: number, networkType: NetworkType): void {
   // iter-15 minor #1: reject non-integers at the registration point rather than
