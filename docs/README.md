@@ -20,7 +20,8 @@ mounted at each service's own `chain` directory.
 | `UnsignedTransaction` | [unsigned_transaction.ts](../unsigned_transaction.ts) | Abstract base for an unsigned tx; per-chain subclasses add the bytes |
 | `NetworkType` | [network_type.ts](../network_type.ts) | Enum (`EVM`, `COSMOS`, `TON`, `SOLANA`, `BTC`) + `registerNonEvmChain(chainId, type)` registry |
 | `TransactionStatus` | [transaction_status.ts](../transaction_status.ts) | Abstract base — chainId, status, inclusionAt, error, balanceChanges. Per-network subclasses: `EvmTransactionStatus` (+logs, +fees), `SolanaTransactionStatus` (+fees), `UtxoTransactionStatus` (+outputs, +vsize, +confirmations, +fees) |
-| `AssetBalanceChange` | [transaction_status.ts](../transaction_status.ts) | Per-(wallet, asset) balance delta with `.balanceChangeMr: bigint` + `.decimals` (Wave 2A — bigint only; the Python-parity `.balanceChangeHr: Decimal` accessor arrives in Wave 2B alongside `decimal.js`). `NestedBalanceChanges = Map<wallet, Map<assetHash, {token, change}>>` |
+| `AssetBalanceChange` | [transaction_status.ts](../transaction_status.ts) | Per-(wallet, asset) balance delta. `.balanceChangeMr: bigint` is the source of truth; `.balanceChangeHr: Decimal` is a lazy accessor derived via exact string-shift (never loses wei). `.fromHr(hr, decimals)` factory for Python-parity construction. `NestedBalanceChanges = Map<wallet, Map<assetHash, {token, change}>>` |
+| `AbstractGasPricing` + subclasses | [abstract_gas_pricing.ts](../abstract_gas_pricing.ts), [evm/evm_gas_pricing.ts](../evm/evm_gas_pricing.ts), [solana/solana_gas_pricing.ts](../solana/solana_gas_pricing.ts), [utxo/utxo_gas_pricing.ts](../utxo/utxo_gas_pricing.ts) | Python-parity explicit-fee override types. `GasPricingType = FeePriority \| AbstractGasPricing`. Type surface only in Wave 2B — per-chain builders don't consume `CreateTransferRequest.gasPricing` yet |
 | `Priority` | [priority.ts](../priority.ts) | Shared `Priority` enum (`SLOW`/`NORMAL`/`FAST`) used by per-chain `suggestGas` / `suggestFeeRate` / `suggestPriorityFeeMicroLamports` |
 | `ChainError` | [errors.ts](../errors.ts) | Module-internal error with a `kind` discriminator |
 | `addressFor(chainId, raw)` | [address.factory.ts](../address.factory.ts) | Network-aware address constructor |
@@ -132,9 +133,9 @@ if (isSuccess(status)) {
   // balanceChanges is now Map<wallet, Map<assetHash, {token, change}>>
   for (const [wallet, perAsset] of status.balanceChanges) {
     for (const { token, change } of perAsset.values()) {
-      // Wave 2A ships bigint minor units only. balanceChangeHr (Decimal)
-      // returns in Wave 2B alongside decimal.js.
-      console.log(wallet, token.symbol, change.balanceChangeMr);
+      // balanceChangeMr is the exact source of truth (bigint minor units);
+      // balanceChangeHr is a lazy Decimal accessor for display (Wave 2B).
+      console.log(wallet, token.symbol, change.balanceChangeMr, change.balanceChangeHr.toFixed());
     }
   }
 }

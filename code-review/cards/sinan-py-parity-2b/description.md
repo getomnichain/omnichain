@@ -143,6 +143,62 @@ the value type isn't a passive placeholder any more. Method bodies
 extract from the private parser in `evm_chain.ts:614-629` and export
 the shared helper.
 
+## Scope changes accepted mid-flight
+
+Documented so the card matches what ships. Each was flagged during
+the review cycle and confirmed with the user or defensibly deferred:
+
+- **§6 `isFullBalance` wiring on EVM + SolanaChain — REJECTED at
+  entry instead of implemented.** The card originally said
+  "`isFullBalance` requires an explicit `from` and fetches
+  `getBalance(from, tokenIdentifier)`". Iter-1 review flagged that
+  sending `value = balance` on the native path guarantees
+  insufficient-funds (leaves 0 for gas / base-fee / rent). Wiring
+  the fee-reserve subtract (`balance - estimated_fee`) is non-
+  trivial per chain and requires the `suggest*` estimator wired at
+  the builder — which is itself deferred (see next). Both EVM and
+  Solana therefore throw `ChainError(InvalidArgument)` for
+  `isFullBalance: true` in Wave 2B. Follow-up card lands the sweep
+  with fee-reserve.
+
+- **§6 `gasPricing` wiring on all three builders — REJECTED at
+  entry instead of implemented.** The card originally said each
+  builder resolves `FeePriority` via its `suggest*` estimator or
+  uses `AbstractGasPricing` fields directly. Iter-1 review flagged
+  that the existing builders don't set gas fields on the returned
+  `UnsignedTransaction` at all — the caller populates those
+  externally. Wiring means changing the builder shape substantially
+  per chain. All three builders throw `ChainError(InvalidArgument)`
+  for `gasPricing !== undefined`, and the `CreateTransferRequest`
+  JSDoc says so explicitly. The type surface (`AbstractGasPricing`
+  + subclasses + `GasPricingType` union + `isAbstractGasPricing`
+  runtime guard + `FeePriority` alias) ships as-is for consumer
+  code that wants to construct these values ahead of the wiring
+  card.
+
+- **Zero-amount policy tightened to `> 0` on the existing
+  `amount: bigint` path.** Pre-Wave-2B, `EvmChain.createTransferUnsignedTransaction`
+  passed `amount: 0n` straight through to `value: 0n` /
+  `transfer(to, 0)`. Iter-1 unified the check inside
+  `resolveTransferAmount` so all three chains reject zero uniformly.
+  Behavior change vs `main` on EVM. Recorded here + in
+  `docs/UPGRADE_TO_V0_2B.md` under the "Contract" description.
+
+- **§7 `EvmParsedTransactionLog.asTransferLog` — decoder NOT rewired
+  to consume the class method.** The card asked for "the shared
+  helper" so both the receipt-decoder in `evm_chain.ts` and the
+  public `asTransferLog()` accessor go through one parser. Only
+  the `ERC20_TRANSFER_TOPIC` topic0 constant was shared; the
+  decoder loop still inlines its own `slice(26)` + `BigInt(data)`
+  parse (lenient — skips malformed logs), while `asTransferLog()`
+  is strict (throws on wrong length). Deferred to a follow-up
+  because rewiring the decoder requires deciding whether
+  `NestedBalanceChanges` should silently drop non-standard-log
+  entries or surface them as `TransactionDecodeFailed` — a policy
+  decision that touches every consumer. Doc comments in
+  `evm_transaction_status.ts` and `docs/UPGRADE_TO_V0_2B.md` no
+  longer claim "one parser".
+
 ## Out of scope
 
 - **TON port** (`impl/ton/base.py` ~1700 lines) — explicitly dropped

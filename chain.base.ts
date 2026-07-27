@@ -3,7 +3,6 @@ import Decimal from 'decimal.js';
 import { GasPricingType } from './abstract_gas_pricing.ts';
 import { ChainError, ChainErrorKinds } from './errors.ts';
 import { NetworkType } from './network_type.ts';
-import { FeePriority } from './priority.ts';
 import { hrDecimalToMinorUnits } from './transaction_status.ts';
 
 import { Token } from './token.ts';
@@ -31,11 +30,16 @@ export interface CreateTransferRequest {
   amountHr?: Decimal;
   isFullBalance?: boolean;
   /**
-   * Gas-pricing knob — Python's `gas_pricing: GasPricingType`. Defaults
-   * to `FeePriority.NORMAL`. Pass a `FeePriority` tier (SLOW/NORMAL/FAST)
-   * to defer to each chain's `suggest*` estimator, OR an
-   * `AbstractGasPricing` subclass (`EvmGasPricing` / `SolanaGasPricing` /
-   * `UtxoGasPricing`) for exact numeric control.
+   * Gas-pricing knob — Python's `gas_pricing: GasPricingType`. The type
+   * surface is in place (Python parity) but per-chain builders **do
+   * not consume it yet** in Wave 2B — passing ANY value (including
+   * `FeePriority.NORMAL`) throws `ChainError(InvalidArgument)`. Wiring
+   * to each chain's `suggestGas` / `suggestPriorityFeeMicroLamports` /
+   * `suggestFeeRate` estimator lands in a follow-up card. Until then
+   * use the existing per-chain option fields (Solana:
+   * `priorityFeeMicroLamportsPerCu` / `computeUnitLimit`; UTXO:
+   * `feeRateSatsPerVByte` / `feeTargetBlocks`; EVM: `UnsignedEvmTransaction`
+   * builder options).
    */
   gasPricing?: GasPricingType;
   memo?: string;
@@ -131,9 +135,6 @@ export function resolveTransferAmount(
   }
   return { kind: 'exact', amountMr };
 }
-
-/** Default gas pricing when the consumer doesn't pass one. */
-export const DEFAULT_GAS_PRICING: FeePriority = FeePriority.NORMAL;
 
 export abstract class Chain {
   readonly chainId: number;

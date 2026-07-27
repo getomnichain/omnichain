@@ -39,9 +39,9 @@ c.balanceChangeHr.toFixed();   // "1.5"
 const d = AssetBalanceChange.fromHr(new Decimal('1.5'), 18);
 d.balanceChangeMr;             // 1500000000000000000n
 
-// toString() uses toFixed() to avoid scientific notation on ≥ 21-digit
-// amounts (decimal.js toExpPos default).
-c.toString();                  // "[change:1.5]"
+// toString() reports both the exact bigint and the exact human string
+// (no wei loss, no scientific notation on ≥ 21-digit amounts).
+c.toString();                  // "[change:1.5(hr) / 1500000000000000000(mr)]"
 ```
 
 Python parity: `balance_change_hr: Decimal` matches
@@ -85,9 +85,10 @@ await chain.createTransferUnsignedTransaction({
 ```
 
 **`hrDecimalToMinorUnits`** is the exact converter used internally
-(`chain.base.ts` exports it). It uses `Decimal.toFixed(decimals,
-ROUND_DOWN)` + a string shift, so it's NOT bounded by decimal.js's
-20-sig-digit `precision` default. `new Decimal('123.456789012345678901')`
+(exported from `transaction_status.ts`, imported by `chain.base.ts` +
+`AssetBalanceChange.fromHr`; both re-export via the package root). It
+uses `Decimal.toFixed(decimals, ROUND_DOWN)` + a string shift, so it's
+NOT bounded by decimal.js's 20-sig-digit `precision` default. `new Decimal('123.456789012345678901')`
 at `decimals=18` yields exactly `123456789012345678901n` — no wei
 lost. The `.mul(10^d).trunc()` route would silently round.
 
@@ -149,9 +150,13 @@ optional `computeUnitLimit: bigint`.
 
 ## New: `EvmParsedTransactionLog.isTransferLog / asTransferLog`
 
-Deferred from Wave 2A card §3b. Both methods now implemented; the
-`evm_chain.ts` decoder consumes them via the shared
-`ERC20_TRANSFER_TOPIC` constant so there's exactly one parser.
+Deferred from Wave 2A card §3b. Both methods now implemented and
+exported. The `evm_chain.ts` receipt-decoder still runs its own
+lenient parse for the `NestedBalanceChanges` construction — sharing
+only the `ERC20_TRANSFER_TOPIC` topic0 constant. Rewiring the decoder
+to consume `asTransferLog()` requires a policy decision on whether
+non-standard logs should silently drop or surface as
+`TransactionDecodeFailed`, and is deferred to a follow-up card.
 
 ```ts
 import { EvmParsedTransactionLog, EvmErc20TransferLog, isSuccess } from 'omnichain';
