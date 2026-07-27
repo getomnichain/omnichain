@@ -192,6 +192,48 @@ describe('resolveTransferAmount — amountHr branch', () => {
   });
 });
 
+describe('resolveTransferAmount — type-safety guards (iter-10 fix)', () => {
+  it('rejects string amount as InvalidArgument (JS mixed-type comparison would silently pass)', () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      resolveTransferAmount({ to: '0x0', amount: '1000000' as any }, 6);
+      fail('expected throw — a string amount must NOT reach tx.value');
+    } catch (err) {
+      expect(isChainError(err, ChainErrorKinds.InvalidArgument)).toBe(true);
+    }
+  });
+
+  it('rejects number amount as InvalidArgument', () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      resolveTransferAmount({ to: '0x0', amount: 1000000 as any }, 6);
+      fail('expected throw');
+    } catch (err) {
+      expect(isChainError(err, ChainErrorKinds.InvalidArgument)).toBe(true);
+    }
+  });
+
+  it('rejects non-boolean isFullBalance ("true" from JSON) as InvalidArgument', () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      resolveTransferAmount({ to: '0x0', isFullBalance: 'true' as any }, 6);
+      fail('expected throw — string "true" must NOT be silently coerced to unset');
+    } catch (err) {
+      expect(isChainError(err, ChainErrorKinds.InvalidArgument)).toBe(true);
+    }
+  });
+
+  it('rejects numeric isFullBalance (1) as InvalidArgument', () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      resolveTransferAmount({ to: '0x0', isFullBalance: 1 as any }, 6);
+      fail('expected throw');
+    } catch (err) {
+      expect(isChainError(err, ChainErrorKinds.InvalidArgument)).toBe(true);
+    }
+  });
+});
+
 describe('resolveTransferAmount — isFullBalance branch', () => {
   it('true → { kind: "full" }', () => {
     const r = resolveTransferAmount(

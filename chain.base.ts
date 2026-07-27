@@ -63,6 +63,15 @@ export function resolveTransferAmount(
   req: CreateTransferRequest,
   decimals: number,
 ): ResolvedTransferAmount {
+  // Upfront typeof gate for isFullBalance — silently coercing a non-boolean
+  // to "unset" here would let `{amount, isFullBalance: 'true'}` (JSON boundary
+  // realistic) take the amount branch instead of failing the exactly-one-of.
+  if (req.isFullBalance !== undefined && typeof req.isFullBalance !== 'boolean') {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `CreateTransferRequest.isFullBalance must be a boolean (got ${typeof req.isFullBalance})`,
+    );
+  }
   const provided: string[] = [];
   if (req.amount !== undefined) provided.push('amount');
   if (req.amountHr !== undefined) provided.push('amountHr');
@@ -81,6 +90,17 @@ export function resolveTransferAmount(
   }
   if (req.isFullBalance === true) return { kind: 'full' };
   if (req.amount !== undefined) {
+    // Explicit typeof check: JS mixed-type comparison lets '1000000' <= 0n
+    // return false (`StringToBigInt`), so a string/number amount would
+    // otherwise pass this guard and land verbatim in tx.value /
+    // lamports / ERC-20 calldata. Realistic vector: consumers
+    // deserializing amounts from HTTP/DB JSON.
+    if (typeof req.amount !== 'bigint') {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `CreateTransferRequest.amount must be a bigint (got ${typeof req.amount})`,
+      );
+    }
     if (req.amount <= 0n) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
