@@ -55,8 +55,8 @@ New optional fields on `CreateTransferRequest`:
 |---|---|---|---|
 | `amount` | `bigint` | (TS-native) | Minor units. Original form, still supported. |
 | `amountHr` | `Decimal` | `amount_hr` | Human-readable. Chain builder converts via token decimals. |
-| `isFullBalance` | `boolean` | `is_full_balance` | Sweep sender's full balance. Requires `from`. |
-| `gasPricing` | `FeePriority \| AbstractGasPricing` | `gas_pricing` | Defaults to `FeePriority.NORMAL`. |
+| `isFullBalance` | `boolean` | `is_full_balance` | **Throws `ChainError(InvalidArgument)` in Wave 2B** — sweep wiring (fee-reserve subtract) deferred. See "Not yet supported" below. |
+| `gasPricing` | `FeePriority \| AbstractGasPricing` | `gas_pricing` | **Throws `ChainError(InvalidArgument)` for ANY value in Wave 2B** (including `FeePriority.NORMAL`) — per-chain wiring deferred. See "Not yet supported" below. |
 | `memo` | `string` | (unchanged) | Optional; supported on chains that carry data blobs. |
 
 **Contract:** exactly one of `{amount, amountHr, isFullBalance}` must be

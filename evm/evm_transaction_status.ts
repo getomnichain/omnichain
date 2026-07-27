@@ -104,8 +104,17 @@ export interface EvmErc20TransferLog {
 /**
  * Event log entry surfaced on a receipt. `isTransferLog()` / `asTransferLog()`
  * mirror Python's `EvmParsedTransactionLog` API (`impl/evm/base.py:1551+`).
- * The `evm_chain.ts` decoder consumes the shared `ERC20_TRANSFER_TOPIC`
- * constant + this class's `asTransferLog()` to avoid two parsers drifting.
+ *
+ * The `evm_chain.ts` receipt-decoder shares the `ERC20_TRANSFER_TOPIC`
+ * topic0 constant with this class but runs its own **lenient** parse
+ * (skips non-standard logs) for the `NestedBalanceChanges` construction.
+ * This class's `asTransferLog()` is **strict** (throws on wrong length /
+ * bad hex). Rewiring the decoder to consume the strict accessor requires
+ * a policy decision on whether non-standard logs should silently drop
+ * or surface as `TransactionDecodeFailed`, and is deferred to a
+ * follow-up card. Consumers doing their own log extraction should
+ * either use the guard/accessor pair with a `try/catch` per log or
+ * wait for a `tryAsTransferLog()` variant to land.
  */
 export class EvmParsedTransactionLog {
   readonly address: string;
