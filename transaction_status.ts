@@ -125,9 +125,23 @@ export class AssetBalanceChange {
     balanceChangeHr: Decimal | string | number,
     decimals: number,
   ): AssetBalanceChange {
+    // Nested-copy-safe: for Decimal-shaped objects use string round-trip
+    // via toString() (exact and always reparseable), not `instanceof`
+    // which fails on a Decimal from a duplicated decimal.js copy in
+    // the consumer tree. Strings and numbers go straight through
+    // decimal.js's own constructor.
     let hr: Decimal;
     try {
-      hr = balanceChangeHr instanceof Decimal ? balanceChangeHr : new Decimal(balanceChangeHr);
+      if (
+        typeof balanceChangeHr === 'object' &&
+        balanceChangeHr !== null &&
+        typeof (balanceChangeHr as { toFixed?: unknown }).toFixed === 'function' &&
+        typeof (balanceChangeHr as { toString?: unknown }).toString === 'function'
+      ) {
+        hr = new Decimal((balanceChangeHr as { toString: () => string }).toString());
+      } else {
+        hr = new Decimal(balanceChangeHr as string | number);
+      }
     } catch (err) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,

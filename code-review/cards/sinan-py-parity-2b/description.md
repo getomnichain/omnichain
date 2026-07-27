@@ -182,9 +182,13 @@ the review cycle and confirmed with the user or defensibly deferred:
   `transfer(to, 0)`. Iter-1 unified the check inside
   `resolveTransferAmount` so EVM + Solana reject zero uniformly (UTXO
   enforces its own > 0 + dust checks in `UtxoChain.buildTransfer` since
-  it doesn't route through `resolveTransferAmount`; all UTXO
-  validation errors carry `ChainErrorKinds.InvalidArgument` for
-  cross-chain narrowing symmetry).
+  it doesn't route through `resolveTransferAmount`; the
+  argument-validation + insufficient-funds sites on that path carry
+  `ChainErrorKinds.InvalidArgument`, and provider-length-mismatch
+  carries `RpcError`. A handful of prior-wave sites — `Psbt` /
+  `Transaction.fromHex` failures, `Unhandled Priority` invariant, and
+  the `btc_chain.ts` / `script.ts` throws outside 2B scope — remain
+  plain `Error`; noted for a follow-up cleanup card).
   Behavior change vs `main` on EVM. Recorded here + in
   `docs/UPGRADE_TO_V0_2B.md` under the "Contract" description.
 

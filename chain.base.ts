@@ -89,22 +89,38 @@ export function resolveTransferAmount(
     }
     return { kind: 'exact', amountMr: req.amount };
   }
-  // amountHr branch. `Decimal.isDecimal()` is used instead of
-  // `instanceof Decimal` because omnichain has no package.json, so the
-  // decimal.js module resolves against whatever copy the *consumer*
-  // installs — a nested/duplicated copy (npm dedup miss, pnpm strict
-  // layout, dual CJS/ESM) yields a different constructor identity and
-  // would fail `instanceof` on a perfectly valid Decimal value.
-  // `Decimal.isDecimal` is duck-typed and cross-instance safe. Same
-  // convention as `AssetBalanceChange.fromHr`.
+  // amountHr branch. Cross-copy-safe structural probe: `instanceof
+  // Decimal` and `Decimal.isDecimal` both key off constructor identity
+  // in practice (isDecimal's toStringTag branch is dead against the
+  // shipped prototype), so a `Decimal` from a nested/duplicated copy of
+  // decimal.js in the consumer tree would falsely reject. Instead:
+  // probe for the two methods we actually need (`toFixed`, `isFinite`),
+  // then normalize via `Decimal.prototype.toString` — an exact,
+  // always-reparseable serialization — into our own Decimal instance.
   const rawHr = req.amountHr as unknown;
-  if (!Decimal.isDecimal(rawHr)) {
+  if (
+    rawHr === null ||
+    typeof rawHr !== 'object' ||
+    typeof (rawHr as { toFixed?: unknown }).toFixed !== 'function' ||
+    typeof (rawHr as { isFinite?: unknown }).isFinite !== 'function' ||
+    typeof (rawHr as { toString?: unknown }).toString !== 'function'
+  ) {
     throw new ChainError(
       ChainErrorKinds.InvalidArgument,
-      'CreateTransferRequest.amountHr must be a Decimal value (Decimal.isDecimal check)',
+      'CreateTransferRequest.amountHr must be a Decimal value (structural probe: needs toFixed + isFinite + toString)',
     );
   }
-  const hr = new Decimal(rawHr as Decimal | string | number);
+  let hr: Decimal;
+  try {
+    hr = new Decimal((rawHr as { toString: () => string }).toString());
+  } catch (err) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      'CreateTransferRequest.amountHr: string round-trip failed',
+      undefined,
+      err instanceof Error ? err : undefined,
+    );
+  }
   if (!hr.isFinite()) {
     throw new ChainError(
       ChainErrorKinds.InvalidArgument,

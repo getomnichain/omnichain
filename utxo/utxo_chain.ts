@@ -539,7 +539,11 @@ export class UtxoChain extends Chain {
 
     const utxos = await this.getUtxos([fromAddress], getUtxosOptions);
     if (utxos.length === 0) {
-      throw new Error(`${this.name}: no spendable UTXOs available for ${fromAddress}`);
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: no spendable UTXOs available for ${fromAddress}`,
+        { chainId: this.chainId, address: fromAddress },
+      );
     }
 
     const changeAddress: string = opts.changeAddress ?? fromAddress;
@@ -561,8 +565,10 @@ export class UtxoChain extends Chain {
       ),
     });
     if (selection.outcome !== CoinSelectionOutcomes.Success) {
-      throw new Error(
-        `${this.name}: coin selection failed (${selection.outcome}) for target ${totalTargetSats} sats`
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: coin selection failed (${selection.outcome}) for target ${totalTargetSats} sats`,
+        { chainId: this.chainId },
       );
     }
 
@@ -685,8 +691,10 @@ export class UtxoChain extends Chain {
     const uniqueTxids = Array.from(new Set(utxos.map((u) => u.txid)));
     const hexes = await this.rawTxProvider.getRawTransactionHexBatch(uniqueTxids);
     if (hexes.length !== uniqueTxids.length) {
-      throw new Error(
-        `${this.name}: provider returned ${hexes.length} parent txs for ${uniqueTxids.length} requested`
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        `${this.name}: provider returned ${hexes.length} parent txs for ${uniqueTxids.length} requested`,
+        { chainId: this.chainId },
       );
     }
     return new Map(uniqueTxids.map((txid, i) => [txid, hexes[i]]));

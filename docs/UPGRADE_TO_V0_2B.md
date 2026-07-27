@@ -79,9 +79,17 @@ satoshis) — the multi-recipient `outputs[]` form has its own semantics
 and doesn't route through `resolveTransferAmount`. `UtxoChain` rejects
 `amountHr`, `isFullBalance`, `gasPricing`, AND `amount === undefined`
 on the single-output form at entry with
-`ChainError(InvalidArgument)`. All UTXO validation errors also carry
-`ChainErrorKinds.InvalidArgument` (converted from the plain `Error`
-throws in prior waves).
+`ChainError(InvalidArgument)`. Argument-validation and
+insufficient-funds errors on the `buildTransfer` path carry
+`ChainErrorKinds.InvalidArgument` (single/multi conflict, missing
+form, dust, amount ≤ 0, amountHr/isFullBalance/gasPricing rejection,
+outputs[i].amount not-a-bigint, no-spendable-UTXOs, coin-selection
+failed, feeRateSatsPerVByte < 1, memo exceeds OP_RETURN, MAX_SAFE
+overflow); provider-length-mismatch errors carry `RpcError`. A
+handful of prior-wave sites — `Psbt`/`Transaction.fromHex` failures
+from bitcoinjs-lib, `Unhandled Priority` invariant switch, and
+`btc_chain.ts` / `script.ts` sites outside 2B scope — still surface
+as plain `Error` and are noted for a follow-up cleanup card.
 
 ```ts
 // BEFORE (Wave 2A)
