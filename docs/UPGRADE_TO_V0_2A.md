@@ -72,7 +72,7 @@ The old flat interface is gone. The new shape mirrors Python's
 **Subclass-specific fields:**
 - `EvmTransactionStatus`: `logs`, `fees` (see `EvmTransactionGasFees`)
 - `SolanaTransactionStatus`: `fees` (see `SolanaTransactionFees`)
-- `UtxoTransactionStatus`: `inputs`, `outputs`, `vsize`, `confirmations`
+- `UtxoTransactionStatus`: `outputs`, `vsize`, `confirmations`, `fees` (Python's UTXO `inputs` field is deferred until the raw-tx provider surface carries per-input address/value — the current provider returns only `vin.txid`+`vout`, which isn't enough to populate a meaningful shape)
 
 **Runtime asserts (enforced in the constructor):**
 
@@ -139,14 +139,24 @@ is chain-specific and NOT normalized by the base:
 - **UTXO** — the raw provider-returned address string. Modern providers
   emit lowercase bech32, but code that mixes providers should normalize.
 
-**OP-stack L1 fee (EVM)** — On Optimism/Base/Unichain/WorldChain/Boba/
-Sonic and other OP-stack rollups, the sender pays a separate L1 data fee
-in addition to L2 execution gas. `EvmTransactionGasFees.l1FeeWei`
-surfaces it (undefined on L1 chains), and
+**OP-stack L1 fee (EVM)** — On OP-stack rollups the sender pays a
+separate L1 data fee in addition to L2 execution gas. `EvmChain` has
+a `hasL1Fee` flag that gates a raw `eth_getTransactionReceipt` call
+(needed because ethers v6 strips `l1Fee` from its parsed receipt).
+`EvmTransactionGasFees.l1FeeWei` surfaces it (undefined on L1 chains
+and on OP-stack chains where the raw send failed) and
 `.totalNativeDebitWei = totalGasInWei + (l1FeeWei ?? 0)` is what the
 sender's native `balanceChanges` row is debited by. Iter-3 fix — prior
 2A shipped without L1-fee accounting and under-counted OP-stack sender
 debits.
+
+Enabled on: Optimism, Base, Unichain, WorldChain, Boba, Mode, Blast,
+Zora, Ink, Soneium, Scroll. **Pending per-chain verification**: Metis,
+Mantle, Celo — those are also OP-stack-family in whole or in part but
+their `l1Fee` surfacing needs empirical confirmation from a live
+receipt before the flag is flipped. If you're reconciling sender
+debits on those chains today, cross-check against the raw receipt
+manually until the flag lands.
 
 **0-conf UTXO visibility** — Mempool (unconfirmed, `confirmations === 0`)
 UTXO transactions return `status: 'Pending'` with `balanceChanges: null`
@@ -168,16 +178,38 @@ booking. Full input-side accounting comes in the later phase that
 widens the UTXO provider surface.
 
 **UTXO NotFound signal** — `UtxoChain.getTransactionStatus` returns
-`UtxoTransactionStatus` with `status: 'NotFound'` for two provider-
+`UtxoTransactionStatus` with `status: 'NotFound'` only for provider-
 recognised not-found signals: Esplora/axios HTTP 404, and Bitcoin Core
-`getrawtransaction` RPC error code `-5`. Any other provider throw is
-wrapped as `ChainError(RpcError)` — so 429/timeout/network failures are
-retryable, and a genuine unknown-txid does not poll indefinitely. If
-your consumer uses a custom `UtxoRawTransactionProvider` implementation
-whose not-found signal differs, add its shape to the
-`isProviderNotFoundError` helper (or throw
-`ChainError(RpcError)` from the provider tool for anything that isn't
-a definitive not-found).
+`getrawtransaction` RPC error code `-5` **with** message text
+`"mempool or blockchain"` (the `-txindex`-enabled variant). Nodes
+without `-txindex` return `-5` with a `"Use -txindex"` hint for every
+confirmed non-wallet tx; those are routed as `ChainError(RpcError)`
+so a misconfigured node surfaces a retryable error rather than
+silently reporting real deposits as missing. Any other provider throw
+is wrapped as `ChainError(RpcError)` so 429/timeout/network failures
+are retryable. Consumers using a custom
+`UtxoRawTransactionProvider` implementation whose not-found signal
+differs will get `RpcError` on true not-founds too (would then poll
+indefinitely) — see the `UtxoRawTransactionProvider` contract cleanup
+scoped to Wave 2C.
+
+**Cross-chain `NotFound` asymmetry** — for the "the tx wasn't found on
+this RPC node" case:
+- **EVM** — returns `NotFound` immediately when both `getTransaction`
+  and `getTransactionReceipt` return null. This can fire on mempool
+  eviction, a load-balanced/lagging RPC node, or a tx that was
+  broadcast through a different node. Consumers must NOT treat EVM
+  `NotFound` as terminal — implement a bounded retry with backoff.
+- **Solana** — returns `Pending` in the equivalent case (unfetchable
+  full tx + no signature-status result → keep polling).
+- **UTXO** — returns `NotFound` only on definitive provider signals
+  (404 / -5 with mempool-or-blockchain); everything else throws
+  `RpcError`.
+
+This asymmetry is deliberate but not uniform — a follow-up card is
+tracked to make EVM's fallback path match Solana's Pending-on-uncertain.
+Until then, treat `NotFound` as "poll again before deciding" on EVM,
+"terminal" on UTXO.
 
 **Factory ergonomic divergence** — three subclass factories mirror
 Python exactly, which yields three different notFound construction

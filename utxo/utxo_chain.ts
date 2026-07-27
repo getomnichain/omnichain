@@ -656,6 +656,10 @@ function isProviderNotFoundError(err: unknown): boolean {
  */
 function sanitizeUtxoErrMessage(msg: string): string {
   return msg
+    // Basic-auth credentials in a URL: http://user:pass@host — the
+    // canonical Bitcoin Core RPC form, which the -5 branch above
+    // specifically expects and could otherwise expose.
+    .replace(/(:\/\/)[^:@\s/]+:[^@\s/]+@/g, '$1***:***@')
     // Query-string API key params.
     .replace(/([?&][A-Za-z_-]*(?:key|token|apikey|api_key|auth)=)[^&\s]+/gi, '$1***')
     // Bearer / Authorization headers.

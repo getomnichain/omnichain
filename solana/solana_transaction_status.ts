@@ -175,6 +175,23 @@ export class SolanaTransactionStatus extends TransactionStatus {
         `balanceChangesExcludingFees: nativeAsset must be a native token (identifier undefined/empty), got identifier="${nativeAsset.identifier}"`,
       );
     }
+    // Also check decimals against the existing fee-payer native row (when
+    // present) — assetHashOf drops decimals, so a passed nativeAsset with
+    // decimals=6 would silently rewrite a decimals=9 row to 6 (upsert lets
+    // change.decimals win). That's a 10^3 error the moment
+    // balanceChangeHr accessors land in Wave 2B.
+    const existingFeePayerRow = this.balanceChanges.get(this.fees.feePayer);
+    if (existingFeePayerRow) {
+      // The native-token key is `${chainId}_` (empty identifier).
+      const nativeKey = `${nativeAsset.chainId}_`;
+      const existingNative = existingFeePayerRow.get(nativeKey);
+      if (existingNative && existingNative.change.decimals !== nativeAsset.decimals) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `balanceChangesExcludingFees: nativeAsset.decimals=${nativeAsset.decimals} does not match existing fee-payer native row's decimals=${existingNative.change.decimals}`,
+        );
+      }
+    }
     // The fee-payer's native row may be *absent* — the decoder drops
     // delta === 0n rows, so a fee-payer whose received lamports exactly
     // offset the fee has no entry. The upsert below handles that

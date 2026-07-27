@@ -19,7 +19,7 @@ mounted at each service's own `chain` directory.
 | `Address` | [address.ts](../address.ts) | Abstract address with `canonical()` + `networkType` |
 | `UnsignedTransaction` | [unsigned_transaction.ts](../unsigned_transaction.ts) | Abstract base for an unsigned tx; per-chain subclasses add the bytes |
 | `NetworkType` | [network_type.ts](../network_type.ts) | Enum (`EVM`, `COSMOS`, `TON`, `SOLANA`, `BTC`) + `registerNonEvmChain(chainId, type)` registry |
-| `TransactionStatus` | [transaction_status.ts](../transaction_status.ts) | Abstract base — chainId, status, inclusionAt, error, balanceChanges. Per-network subclasses: `EvmTransactionStatus` (+logs, +fees), `SolanaTransactionStatus` (+fees), `UtxoTransactionStatus` (+inputs, +outputs, +vsize, +confirmations) |
+| `TransactionStatus` | [transaction_status.ts](../transaction_status.ts) | Abstract base — chainId, status, inclusionAt, error, balanceChanges. Per-network subclasses: `EvmTransactionStatus` (+logs, +fees), `SolanaTransactionStatus` (+fees), `UtxoTransactionStatus` (+outputs, +vsize, +confirmations, +fees) |
 | `AssetBalanceChange` | [transaction_status.ts](../transaction_status.ts) | Per-(wallet, asset) balance delta with `.balanceChangeMr: bigint` + `.decimals` (Wave 2A — bigint only; the Python-parity `.balanceChangeHr: Decimal` accessor arrives in Wave 2B alongside `decimal.js`). `NestedBalanceChanges = Map<wallet, Map<assetHash, {token, change}>>` |
 | `Priority` | [priority.ts](../priority.ts) | Shared `Priority` enum (`SLOW`/`NORMAL`/`FAST`) used by per-chain `suggestGas` / `suggestFeeRate` / `suggestPriorityFeeMicroLamports` |
 | `ChainError` | [errors.ts](../errors.ts) | Module-internal error with a `kind` discriminator |

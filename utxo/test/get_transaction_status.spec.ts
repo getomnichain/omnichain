@@ -1,11 +1,15 @@
 import { jest } from '@jest/globals';
 
+import {
+  CHAIN_ID_BITCOIN_MAINNET,
+  CHAIN_ID_BITCOIN_TESTNET,
+} from '../../chain_ids.ts';
 import { ChainErrorKinds, isChainError } from '../../errors.ts';
 import { TransactionStatusTypes } from '../../transaction_status.ts';
 import {
   bitcoinMainnetChain,
   bitcoinTestnetChain,
-} from '../btc/btc_chain.ts';
+} from '../btc/btc_chains.ts';
 import {
   BITCOIN_MAINNET_PARAMS,
   BITCOIN_TESTNET_PARAMS,
@@ -51,13 +55,12 @@ function makeProvider(overrides: {
 function stubChain(txStub: () => Promise<RawTransactionView>): UtxoChain {
   const p = makeProvider({ getTransaction: txStub });
   return bitcoinMainnetChain({
+    chainId: CHAIN_ID_BITCOIN_MAINNET,
     utxoProvider: p.utxoProvider as never,
     rawTxProvider: p.rawTxProvider as never,
     feeEstimator: p.feeEstimator as never,
     broadcaster: p.broadcaster as never,
     chainTipProvider: p.chainTipProvider as never,
-    walletExplorerUrlTemplate: 'https://mempool.space/address/{wallet_address}',
-    transactionExplorerUrlTemplate: 'https://mempool.space/tx/{tx_hash}',
   });
 }
 
@@ -250,13 +253,12 @@ describe('UtxoChain reserved-BTC-chainId guard', () => {
     const p = makeProvider();
     expect(() =>
       bitcoinMainnetChain({
+        chainId: CHAIN_ID_BITCOIN_MAINNET,
         utxoProvider: p.utxoProvider as never,
         rawTxProvider: p.rawTxProvider as never,
         feeEstimator: p.feeEstimator as never,
         broadcaster: p.broadcaster as never,
         chainTipProvider: p.chainTipProvider as never,
-        walletExplorerUrlTemplate: 'https://m/x',
-        transactionExplorerUrlTemplate: 'https://m/tx',
       }),
     ).not.toThrow();
   });
@@ -265,13 +267,12 @@ describe('UtxoChain reserved-BTC-chainId guard', () => {
     const p = makeProvider();
     expect(() =>
       bitcoinTestnetChain({
+        chainId: CHAIN_ID_BITCOIN_TESTNET,
         utxoProvider: p.utxoProvider as never,
         rawTxProvider: p.rawTxProvider as never,
         feeEstimator: p.feeEstimator as never,
         broadcaster: p.broadcaster as never,
         chainTipProvider: p.chainTipProvider as never,
-        walletExplorerUrlTemplate: 'https://m/x',
-        transactionExplorerUrlTemplate: 'https://m/tx',
       }),
     ).not.toThrow();
   });

@@ -834,7 +834,18 @@ export class SolanaChain extends Chain {
     const result: NestedBalanceChanges = new Map();
     if (!tx.meta) return result;
 
-    const accounts = tx.transaction.message.staticAccountKeys.map((k) => k.toBase58());
+    // For v0 messages, meta.preBalances/postBalances are indexed over
+    // staticAccountKeys ++ loadedAddresses.writable ++ loadedAddresses.readonly.
+    // Iterating only staticAccountKeys silently drops lamport deltas for
+    // any LUT-resolved account — a SOL deposit to a wallet that only
+    // appears via a lookup table produces no balanceChanges row at all.
+    // getTransaction() is called with maxSupportedTransactionVersion: 0
+    // so we always see the resolved addresses.
+    const staticKeys = tx.transaction.message.staticAccountKeys.map((k) => k.toBase58());
+    const loaded = tx.meta.loadedAddresses;
+    const loadedWritable = (loaded?.writable ?? []).map((k) => k.toBase58());
+    const loadedReadonly = (loaded?.readonly ?? []).map((k) => k.toBase58());
+    const accounts = [...staticKeys, ...loadedWritable, ...loadedReadonly];
     const pre = tx.meta.preBalances ?? [];
     const post = tx.meta.postBalances ?? [];
     for (let i = 0; i < accounts.length; i++) {

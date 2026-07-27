@@ -8,7 +8,7 @@ import {
 } from '../../transaction_status.ts';
 import { SolanaAddress } from '../solana_address.ts';
 import { SolanaToken } from '../solana_token.ts';
-import { SOLANA_MAINNET_CHAIN_ID } from '../../chain_ids.ts';
+import { CHAIN_ID_SOLANA_MAINNET as SOLANA_MAINNET_CHAIN_ID } from '../../chain_ids.ts';
 import {
   SolanaTransactionFees,
   SolanaTransactionStatus,

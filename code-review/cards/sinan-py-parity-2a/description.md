@@ -41,9 +41,12 @@ base with 5 core fields + runtime asserts, and each impl subclasses it to
 add chain-specific extras:
 - `EvmTransactionStatus(AbstractTransactionStatus)` — adds `logs`, `fees`
 - `SolanaTransactionStatus(AbstractTransactionStatus)` — adds `fees`
-- `UtxoTransactionStatus(AbstractTransactionStatus)` — adds `inputs`,
-  `outputs`, `vsize`, `confirmations`; constructor param
-  `confirmation_datetime_utc` is aliased to parent's `inclusion_datetime_utc`
+- `UtxoTransactionStatus(AbstractTransactionStatus)` — adds `outputs`,
+  `vsize`, `confirmations`, `fees` (an SDK addition vs Python's UTXO
+  base for surface parity with EVM/Solana); constructor param
+  `confirmation_datetime_utc` is aliased to parent's `inclusion_datetime_utc`.
+  Python's `inputs` field is deferred until the raw-tx provider surface
+  carries per-input address/value.
 
 Static factories `successful` / `failed` / `pending` / `not_found` live on
 each subclass (they need the chain-specific fields). `UtxoTransactionStatus`

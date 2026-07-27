@@ -478,38 +478,48 @@ export class EvmChain extends Chain {
 
     const succeeded = receipt.status === 1;
 
-    let inclusionAt: Date | null = null;
-    try {
-      const block = await provider.getBlock(receipt.blockNumber);
-      if (block?.timestamp !== undefined) {
-        inclusionAt = new Date(Number(block.timestamp) * 1000);
-      }
-    } catch {
-      // leave inclusionAt as null — a 1970-01-01 sentinel would silently
-      // pass through consumer SLA/age math as a real inclusion time.
-    }
+    // Parallelize the two independent post-receipt lookups: getBlock (for
+    // inclusionAt) and the OP-stack raw-receipt fetch (for l1Fee). Both
+    // depend only on receipt.blockNumber / txHash, not on each other.
+    const [inclusionAt, l1Fee] = await Promise.all([
+      (async (): Promise<Date | null> => {
+        try {
+          const block = await provider.getBlock(receipt.blockNumber);
+          if (block?.timestamp !== undefined) {
+            return new Date(Number(block.timestamp) * 1000);
+          }
+          return null;
+        } catch {
+          // leave null — a 1970-01-01 sentinel would silently pass
+          // through consumer SLA/age math as a real inclusion time.
+          return null;
+        }
+      })(),
+      (async (): Promise<bigint | undefined> => {
+        // OP-stack rollups charge an L1 data fee (`l1Fee` on the raw
+        // receipt). ethers v6 strips it in its parsed TransactionReceipt
+        // shape, so a second raw fetch is required. Gated on `hasL1Fee`.
+        // Return undefined for "provider did not surface it" (either
+        // hasL1Fee=false or the raw send failed/omitted the field) —
+        // tracked separately from "l1Fee is genuinely 0n" so
+        // fees.l1FeeWei reflects presence, not value.
+        if (!this.hasL1Fee) return undefined;
+        try {
+          const raw = (await provider.send('eth_getTransactionReceipt', [txHash])) as
+            | Record<string, unknown>
+            | null;
+          const rawL1 = raw?.l1Fee;
+          if (rawL1 === undefined || rawL1 === null) return undefined;
+          if (typeof rawL1 === 'bigint') return rawL1;
+          if (typeof rawL1 === 'number') return BigInt(rawL1);
+          if (typeof rawL1 === 'string' && rawL1.length > 0) return BigInt(rawL1);
+          return undefined;
+        } catch {
+          return undefined;
+        }
+      })(),
+    ]);
 
-    // OP-stack rollups charge an L1 data fee (`l1Fee` on the raw receipt).
-    // ethers v6 strips it in its parsed TransactionReceipt shape, so a
-    // second raw fetch is required. Gated on `hasL1Fee` to avoid the extra
-    // round-trip on L1 chains.
-    let l1Fee = 0n;
-    if (this.hasL1Fee) {
-      try {
-        const raw = (await provider.send('eth_getTransactionReceipt', [txHash])) as
-          | Record<string, unknown>
-          | null;
-        const rawL1 = raw?.l1Fee;
-        if (typeof rawL1 === 'string' && rawL1.length > 0) l1Fee = BigInt(rawL1);
-        else if (typeof rawL1 === 'bigint') l1Fee = rawL1;
-        else if (typeof rawL1 === 'number') l1Fee = BigInt(rawL1);
-      } catch {
-        // Fall through with l1Fee=0. Consumers on hasL1Fee chains should
-        // treat a null/undefined `fees.l1FeeWei` as "provider did not
-        // surface it"; the sender native debit will be approximate on
-        // those receipts.
-      }
-    }
     // gasLimit: the sender-set limit from tx.gasLimit. `null` when the tx
     // body isn't available (pruned/receipt-only) — falling back to
     // receipt.gasUsed here would fabricate a "100% utilization" that
@@ -521,12 +531,8 @@ export class EvmChain extends Chain {
       gasPrice: tx?.gasPrice ?? undefined,
       maxFeePerGas: tx?.maxFeePerGas ?? undefined,
       maxPriorityFeePerGas: tx?.maxPriorityFeePerGas ?? undefined,
-      l1FeeWei: l1Fee > 0n ? l1Fee : undefined,
+      l1FeeWei: l1Fee,
     });
-
-    const logs: EvmParsedTransactionLog[] = (receipt.logs ?? []).map(
-      (l) => new EvmParsedTransactionLog(l.address, [...l.topics], l.data),
-    );
 
     if (!succeeded) {
       const errorInfo = await extractRevertInfo(provider, tx, receipt);
@@ -537,6 +543,11 @@ export class EvmChain extends Chain {
         fees,
       });
     }
+
+    // Only allocated on the Success path — failed txs carry logs: null.
+    const logs: EvmParsedTransactionLog[] = (receipt.logs ?? []).map(
+      (l) => new EvmParsedTransactionLog(l.address, [...l.topics], l.data),
+    );
 
     const nativeValue = tx?.value ?? 0n;
     let balanceChanges: NestedBalanceChanges;
