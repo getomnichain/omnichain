@@ -40,7 +40,7 @@ mounted at each service's own `chain` directory.
 ### Construct a chain instance
 
 ```ts
-import { arbitrumChain } from 'omnichain';
+import { arbitrumChain } from '@getomnichain/omnichain';
 
 const arb = arbitrumChain('https://arb1.arbitrum.io/rpc');
 await arb.getBalance('0xabc…', /* tokenIdentifier */ 'NATIVE');
@@ -53,7 +53,7 @@ import {
   bitcoinMainnetChain,
   BitcoinCoreTool,
   BITCOIN_MAINNET_PARAMS,
-} from 'omnichain';
+} from '@getomnichain/omnichain';
 
 const core = new BitcoinCoreTool({
   baseUrl: 'http://localhost:8332',
@@ -76,7 +76,7 @@ const btc = bitcoinMainnetChain({
 For Solana:
 
 ```ts
-import { SolanaMainnet, Priority } from 'omnichain';
+import { SolanaMainnet, Priority } from '@getomnichain/omnichain';
 
 const cuMicroLamports = await SolanaMainnet.suggestPriorityFeeMicroLamports(Priority.NORMAL);
 const balance = await SolanaMainnet.getBalance('5gUu…');
@@ -90,7 +90,7 @@ Each chain owns its own fee-suggestion math; the consumer just passes a
 | Chain | Method | Result | RPC call under the hood |
 |---|---|---|---|
 | EVM (`supportsEip1559`) | `chain.suggestGas(priority)` | `EvmGasEstimate { maxFeePerGas, maxPriorityFeePerGas }` | Single `eth_feeHistory` call at percentile `{SLOW:25, NORMAL:50, FAST:75}` over 10 blocks; sort tips + pick p90; 2 gwei fallback if reward rows empty; `MIN_GAS_PRICE_FLOOR` (0.05 gwei) clamp on the returned tip; RPC failure bubbles as `ChainError(RpcError)` (no defensive fallback) |
-| EVM (legacy — `!supportsEip1559`) | `chain.suggestGas(priority)` | `EvmGasEstimate { gasPrice }` only — `maxFee*` fields **undefined** (Python parity) | `eth_gasPrice` × `{SLOW:1.0, NORMAL:1.2, FAST:1.5}`; clamped up to `MIN_GAS_PRICE_FLOOR`. See `docs/UPGRADE_TO_V0.md#evm-suggestgas-return-shape-for-legacy-chains` for the consumer dispatch pattern. |
+| EVM (legacy — `!supportsEip1559`) | `chain.suggestGas(priority)` | `EvmGasEstimate { gasPrice }` only — `maxFee*` fields **undefined** (Python parity) | `eth_gasPrice` × `{SLOW:1.0, NORMAL:1.2, FAST:1.5}`; clamped up to `MIN_GAS_PRICE_FLOOR`. Consumers that always sign EIP-1559 must dispatch on `supportsEip1559` or use `isLegacyGasEstimate` and fall back to a type-0 transaction on these chains. |
 | BTC / UTXO | `chain.suggestFeeRate(priority)` | `number` (sats/vByte) | `feeEstimator.getFeeEstimate(targetBlocks)` with `FAST:1, NORMAL:3, SLOW:6` |
 | Solana | `chain.suggestPriorityFeeMicroLamports(priority)` | `number` (microlamports/CU) | `getRecentPrioritizationFees({ lockedWritableAccounts: [] })` percentiles `{SLOW:p25, NORMAL:p50, FAST:p90}`; `0` on a quiet cluster |
 
@@ -122,7 +122,7 @@ read environment variables** for credentials.
 ### Check transaction status
 
 ```ts
-import { isSuccess } from 'omnichain';
+import { isSuccess } from '@getomnichain/omnichain';
 
 const status = await chain.getTransactionStatus(txHash);
 // EvmTransactionStatus | SolanaTransactionStatus | UtxoTransactionStatus
@@ -147,10 +147,7 @@ Solana keys are the raw base58 (case-sensitive), UTXO keys are the raw
 provider-returned address (bech32 lower-case in practice; providers
 don't uppercase). If you do `status.balanceChanges.get(userAddress)`
 directly, normalise `userAddress` to the same form (`toLowerCase()` for
-EVM). Same rules land in `UPGRADE_TO_V0_2A.md`.
-
-For consumer migration off the Phase 1 flat shape, see
-[UPGRADE_TO_V0_2A.md](./UPGRADE_TO_V0_2A.md).
+EVM).
 
 ## Error model
 
@@ -207,9 +204,10 @@ Solana, BTC, TON. TRON and COSMOS families throw `ChainNotSupported`
   - Solana `-2000` mainnet, `-2001` testnet, `-2002` devnet
   - TON `-4000` mainnet, `-4001` testnet
   Consumers **should not** invent overlapping negative IDs for their own
-  chains — see `docs/UPGRADE_TO_V0.md` for the conflict guard and
-  documented overlaps (notably TON's native `global_id = -3` collides
-  with BTC signet in this SDK).
+  chains. `registerNonEvmChain` throws `ChainError(InvalidArgument)` on
+  family conflict. Notable overlap: TON's native `global_id = -3` collides
+  with BTC signet in this SDK — use `CHAIN_ID_TON_TESTNET` (`-4001`) for
+  TON.
 
 ## Boundary: this module reads env only for RPC URL resolution
 

@@ -1,0 +1,93 @@
+{
+  "name": "@getomnichain/omnichain",
+  "version": "0.2.0",
+  "description": "Multi-chain SDK for EVM, Solana, UTXO (BTC/LTC/DOGE/DASH/ZEC/BCH), TON, and Tron. TypeScript parity port of omnichain-py.",
+  "keywords": [
+    "omnichain",
+    "blockchain",
+    "evm",
+    "ethereum",
+    "solana",
+    "bitcoin",
+    "utxo",
+    "ton",
+    "tron",
+    "sdk",
+    "multichain",
+    "web3"
+  ],
+  "homepage": "https://github.com/getomnichain/omnichain#readme",
+  "bugs": "https://github.com/getomnichain/omnichain/issues",
+  "license": "MIT",
+  "author": "getomnichain",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getomnichain/omnichain.git"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./evm": {
+      "types": "./dist/evm/index.d.ts",
+      "default": "./dist/evm/index.js"
+    },
+    "./solana": {
+      "types": "./dist/solana/index.d.ts",
+      "default": "./dist/solana/index.js"
+    },
+    "./utxo": {
+      "types": "./dist/utxo/index.d.ts",
+      "default": "./dist/utxo/index.js"
+    },
+    "./ton": {
+      "types": "./dist/ton/index.d.ts",
+      "default": "./dist/ton/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --experimental-vm-modules --no-warnings node_modules/jest/bin/jest.js",
+    "release": "bash scripts/release.sh",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "axios": "^1.7.0",
+    "bitcoinjs-lib": "^6.1.5",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "coininfo": "^5.2.1",
+    "decimal.js": "^10.4.3",
+    "ethers": "^6.13.0",
+    "js-sha3": "^0.9.3",
+    "tiny-secp256k1": "^2.2.3"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.14.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

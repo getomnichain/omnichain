@@ -1,0 +1,25 @@
+node_modules/
+coverage/
+*.tsbuildinfo
+
+.claude/
+.github/
+.gitignore
+
+code-review/
+scripts/
+
+**/test/
+**/*.spec.ts
+**/*.test.ts
+jest.config.*
+
+tsconfig.json
+tsconfig.build.json
+
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Keep dist/, docs/, README, LICENSE, CHANGELOG, package.json (via `files` allowlist in package.json)
