@@ -88,11 +88,24 @@ export class EvmTransactionGasFees {
 }
 
 /**
- * Passive holder for an event log entry surfaced on a receipt. Parsing
- * (Transfer decoding, etc.) lives on the decoders in `evm_chain.ts`
- * where the address/casing normalisation happens alongside the
- * `NestedBalanceChanges` construction — a duplicate parser here would
- * drift out of sync.
+ * Canonical ERC-20 `Transfer(address indexed from, address indexed to,
+ * uint256 value)` topic0 — keccak256("Transfer(address,address,uint256)").
+ */
+export const ERC20_TRANSFER_TOPIC =
+  '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+
+export interface EvmErc20TransferLog {
+  tokenContract: string;
+  fromAddress: string;
+  toAddress: string;
+  value: bigint;
+}
+
+/**
+ * Event log entry surfaced on a receipt. `isTransferLog()` / `asTransferLog()`
+ * mirror Python's `EvmParsedTransactionLog` API (`impl/evm/base.py:1551+`).
+ * The `evm_chain.ts` decoder consumes the shared `ERC20_TRANSFER_TOPIC`
+ * constant + this class's `asTransferLog()` to avoid two parsers drifting.
  */
 export class EvmParsedTransactionLog {
   readonly address: string;
@@ -103,6 +116,52 @@ export class EvmParsedTransactionLog {
     this.address = address;
     this.topics = topics;
     this.data = data;
+  }
+
+  isTransferLog(): boolean {
+    return this.topics.length === 3 && this.topics[0].toLowerCase() === ERC20_TRANSFER_TOPIC;
+  }
+
+  /**
+   * Decode this log as an ERC-20 Transfer. Throws
+   * `ChainError(InvalidArgument)` if the log doesn't match the topic0
+   * / topic-count shape, or `ChainError(TransactionDecodeFailed)` if
+   * `data` isn't parseable as a `uint256`. Addresses are returned
+   * lowercased (matches the `balanceChanges` wallet-key convention;
+   * consumers who need EIP-55 should checksum via `EvmAddress`).
+   */
+  asTransferLog(): EvmErc20TransferLog {
+    if (!this.isTransferLog()) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Log is not an ERC-20 Transfer (topics=${this.topics.length}, topic0=${this.topics[0] ?? ''})`,
+      );
+    }
+    const topic1 = this.topics[1];
+    const topic2 = this.topics[2];
+    if (topic1.length < 66 || topic2.length < 66) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionDecodeFailed,
+        `Transfer log topics too short (topic1.length=${topic1.length}, topic2.length=${topic2.length})`,
+      );
+    }
+    let value: bigint;
+    try {
+      value = BigInt(this.data);
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionDecodeFailed,
+        `Failed to parse Transfer log data as bigint: ${this.data}`,
+        undefined,
+        err instanceof Error ? err : undefined,
+      );
+    }
+    return {
+      tokenContract: this.address.toLowerCase(),
+      fromAddress: `0x${topic1.slice(26)}`.toLowerCase(),
+      toAddress: `0x${topic2.slice(26)}`.toLowerCase(),
+      value,
+    };
   }
 }
 

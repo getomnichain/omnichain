@@ -1,3 +1,5 @@
+import Decimal from 'decimal.js';
+
 import { ChainError, ChainErrorKinds } from './errors.ts';
 import { Token } from './token.ts';
 
@@ -36,10 +38,14 @@ export type NestedBalanceChanges = Map<string, Map<string, AssetBalanceChangeEnt
  * Per-(wallet, asset) balance delta. Source of truth is `balanceChangeMr`
  * (bigint minor units) — exact and native to every on-chain representation.
  *
- * Wave 2A ships bigint-only. The Python-parity `balance_change_hr: Decimal`
- * accessor lands in Wave 2B alongside the `decimal.js` consumer install
- * PRs; until then callers who need a human-readable representation compute
- * it themselves from `balanceChangeMr` and `decimals`.
+ * Wave 2B adds the Python-parity `balanceChangeHr: Decimal` accessor as a
+ * lazy getter derived from `mr / 10^decimals`. Storage flip vs Python
+ * (which stores `balance_change_hr: Decimal` and computes `mr` in the
+ * constructor): decimal.js defaults to 20 significant digits, so
+ * 18-decimal amounts ≥ ~100 tokens silently truncate on Decimal → bigint
+ * round-trip. Storing bigint keeps every wei/lamport/satoshi exact; the
+ * Decimal getter inherits decimal.js precision limits but never influences
+ * `.balanceChangeMr` on read.
  */
 export class AssetBalanceChange {
   readonly balanceChangeMr: bigint;
@@ -62,6 +68,35 @@ export class AssetBalanceChange {
 
   static fromMr(balanceChangeMr: bigint, decimals: number): AssetBalanceChange {
     return new AssetBalanceChange(balanceChangeMr, decimals);
+  }
+
+  /**
+   * Python-parity factory (`AssetBalanceChange.__init__` in
+   * `base/base.py:239-247` takes `balance_change_hr: Decimal`). Accepts a
+   * `Decimal` directly or any string/number that `new Decimal(...)`
+   * parses. Rounds via `Decimal.trunc()` matching Python's `hr_to_mr`
+   * — sub-minor-unit fractional bits are discarded.
+   */
+  static fromHr(
+    balanceChangeHr: Decimal | string | number,
+    decimals: number,
+  ): AssetBalanceChange {
+    const hr =
+      balanceChangeHr instanceof Decimal ? balanceChangeHr : new Decimal(balanceChangeHr);
+    const shifted = hr.mul(new Decimal(10).pow(decimals));
+    const rounded = shifted.trunc();
+    return new AssetBalanceChange(BigInt(rounded.toFixed(0)), decimals);
+  }
+
+  /**
+   * Human-readable amount as a `Decimal` — mirrors Python's
+   * `AbstractAssetBalanceChange.balance_change_hr`. Derived lazily from
+   * the bigint source-of-truth to sidestep decimal.js's 20-sig-digit
+   * default truncating 18-decimal amounts ≥ ~100 tokens on the read
+   * surface. Never influences `.balanceChangeMr`.
+   */
+  get balanceChangeHr(): Decimal {
+    return new Decimal(this.balanceChangeMr.toString()).div(new Decimal(10).pow(this.decimals));
   }
 
   /**
@@ -126,7 +161,10 @@ export class AssetBalanceChange {
   }
 
   toString(): string {
-    return `[change:${this.balanceChangeMr.toString()}(mr)]`;
+    // `toFixed()` avoids decimal.js's scientific notation on ≥ 21-digit
+    // amounts (`toExpPos` default). Consumers reading debug logs of
+    // wei-scale ERC-20 balances get a plain decimal.
+    return `[change:${this.balanceChangeHr.toFixed()}]`;
   }
 }
 

@@ -18,7 +18,7 @@ import {
   getMint,
 } from '@solana/spl-token';
 
-import { Chain, CreateTransferRequest } from '../chain.base.ts';
+import { Chain, CreateTransferRequest, resolveTransferAmount } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
@@ -309,10 +309,26 @@ export class SolanaChain extends Chain {
         { chainId: this.chainId, identifier: req.tokenIdentifier },
       );
     }
-    if (req.amount <= 0n) {
+    // Resolve amount / amountHr / isFullBalance to a bigint minor-units
+    // value. Solana native decimals = 9; SPL decimals resolved via
+    // getMint below (but for amountHr → amountMr conversion the caller
+    // hasn't seen the mint yet, so a separate resolveMintDecimals fetch
+    // is needed for SPL). Native path uses this._nativeToken.decimals.
+    const tokenDecimals =
+      req.tokenIdentifier === undefined
+        ? this._nativeToken.decimals
+        : await this.resolveMintDecimals(new PublicKey(req.tokenIdentifier));
+    const resolvedAmount = resolveTransferAmount(req, tokenDecimals);
+    let amountMr: bigint;
+    if (resolvedAmount.kind === 'full') {
+      amountMr = await this.getBalance(req.from, req.tokenIdentifier);
+    } else {
+      amountMr = resolvedAmount.amountMr;
+    }
+    if (amountMr <= 0n) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        `Transfer amount must be positive (got ${req.amount})`,
+        `Transfer amount must be positive (got ${amountMr})`,
         { chainId: this.chainId },
       );
     }
@@ -352,13 +368,13 @@ export class SolanaChain extends Chain {
         SystemProgram.transfer({
           fromPubkey: fromPk,
           toPubkey: toPk,
-          lamports: req.amount,
+          lamports: amountMr,
         }),
       );
     } else {
       const mintPk = new PublicKey(req.tokenIdentifier);
       const programId = await this.resolveTokenProgramId(mintPk);
-      const decimals = await this.resolveMintDecimals(mintPk);
+      const decimals = tokenDecimals;
       const sourceAta = getAssociatedTokenAddressSync(mintPk, fromPk, false, programId);
       const destAta = getAssociatedTokenAddressSync(mintPk, toPk, false, programId);
       // Create the destination ATA when missing — the fee payer pays rent.
@@ -374,7 +390,7 @@ export class SolanaChain extends Chain {
           mintPk,
           destAta,
           fromPk,
-          req.amount,
+          amountMr,
           decimals,
           [],
           programId,

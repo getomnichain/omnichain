@@ -9,7 +9,7 @@ import {
 
 import { NetworkType, tryNetworkTypeOf } from '../network_type.ts';
 
-import { Chain, CreateTransferRequest } from '../chain.base.ts';
+import { Chain, CreateTransferRequest, resolveTransferAmount } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { Priority } from '../priority.ts';
 import { EvmGasEstimate } from './evm_gas_estimate.ts';
@@ -19,6 +19,7 @@ import {
   TransactionErrorInfo,
 } from '../transaction_status.ts';
 import {
+  ERC20_TRANSFER_TOPIC as SHARED_ERC20_TRANSFER_TOPIC,
   EvmParsedTransactionLog,
   EvmTransactionGasFees,
   EvmTransactionStatus,
@@ -68,8 +69,7 @@ function atLeast(n: bigint, min: bigint): bigint {
   return n < min ? min : n;
 }
 
-const ERC20_TRANSFER_TOPIC =
-  '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+const ERC20_TRANSFER_TOPIC = SHARED_ERC20_TRANSFER_TOPIC;
 const ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
   'function decimals() view returns (uint8)',
@@ -432,17 +432,40 @@ export class EvmChain extends Chain {
       );
     }
 
+    // Resolve amount / amountHr / isFullBalance per Python's
+    // `create_transfer_transaction` contract. For isFullBalance we need
+    // the sender's balance — mirrors Python's amount_hr=total_balance
+    // path at `_omnichain.py`.
+    const tokenDecimals =
+      req.tokenIdentifier === undefined
+        ? this._nativeToken.decimals
+        : await this.resolveErc20DecimalsDefensive(req.tokenIdentifier);
+    const resolved = resolveTransferAmount(req, tokenDecimals);
+    let amountMr: bigint;
+    if (resolved.kind === 'full') {
+      if (req.from === undefined) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          'CreateTransferRequest.isFullBalance requires `from` to know whose balance to sweep',
+          { chainId: this.chainId },
+        );
+      }
+      amountMr = await this.getBalance(req.from, req.tokenIdentifier);
+    } else {
+      amountMr = resolved.amountMr;
+    }
+
     if (req.tokenIdentifier === undefined) {
       return new UnsignedEvmTransaction({
         chainId: this.chainId,
         from: req.from,
         to: req.to,
-        value: req.amount,
+        value: amountMr,
         data: '0x',
       });
     }
 
-    const data = ERC20_INTERFACE.encodeFunctionData('transfer', [req.to, req.amount]);
+    const data = ERC20_INTERFACE.encodeFunctionData('transfer', [req.to, amountMr]);
     return new UnsignedEvmTransaction({
       chainId: this.chainId,
       from: req.from,
@@ -701,6 +724,18 @@ export class EvmChain extends Chain {
     } catch {
       return placeholder();
     }
+  }
+
+  /**
+   * Decimals-only variant of `resolveErc20TokenDefensive`. Used by the
+   * transfer builder to convert `amountHr: Decimal` → `amountMr: bigint`
+   * when the caller passed a human-readable amount. Falls back to `0`
+   * (matches the token-placeholder decimals) on any resolution failure,
+   * so `resolveTransferAmount` still gets a total function to work with.
+   */
+  private async resolveErc20DecimalsDefensive(contractAddress: string): Promise<number> {
+    const token = await this.resolveErc20TokenDefensive(contractAddress);
+    return token.decimals;
   }
 
   private rpcError(message: string, cause: unknown, extra: { txHash?: string } = {}): ChainError {

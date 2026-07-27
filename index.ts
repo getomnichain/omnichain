@@ -1,3 +1,4 @@
+export * from './abstract_gas_pricing.ts';
 export * from './address.ts';
 export * from './address.factory.ts';
 export * from './address_field.decorator.ts';

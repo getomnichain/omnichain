@@ -13,3 +13,12 @@ export enum Priority {
 }
 
 export const DEFAULT_PRIORITY: Priority = Priority.NORMAL;
+
+/**
+ * Python-name alias for `Priority`. omnichain-py names the same enum
+ * `FeePriority` (base/base.py:123); consumers writing Python-parity code
+ * can import either identifier. `Priority` remains the canonical TS name
+ * for back-compat.
+ */
+export const FeePriority = Priority;
+export type FeePriority = Priority;
