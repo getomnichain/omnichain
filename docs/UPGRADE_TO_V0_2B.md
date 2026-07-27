@@ -62,7 +62,9 @@ New optional fields on `CreateTransferRequest`:
 **Contract:** exactly one of `{amount, amountHr, isFullBalance}` must be
 supplied. Ambiguous input (two or more set) throws
 `ChainError(InvalidArgument)`. Enforced by `resolveTransferAmount`
-exported from `chain.base.ts`.
+exported from `chain.base.ts`. Both `amount` and `amountHr` must
+convert to `> 0` minor units — zero amounts are rejected uniformly
+across chains.
 
 ```ts
 // BEFORE (Wave 2A)
@@ -73,22 +75,39 @@ await chain.createTransferUnsignedTransaction({
   amount: 1_500_000n,   // 1.5 USDC in minor units
 });
 
-// AFTER (Wave 2B) — human-readable amount
+// AFTER (Wave 2B) — human-readable amount (EVM + Solana)
 await chain.createTransferUnsignedTransaction({
   from: sender,
   to: recipient,
   tokenIdentifier: usdcAddress,
-  amountHr: new Decimal('1.5'),
-  gasPricing: FeePriority.FAST,   // or new EvmGasPricing({ kind: 'eip1559', … })
-});
-
-// AFTER (Wave 2B) — sweep full balance
-await chain.createTransferUnsignedTransaction({
-  from: sender,
-  to: recipient,
-  isFullBalance: true,
+  amountHr: new Decimal('1.5'),   // exact string-shift conversion
 });
 ```
+
+**`hrDecimalToMinorUnits`** is the exact converter used internally
+(`chain.base.ts` exports it). It uses `Decimal.toFixed(decimals,
+ROUND_DOWN)` + a string shift, so it's NOT bounded by decimal.js's
+20-sig-digit `precision` default. `new Decimal('123.456789012345678901')`
+at `decimals=18` yields exactly `123456789012345678901n` — no wei
+lost. The `.mul(10^d).trunc()` route would silently round.
+
+**Not yet supported (each throws `ChainError(InvalidArgument)`):**
+- `isFullBalance: true` — requires a fee-reserve computation
+  (subtract `gasCost` for EVM, `feeLamports` + rent for Solana) that
+  hasn't landed. A follow-up card will wire it. In the meantime pass
+  `amount` / `amountHr` explicitly.
+- `gasPricing` — the type is on the interface for Python parity, but
+  the per-chain builders don't consume it. A follow-up card wires
+  `FeePriority` → each chain's `suggest*` estimator and
+  `AbstractGasPricing` subclasses → each chain's raw fee fields.
+  In the meantime use the existing per-chain option fields
+  (`priorityFeeMicroLamportsPerCu` / `computeUnitLimit` on Solana;
+  `feeRateSatsPerVByte` / `feeTargetBlocks` on UTXO; the ethers tx
+  builder for EVM).
+
+**UTXO also rejects `amountHr`** — the multi-recipient `outputs[]`
+form has its own semantics that need a separate design pass.
+Documented as deferred.
 
 ## New: `FeePriority` alias for `Priority`
 
@@ -109,15 +128,13 @@ Explicit numeric fee overrides — mirrors Python's `AbstractGasPricing`
 ```ts
 import { EvmGasPricing } from 'omnichain';
 
-await arbitrumChain.createTransferUnsignedTransaction({
-  from: sender,
-  to: recipient,
-  amountHr: new Decimal('0.05'),
-  gasPricing: new EvmGasPricing({
-    kind: 'eip1559',
-    maxFeePerGas: 2_000_000_000n,
-    maxPriorityFeePerGas: 1_000_000_000n,
-  }),
+// The type surface is in place. Passing this to a chain builder in
+// Wave 2B throws — the wiring lands in a follow-up card. Use ethers
+// tx-builder options for now.
+const pricing = new EvmGasPricing({
+  kind: 'eip1559',
+  maxFeePerGas: 2_000_000_000n,
+  maxPriorityFeePerGas: 1_000_000_000n,
 });
 ```
 

@@ -414,6 +414,32 @@ export class UtxoChain extends Chain {
     req: CreateUtxoTransferOptions,
     getUtxosOptions: GetUtxosOptions | undefined
   ): Promise<UnsignedUtxoTransaction> {
+    // UTXO builder does not yet consume the CreateTransferRequest fields
+    // introduced in Wave 2B (Python-parity amountHr / isFullBalance /
+    // gasPricing). Rejecting them at entry — silently letting an
+    // amountHr-only request through would produce `amount === undefined`
+    // downstream and end in a NaN cointoss after several RPC round-trips.
+    if (req.amountHr !== undefined) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: CreateTransferRequest.amountHr is not yet supported — pass \`amount\` (bigint sats) or \`outputs\` (multi-recipient) instead.`,
+        { chainId: this.chainId },
+      );
+    }
+    if (req.isFullBalance === true) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: CreateTransferRequest.isFullBalance is not yet supported — pass \`amount\` explicitly and reserve fees yourself.`,
+        { chainId: this.chainId },
+      );
+    }
+    if (req.gasPricing !== undefined) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: CreateTransferRequest.gasPricing is not yet consumed by UtxoChain (Phase 2 follow-up). Use \`feeRateSatsPerVByte\` / \`feeTargetBlocks\` on CreateUtxoTransferOptions for now.`,
+        { chainId: this.chainId },
+      );
+    }
     if (!this.validateTokenIdentifier(req.tokenIdentifier)) {
       throw new ChainError(
         ChainErrorKinds.InvalidTokenIdentifier,

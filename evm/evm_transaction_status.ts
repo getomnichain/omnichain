@@ -139,10 +139,22 @@ export class EvmParsedTransactionLog {
     }
     const topic1 = this.topics[1];
     const topic2 = this.topics[2];
-    if (topic1.length < 66 || topic2.length < 66) {
+    // 32-byte hex-encoded topics: exactly `0x` + 64 hex chars = 66 total.
+    // Anything else is either truncated (would `slice(26)` a wrong window)
+    // or padded (should not have reached a Transfer topic slot).
+    if (!/^0x[0-9a-fA-F]{64}$/.test(topic1) || !/^0x[0-9a-fA-F]{64}$/.test(topic2)) {
       throw new ChainError(
         ChainErrorKinds.TransactionDecodeFailed,
-        `Transfer log topics too short (topic1.length=${topic1.length}, topic2.length=${topic2.length})`,
+        `Transfer log topics malformed (topic1=${topic1}, topic2=${topic2})`,
+      );
+    }
+    // ERC-20 Transfer data is exactly one uint256 = 32 bytes = 66-char hex.
+    // Empty string, short data, or blobs longer than 32 bytes all reach
+    // the decoder in the wild via non-standard tokens; fail loudly.
+    if (!/^0x[0-9a-fA-F]{64}$/.test(this.data)) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionDecodeFailed,
+        `Transfer log data must be exactly 32 hex bytes, got '${this.data}'`,
       );
     }
     let value: bigint;

@@ -4,6 +4,7 @@ import { GasPricingType } from './abstract_gas_pricing.ts';
 import { ChainError, ChainErrorKinds } from './errors.ts';
 import { NetworkType } from './network_type.ts';
 import { FeePriority } from './priority.ts';
+import { hrDecimalToMinorUnits } from './transaction_status.ts';
 
 import { Token } from './token.ts';
 import { TransactionStatus } from './transaction_status.ts';
@@ -76,16 +77,28 @@ export function resolveTransferAmount(
   }
   if (req.isFullBalance === true) return { kind: 'full' };
   if (req.amount !== undefined) {
-    if (req.amount < 0n) {
+    if (req.amount <= 0n) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        `CreateTransferRequest.amount must be >= 0, got ${req.amount}`,
+        `CreateTransferRequest.amount must be > 0, got ${req.amount}`,
       );
     }
     return { kind: 'exact', amountMr: req.amount };
   }
   // amountHr branch
   const hr = req.amountHr as Decimal;
+  if (!(hr instanceof Decimal)) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      'CreateTransferRequest.amountHr must be a Decimal instance',
+    );
+  }
+  if (!hr.isFinite()) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `CreateTransferRequest.amountHr must be finite, got ${hr.toString()}`,
+    );
+  }
   if (!Number.isInteger(decimals) || decimals < 0) {
     throw new ChainError(
       ChainErrorKinds.InvalidArgument,
@@ -98,8 +111,17 @@ export function resolveTransferAmount(
       `CreateTransferRequest.amountHr must be >= 0, got ${hr.toString()}`,
     );
   }
-  const shifted = hr.mul(new Decimal(10).pow(decimals)).trunc();
-  return { kind: 'exact', amountMr: BigInt(shifted.toFixed(0)) };
+  // Exact conversion via string-shift (bypasses decimal.js's 20-sig-digit
+  // precision limit that would silently round the last wei on 18-decimal
+  // amounts ≥ ~100 tokens).
+  const amountMr = hrDecimalToMinorUnits(hr, decimals);
+  if (amountMr <= 0n) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `CreateTransferRequest.amountHr must convert to > 0 minor units, got ${amountMr} (from ${hr.toString()} @ ${decimals} decimals)`,
+    );
+  }
+  return { kind: 'exact', amountMr };
 }
 
 /** Default gas pricing when the consumer doesn't pass one. */

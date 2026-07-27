@@ -3,6 +3,46 @@ import Decimal from 'decimal.js';
 import { ChainError, ChainErrorKinds } from './errors.ts';
 import { Token } from './token.ts';
 
+/**
+ * Exact `Decimal → bigint minor-units` conversion. Uses `toFixed(decimals,
+ * ROUND_DOWN)` — this path is NOT bounded by `Decimal.precision` — plus
+ * a string shift, so `new Decimal('123.456789012345678901')` with
+ * `decimals=18` yields exactly `123456789012345678901n` instead of the
+ * `.mul(1e18).trunc()` path's rounded-then-truncated `123456789012345678900n`.
+ * Verified against decimal.js 10.6.0.
+ */
+export function hrDecimalToMinorUnits(hr: Decimal, decimals: number): bigint {
+  // toFixed always emits a plain decimal representation (never scientific).
+  // ROUND_DOWN = 1 truncates toward zero, matching Python's `hr_to_mr`.
+  const fixed = hr.toFixed(decimals, Decimal.ROUND_DOWN);
+  const negative = fixed.startsWith('-');
+  const unsigned = negative ? fixed.slice(1) : fixed;
+  const dot = unsigned.indexOf('.');
+  const intPart = dot === -1 ? unsigned : unsigned.slice(0, dot);
+  const fracPart = dot === -1 ? '' : unsigned.slice(dot + 1);
+  const padded = fracPart.padEnd(decimals, '0').slice(0, decimals);
+  const digits = (intPart + padded).replace(/^0+(?=\d)/, '') || '0';
+  const mag = BigInt(digits);
+  return negative ? -mag : mag;
+}
+
+/**
+ * Exact `bigint minor-units → decimal-string` for human-readable display.
+ * Bypasses `Decimal.div` (also precision-bounded at 20), so
+ * `AssetBalanceChange.fromMr(123_456_789_012_345_678_901n, 18)` renders
+ * as `"123.456789012345678901"` — no wei lost.
+ */
+export function minorUnitsToHrString(mr: bigint, decimals: number): string {
+  const negative = mr < 0n;
+  const digits = (negative ? -mr : mr).toString();
+  if (decimals === 0) return negative ? `-${digits}` : digits;
+  const padded = digits.padStart(decimals + 1, '0');
+  const intPart = padded.slice(0, padded.length - decimals);
+  const fracPart = padded.slice(padded.length - decimals).replace(/0+$/, '');
+  const s = fracPart.length === 0 ? intPart : `${intPart}.${fracPart}`;
+  return negative ? `-${s}` : s;
+}
+
 export const TransactionStatusTypes = {
   Success: 'Success',
   Failed: 'Failed',
@@ -74,29 +114,55 @@ export class AssetBalanceChange {
    * Python-parity factory (`AssetBalanceChange.__init__` in
    * `base/base.py:239-247` takes `balance_change_hr: Decimal`). Accepts a
    * `Decimal` directly or any string/number that `new Decimal(...)`
-   * parses. Rounds via `Decimal.trunc()` matching Python's `hr_to_mr`
-   * — sub-minor-unit fractional bits are discarded.
+   * parses. Rounds sub-minor-unit fractional bits DOWN matching Python's
+   * `hr_to_mr`. Uses the exact string-shift path (`toFixed(decimals,
+   * ROUND_DOWN)` + digit concat) rather than `.mul(10^d).trunc()` — the
+   * `.mul` route is precision-bounded by decimal.js's 20-sig-digit
+   * default and would round the last wei on 18-decimal amounts ≥
+   * ~100 tokens.
    */
   static fromHr(
     balanceChangeHr: Decimal | string | number,
     decimals: number,
   ): AssetBalanceChange {
-    const hr =
-      balanceChangeHr instanceof Decimal ? balanceChangeHr : new Decimal(balanceChangeHr);
-    const shifted = hr.mul(new Decimal(10).pow(decimals));
-    const rounded = shifted.trunc();
-    return new AssetBalanceChange(BigInt(rounded.toFixed(0)), decimals);
+    let hr: Decimal;
+    try {
+      hr = balanceChangeHr instanceof Decimal ? balanceChangeHr : new Decimal(balanceChangeHr);
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `AssetBalanceChange.fromHr: unparseable input ${String(balanceChangeHr)}`,
+        undefined,
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (!hr.isFinite()) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `AssetBalanceChange.fromHr: input must be finite (got ${hr.toString()})`,
+      );
+    }
+    if (!Number.isInteger(decimals) || decimals < 0) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `AssetBalanceChange.fromHr: decimals must be a non-negative integer (got ${decimals})`,
+      );
+    }
+    return new AssetBalanceChange(hrDecimalToMinorUnits(hr, decimals), decimals);
   }
 
   /**
    * Human-readable amount as a `Decimal` — mirrors Python's
    * `AbstractAssetBalanceChange.balance_change_hr`. Derived lazily from
-   * the bigint source-of-truth to sidestep decimal.js's 20-sig-digit
-   * default truncating 18-decimal amounts ≥ ~100 tokens on the read
-   * surface. Never influences `.balanceChangeMr`.
+   * the bigint source-of-truth via an EXACT string-shift path
+   * (`minorUnitsToHrString`) so the returned `Decimal` carries every
+   * wei/lamport/satoshi. Note: consumers reading the `Decimal` and
+   * feeding it back through decimal.js arithmetic (`.mul`, `.div`)
+   * may still lose precision at decimal.js's 20-sig-digit default —
+   * for exact reconciliation stay on `balanceChangeMr`.
    */
   get balanceChangeHr(): Decimal {
-    return new Decimal(this.balanceChangeMr.toString()).div(new Decimal(10).pow(this.decimals));
+    return new Decimal(minorUnitsToHrString(this.balanceChangeMr, this.decimals));
   }
 
   /**
@@ -161,10 +227,10 @@ export class AssetBalanceChange {
   }
 
   toString(): string {
-    // `toFixed()` avoids decimal.js's scientific notation on ≥ 21-digit
-    // amounts (`toExpPos` default). Consumers reading debug logs of
-    // wei-scale ERC-20 balances get a plain decimal.
-    return `[change:${this.balanceChangeHr.toFixed()}]`;
+    // Emit both the exact bigint (never lossy) and the human-readable
+    // string derived via minorUnitsToHrString (also exact — no decimal.js
+    // rounding). Neither field can drop wei.
+    return `[change:${minorUnitsToHrString(this.balanceChangeMr, this.decimals)}(hr) / ${this.balanceChangeMr}(mr)]`;
   }
 }
 
