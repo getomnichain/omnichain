@@ -85,14 +85,22 @@ export function resolveTransferAmount(
     }
     return { kind: 'exact', amountMr: req.amount };
   }
-  // amountHr branch
-  const hr = req.amountHr as Decimal;
-  if (!(hr instanceof Decimal)) {
+  // amountHr branch. `Decimal.isDecimal()` is used instead of
+  // `instanceof Decimal` because omnichain has no package.json, so the
+  // decimal.js module resolves against whatever copy the *consumer*
+  // installs — a nested/duplicated copy (npm dedup miss, pnpm strict
+  // layout, dual CJS/ESM) yields a different constructor identity and
+  // would fail `instanceof` on a perfectly valid Decimal value.
+  // `Decimal.isDecimal` is duck-typed and cross-instance safe. Same
+  // convention as `AssetBalanceChange.fromHr`.
+  const rawHr = req.amountHr as unknown;
+  if (!Decimal.isDecimal(rawHr)) {
     throw new ChainError(
       ChainErrorKinds.InvalidArgument,
-      'CreateTransferRequest.amountHr must be a Decimal instance',
+      'CreateTransferRequest.amountHr must be a Decimal value (Decimal.isDecimal check)',
     );
   }
+  const hr = new Decimal(rawHr as Decimal | string | number);
   if (!hr.isFinite()) {
     throw new ChainError(
       ChainErrorKinds.InvalidArgument,
