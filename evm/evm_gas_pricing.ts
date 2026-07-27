@@ -58,6 +58,15 @@ export class EvmGasPricing extends AbstractGasPricing {
           `EvmGasPricing(eip1559).maxPriorityFeePerGas must be >= 0, got ${init.maxPriorityFeePerGas}`,
         );
       }
+      // EIP-1559 invariant: maxPriorityFeePerGas must be <= maxFeePerGas.
+      // Every execution client enforces this at admission (a tx that
+      // violates it can never be mined). Fail loud at construction.
+      if (init.maxPriorityFeePerGas > init.maxFeePerGas) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `EvmGasPricing(eip1559): maxPriorityFeePerGas (${init.maxPriorityFeePerGas}) must be <= maxFeePerGas (${init.maxFeePerGas}) per EIP-1559`,
+        );
+      }
       this.gasPrice = undefined;
       this.maxFeePerGas = init.maxFeePerGas;
       this.maxPriorityFeePerGas = init.maxPriorityFeePerGas;
