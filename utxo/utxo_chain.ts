@@ -5,7 +5,11 @@ import {
   CHAIN_ID_BITCOIN_SIGNET,
   CHAIN_ID_BITCOIN_TESTNET,
 } from '../chain_ids.ts';
-import { btcParamsForChainId } from './btc/network_params.ts';
+import {
+  BtcNetworkParams,
+  btcParamsForChainId,
+  btcParamsShapeMatches,
+} from './btc/network_params.ts';
 import { Chain, CreateTransferRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
@@ -16,7 +20,11 @@ import {
   NestedBalanceChanges,
   TransactionStatusTypes,
 } from '../transaction_status.ts';
-import { UtxoTransactionStatus } from './utxo_transaction_status.ts';
+import {
+  UtxoTransactionFees,
+  UtxoTransactionOutput,
+  UtxoTransactionStatus,
+} from './utxo_transaction_status.ts';
 
 import './ecc.ts';
 import {
@@ -46,12 +54,13 @@ import {
   UtxoNetworkParams,
 } from './utxo_network_params.ts';
 
+import { UnsignedUtxoTransaction } from './unsigned_utxo_transaction.ts';
+
 const RESERVED_BTC_CHAIN_IDS: readonly number[] = [
   CHAIN_ID_BITCOIN_MAINNET,
   CHAIN_ID_BITCOIN_TESTNET,
   CHAIN_ID_BITCOIN_SIGNET,
 ];
-import { UnsignedUtxoTransaction } from './unsigned_utxo_transaction.ts';
 
 export interface UtxoChainInit {
   chainId: number;
@@ -136,7 +145,12 @@ export class UtxoChain extends Chain {
     // it's a chain claiming a BTC id with foreign address rules.
     if (RESERVED_BTC_CHAIN_IDS.includes(init.chainId)) {
       const seeded = btcParamsForChainId(BigInt(init.chainId));
-      if (init.params !== seeded && !isSameBtcParamsShape(init.params, seeded)) {
+      const paramsAsBtc = init.params as BtcNetworkParams;
+      // Use the strict comparator exported from btc/network_params.ts so
+      // both this guard and registerBtcChainParams share ONE invariant.
+      // A non-BtcNetworkParams (missing `name`, `hrp`, etc.) fails the
+      // comparator on the first field mismatch.
+      if (init.params !== seeded && !btcParamsShapeMatches(seeded, paramsAsBtc)) {
         throw new ChainError(
           ChainErrorKinds.InvalidArgument,
           `chainId ${init.chainId} is reserved for BTC; UtxoChain construction with foreign params (slip44=${init.params.slip44CoinId}) is not permitted. Choose a distinct chainId for this network.`,
@@ -244,57 +258,86 @@ export class UtxoChain extends Chain {
   }
 
   async getTransactionStatus(txHash: string): Promise<UtxoTransactionStatus> {
+    // Narrow the try to the provider call only. Constructor asserts and
+    // upsert failures must NOT be silently coerced into NotFound; a
+    // transport error must NOT be reported as "tx doesn't exist" (that
+    // would let deposit detectors and rebroadcasters conclude the wrong
+    // thing).
+    let tx;
     try {
-      const tx = await this.rawTxProvider.getTransaction(txHash);
-      const isPending = tx.confirmations === 0;
-
-      if (isPending) {
-        return new UtxoTransactionStatus({
-          chainId: this.chainId,
-          status: TransactionStatusTypes.Pending,
-          confirmationAt: null,
-          balanceChanges: null,
-          confirmations: 0,
-        });
-      }
-
-      // Outputs-only per-address native deltas. Full input-side accounting
-      // to compute net native change (Python's `_native_balance_changes`
-      // parity) is deferred — see SINAN_OPEN_QUESTIONS.md.
-      const balanceChanges: NestedBalanceChanges = new Map();
-      const perAddressSats = new Map<string, bigint>();
-      for (const out of tx.vout) {
-        if (!out.address) continue;
-        perAddressSats.set(
-          out.address,
-          (perAddressSats.get(out.address) ?? 0n) + BigInt(out.valueSats),
-        );
-      }
-      for (const [address, sats] of perAddressSats) {
-        AssetBalanceChange.upsert(
-          balanceChanges,
-          address,
-          this._nativeToken,
-          AssetBalanceChange.fromMr(sats, this._nativeToken.decimals),
-        );
-      }
-
-      return new UtxoTransactionStatus({
-        chainId: this.chainId,
-        status: TransactionStatusTypes.Success,
-        confirmationAt: tx.blockTime,
-        balanceChanges,
-        confirmations: tx.confirmations,
-      });
+      tx = await this.rawTxProvider.getTransaction(txHash);
     } catch (err) {
+      if (err instanceof ChainError) throw err;
+      // Provider surface doesn't distinguish "not found" from "transport
+      // failure" today (see SINAN_OPEN_QUESTIONS.md). Wrap all failures
+      // as RpcError so consumers can retry rather than treating a 429/
+      // timeout as a definitive miss. Sanitize the reason.
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        `Failed to read UTXO tx ${txHash}: ${sanitizeUtxoErrMessage((err as Error).message)}`,
+        { chainId: this.chainId, txHash },
+        err,
+      );
+    }
+
+    const isPending = tx.confirmations === 0;
+    if (isPending) {
       return new UtxoTransactionStatus({
         chainId: this.chainId,
-        status: TransactionStatusTypes.NotFound,
+        status: TransactionStatusTypes.Pending,
         confirmationAt: null,
         balanceChanges: null,
-        error: { reason: (err as Error).message },
+        confirmations: 0,
       });
     }
+
+    // Outputs-only per-address native deltas. Full input-side accounting
+    // to compute net native change (Python's `_native_balance_changes`
+    // parity) is deferred — the raw-tx provider currently returns only
+    // vin.txid+vout, no address/value/scriptPubKeyHex. Noted in
+    // SINAN_OPEN_QUESTIONS.md.
+    const balanceChanges: NestedBalanceChanges = new Map();
+    const perAddressSats = new Map<string, bigint>();
+    for (const out of tx.vout) {
+      if (!out.address) continue;
+      perAddressSats.set(
+        out.address,
+        (perAddressSats.get(out.address) ?? 0n) + BigInt(out.valueSats),
+      );
+    }
+    for (const [address, sats] of perAddressSats) {
+      AssetBalanceChange.upsert(
+        balanceChanges,
+        address,
+        this._nativeToken,
+        AssetBalanceChange.fromMr(sats, this._nativeToken.decimals),
+      );
+    }
+
+    // Populate what the raw-tx provider surfaces; leave inputs/vsize null
+    // until the provider gains per-input address+value (Wave 2C).
+    const outputs: UtxoTransactionOutput[] = tx.vout.map(
+      (o) =>
+        new UtxoTransactionOutput({
+          scriptPubkeyHex: o.scriptPubKeyHex,
+          address: o.address,
+          valueSats: BigInt(o.valueSats),
+        }),
+    );
+    const fees =
+      tx.fees !== null
+        ? new UtxoTransactionFees({ absoluteSats: BigInt(tx.fees.absoluteSats), vsize: 0 })
+        : null;
+
+    return new UtxoTransactionStatus({
+      chainId: this.chainId,
+      status: TransactionStatusTypes.Success,
+      confirmationAt: tx.blockTime,
+      balanceChanges,
+      confirmations: tx.confirmations,
+      outputs,
+      fees,
+    });
   }
 
   async createTransferUnsignedTransaction(
@@ -537,17 +580,18 @@ function bigintToNumber(value: bigint): number {
   return Number(value);
 }
 
-function isSameBtcParamsShape(a: UtxoNetworkParams, b: UtxoNetworkParams): boolean {
-  return (
-    a.slip44CoinId === b.slip44CoinId &&
-    a.walletAddressRegex.source === b.walletAddressRegex.source &&
-    a.walletAddressRegex.flags === b.walletAddressRegex.flags &&
-    a.dustValueSats === b.dustValueSats &&
-    a.networkInfo.pubKeyHash === b.networkInfo.pubKeyHash &&
-    a.networkInfo.scriptHash === b.networkInfo.scriptHash &&
-    a.networkInfo.bip32.public === b.networkInfo.bip32.public &&
-    a.networkInfo.bip32.private === b.networkInfo.bip32.private
-  );
+/**
+ * Best-effort scrub for provider error messages so API keys and auth
+ * tokens don't leak into `TransactionErrorInfo.reason`. The UTXO
+ * providers (Esplora, Unisat, Ordiscan) carry keys in URL query strings
+ * and Authorization headers; a raw axios error stringifies the full
+ * request URL. Matches EVM's `sanitizeMessage` intent (evm_chain.ts).
+ */
+function sanitizeUtxoErrMessage(msg: string): string {
+  return msg
+    .replace(/([?&][A-Za-z_-]*(?:key|token|apikey|api_key|auth)=)[^&\s]+/gi, '$1***')
+    .replace(/(Authorization|Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 ***')
+    .replace(/\b(?:pk|sk|ghp|gho)_[A-Za-z0-9]{20,}\b/g, '***');
 }
 
 function encodeMemo(memo: string | undefined): Buffer | null {

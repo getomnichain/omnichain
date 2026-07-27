@@ -492,9 +492,7 @@ export class EvmChain extends Chain {
     );
 
     if (!succeeded) {
-      const errorInfo = (await extractRevertInfo(provider, tx, receipt)) ?? {
-        code: 'REVERTED',
-      };
+      const errorInfo = await extractRevertInfo(provider, tx, receipt);
       return EvmTransactionStatus.failed({
         chainId: this.chainId,
         inclusionAt,

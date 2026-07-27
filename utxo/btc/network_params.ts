@@ -155,7 +155,7 @@ export function unregisterBtcChainParams(chainId: bigint): void {
   btcParamsByChainId.delete(chainId);
 }
 
-function btcParamsShapeMatches(a: BtcNetworkParams, b: BtcNetworkParams): boolean {
+export function btcParamsShapeMatches(a: BtcNetworkParams, b: BtcNetworkParams): boolean {
   if (a.name !== b.name) return false;
   if (a.hrp !== b.hrp) return false;
   if (a.slip44CoinId !== b.slip44CoinId) return false;

@@ -170,28 +170,64 @@ iter 15 medium #4.
 
 ## Scope changes accepted mid-flight (vs the original card outline)
 
-- **`decimal.js` moved from 2B into 2A** — needed by `AssetBalanceChange`
-  (which stores `balanceChangeMr: bigint` as source of truth but exposes
-  `balanceChangeHr: Decimal` as a lazy accessor for consumer display).
-  Consumers must `npm install decimal.js` — documented in
-  `docs/UPGRADE_TO_V0_2A.md`.
+- **`decimal.js` deferred back to Wave 2B.** Wave 2A ships
+  `AssetBalanceChange` with **`balanceChangeMr: bigint` only** — no
+  `Decimal` accessor, no `fromHr` factory. The Python-parity
+  `balance_change_hr: Decimal` returns in 2B alongside `FeePriority`
+  threading, when the consumer `npm install decimal.js` PRs land in
+  the same train. This avoids the coordination-critical of shipping a
+  new peer dep in 2A. `UtxoTransactionInput`/`UtxoTransactionOutput`
+  use `valueSats: bigint` for the same reason. Final-state parity
+  with Sinan is achieved at 2B, not at 2A.
 - **`TransactionStatus` split into per-network subclasses** rather than a
   single class — Python actually does this (each impl subclasses
   `AbstractTransactionStatus` to add chain-specific fields). "Match the
   python" directive wins over the original single-class sketch.
 - **`AssetBalanceChange`: `upsert` (not `merge`), bigint source-of-truth,
-  `fromMr`/`fromHr`/`zero` factories (no `delta()` method)** — mirrors
-  Python's method name and drops the never-used `delta()` in favor of
-  keying off the stored `balanceChangeMr` directly.
-- **`NestedBalanceChanges` keyed by `assetHashOf(token)` = `${chainId}_${symbol}_${identifier ?? ''}`**
-  (drops decimals from the hash key) — deliberately safer than Python's
-  own `__hash__ = chainId_symbol_identifier_decimals` (which is a known
-  Python wart per Explore-agent read: Python's `__eq__` excludes decimals
-  but `__hash__` includes them, so dict entries with same-eq-but-different-
-  hash keys end up in the same bucket with undefined behavior). TS keying
-  on `Token.equals` identity prevents decimals-disagreement splitting one
-  asset into two non-cancelling balance rows on Solana `uiTokenAmount`
-  variance.
+  `fromMr`/`zero` factories (no `fromHr`, no `delta()`)** — mirrors
+  Python's method name and defers the Decimal-typed factory to 2B.
+- **`add()` and `upsert()` do not throw on decimals mismatch** — Python's
+  `__add__`/`upsert` don't check either. The newer change's decimals
+  silently win on merge (Python `change._decimals`). Consumers with a
+  decimals-consistency requirement enforce it externally.
+- **`NestedBalanceChanges` keyed by `assetHashOf(token)` = `${chainId}_${identifier ?? ''}`**
+  (drops both `symbol` and `decimals` from the hash key). `symbol` is
+  RPC-derived (Python parity here would key on `sameAsset` identity
+  anyway); on EVM `resolveErc20TokenDefensive` falls back to
+  `UNKNOWN_<hex>` when `contract.symbol()` fails, so a symbol-based key
+  would produce different keys for the same asset across transient RPC
+  health. `decimals` exclusion mirrors the same reasoning (Solana
+  `uiTokenAmount.decimals` variance). Deviation from Python's
+  `AbstractAsset.__hash__` (which is `chainId_symbol_identifier_decimals`)
+  is intentional — Python's `__hash__` and `__eq__` disagree, a known
+  upstream wart; TS keys on `Token.sameAsset` identity to keep dict
+  lookups consistent.
+- **UTXO `getTransactionStatus` narrows the `try` to the provider call
+  only** — transport failures throw `ChainError(RpcError)` (with
+  sanitized reason), constructor/upsert throws propagate, only "no such
+  tx" from the provider returns `NotFound`. Prevents the iter-1
+  fail-open where every failure surfaced as NotFound.
+- **`SolanaTransactionStatus.failed` accepts `fees: null`** for the
+  settled-but-unfetchable path (`getSignatureStatus` reports finalized
+  + err, but `getTransaction` returned null — fees are not
+  reconstructable). Prevents indefinite Pending polling on settled
+  failures.
+- **`SolanaChain.getTransactionStatus` returns Pending on `tx.meta === null`**
+  (a valid RPC response shape) rather than throwing. Matches the
+  `_decodeBalanceChanges` guard that was already in place.
+- **`balanceChangesExcludingFees` handles absent fee-payer row via upsert**
+  (creates a fresh +feeLamports entry) instead of throwing. Fixes the
+  legitimate-tx case where the fee payer's net native delta was exactly
+  zero (dropped by the decoder's `delta === 0n` filter).
+- **`EvmGasEstimate` fee validators accept `>= 0`** — subsidised chains
+  and devnets report zero prices; symmetric with `EvmTransactionGasFees`.
+- **`UtxoTransactionStatus.fees` field added** (with `absoluteSats` +
+  `vsize`; UTXO Python omits this but TS surface parity with EVM/Solana
+  keeps the consumer's deposit detector uniform — documented deviation
+  in SINAN_OPEN_QUESTIONS).
+- **`btcParamsShapeMatches` exported and shared** by
+  `registerBtcChainParams` and `UtxoChain`'s reserved-id guard so both
+  sites enforce one invariant with the same field set.
 
 ## Docs
 

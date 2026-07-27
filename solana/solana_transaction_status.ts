@@ -7,7 +7,6 @@ import {
   TransactionStatus,
   TransactionStatusType,
   TransactionStatusTypes,
-  assetHashOf,
 } from '../transaction_status.ts';
 
 export interface SolanaTransactionFeesInit {
@@ -91,11 +90,18 @@ export class SolanaTransactionStatus extends TransactionStatus {
     });
   }
 
+  /**
+   * `fees` is nullable — the settled-but-unfetchable path (RPC pruned
+   * the slot's ledger data so `getTransaction` returned null but
+   * `getSignatureStatus` reports `finalized` + `err`) has no way to
+   * reconstruct fees; the alternative would be polling `Pending`
+   * indefinitely (iter-2 medium).
+   */
   static failed(args: {
     chainId: number;
     inclusionAt: Date | null;
     error: TransactionErrorInfo;
-    fees: SolanaTransactionFees;
+    fees: SolanaTransactionFees | null;
   }): SolanaTransactionStatus {
     return new SolanaTransactionStatus({
       chainId: args.chainId,
@@ -152,23 +158,15 @@ export class SolanaTransactionStatus extends TransactionStatus {
         'balanceChangesExcludingFees requires non-null fees to know which fee_payer to credit',
       );
     }
-    // The fee-payer's native row must exist in balanceChanges (fees were
-    // debited from it). If nativeAsset isn't the same asset (chainId+
-    // symbol+identifier) as what the decoder wrote, we'd produce a phantom
-    // second native row on upsert; reject that instead.
-    const feePayerRow = this.balanceChanges.get(this.fees.feePayer);
-    if (!feePayerRow) {
-      throw new ChainError(
-        ChainErrorKinds.InvalidArgument,
-        `balanceChangesExcludingFees: fee_payer ${this.fees.feePayer} has no row in balanceChanges — cannot cancel a fee that isn't recorded`,
-      );
-    }
-    if (!feePayerRow.has(assetHashOf(nativeAsset))) {
-      throw new ChainError(
-        ChainErrorKinds.InvalidArgument,
-        `balanceChangesExcludingFees: native asset ${assetHashOf(nativeAsset)} does not match the fee-payer's recorded asset(s) [${[...feePayerRow.keys()].join(', ')}]`,
-      );
-    }
+    // The fee-payer's native row may be *absent* — the decoder drops
+    // delta === 0n rows, so a fee-payer whose received lamports exactly
+    // offset the fee has no entry. The upsert below handles that
+    // correctly (creates a fresh +feeLamports entry). We only need to
+    // guard against a genuine asset-identity mismatch: if the fee-payer
+    // row exists AND has a non-native asset entry (same identifier as
+    // nativeAsset would key the same hash — that's fine), a foreign
+    // asset in the fee payer's row means the caller passed the wrong
+    // token.
     const copy: NestedBalanceChanges = new Map();
     for (const [wallet, perWallet] of this.balanceChanges) {
       const inner = new Map<string, { token: Token; change: AssetBalanceChange }>();

@@ -1,20 +1,18 @@
 # Upgrade to Phase 2A (`sinan-py-parity-2a` branch)
 
-This branch is **breaking** — three structural refactors and one dependency
-addition. Merge order after Phase 1 (`sinan-py-parity`) has been shipped.
+This branch is **breaking** — three structural refactors and zero new
+runtime dependencies. Merge order after Phase 1 (`sinan-py-parity`) has
+been shipped.
 
-## New dependency
+## Wave 2A amount representation
 
-Add **`decimal.js`** to your `package.json`:
-
-```
-npm install decimal.js
-```
-
-`AssetBalanceChange` now stores its human-readable amount as `Decimal`
-(Python parity — Python's `AbstractAssetBalanceChange.balance_change_hr`
-is `decimal.Decimal`). The `bigint` minor-unit representation is still
-available on `.balanceChangeMr`.
+`AssetBalanceChange` stores balance deltas as **`bigint` minor units only**
+(`balanceChangeMr`). The Python-parity `balance_change_hr: Decimal`
+accessor is deliberately deferred to **Wave 2B** — it needs `decimal.js`
+as a peer dep, which requires a coordinated `npm install` in every
+consumer, and that coordination happens with Wave 2B's `FeePriority`
+threading. Until then, consumers who need a human-readable form compute
+it themselves from `balanceChangeMr` and `decimals`.
 
 ## Removed: `verifyMessageSignature`
 
@@ -100,12 +98,14 @@ if (status.status === 'Success') {
 }
 
 // AFTER (Phase 2A)
-import { isSuccess } from 'omnichain';
+import { isSuccess, EvmTransactionStatus } from 'omnichain';
 const status = await chain.getTransactionStatus(txHash);  // EvmTransactionStatus | SolanaTransactionStatus | UtxoTransactionStatus
 if (isSuccess(status)) {
   for (const [wallet, perAsset] of status.balanceChanges) {
     for (const { token, change } of perAsset.values()) {
-      console.log(wallet, token.symbol, change.balanceChangeMr, change.balanceChangeHr.toString());
+      // Wave 2A ships bigint minor units only. balanceChangeHr (Decimal)
+      // returns in Wave 2B alongside decimal.js.
+      console.log(wallet, token.symbol, change.balanceChangeMr);
     }
   }
 }
@@ -116,25 +116,33 @@ if (status instanceof EvmTransactionStatus) {
 
 **Grep targets for consumer teams:**
 - `\.balanceChanges\.map\(|\.balanceChanges\.filter\(|\.balanceChanges\[|for.*of.*\.balanceChanges` — was iterating an array; is now iterating a `Map<wallet, Map<assetHash, {token, change}>>`
-- `\.gasFee\b` — replaced by `status.fees` (typed by subclass)
+- `\.gasFee\b` — replaced by `status.fees` on `EvmTransactionStatus`/`SolanaTransactionStatus`/`UtxoTransactionStatus` (each subclass has its own fees value type)
 - `\.errorInfo\b` — renamed to `\.error`
 - `\.txTimestamp\b` — renamed to `\.inclusionAt`
 - `\.blockNumber\b` — dropped from the shape (Python parity — Python doesn't surface it on `EvmTransactionStatus`). Query provider directly if you need it.
 - `\.confirmations\b` — dropped on EVM/Solana. Still present on `UtxoTransactionStatus`.
+- `\.decodeBalanceChanges\(` (EVM) — signature changed: now takes a required `gasCost: bigint` and returns `NestedBalanceChanges` instead of `BalanceChange[]`.
+
+**Known accounting gap (Python parity):** `Failed` status has
+`balanceChanges: null` — the actual gas/fee that was burned by a
+reverted tx (EVM `gasUsed × effectiveGasPrice`, Solana `feeLamports`)
+is NOT surfaced through `balanceChanges` and must be reconstructed by
+the consumer from `status.fees` when reconciling debits. This mirrors
+`omnichain-py`'s `AbstractTransactionStatus` invariant (Failed →
+`balance_changes is None`); TS honors it verbatim.
 
 ## New: `AssetBalanceChange` + `NestedBalanceChanges`
 
-Value type:
+Value type (Wave 2A shape — bigint only):
 ```ts
 class AssetBalanceChange {
-  balanceChangeHr: Decimal;   // human-readable (Python: balance_change_hr)
   balanceChangeMr: bigint;    // minor units (Python: balance_change_mr)
   decimals: number;
 
   static zero(decimals?: number): AssetBalanceChange;
   static fromMr(mr: bigint, decimals: number): AssetBalanceChange;
-  add(other: AssetBalanceChange): AssetBalanceChange;
-  static upsert(container, wallet, token, change): void;  // Python parity, mutating
+  add(other: AssetBalanceChange): AssetBalanceChange;         // uses this.decimals (Python __add__ parity)
+  static upsert(container, wallet, token, change): void;      // mutating (Python parity)
 }
 ```
 
@@ -146,12 +154,20 @@ type NestedBalanceChanges = Map<
 >;
 ```
 
-`assetHashOf(token) = ${chainId}_${symbol}_${identifier ?? ''}_${decimals}` —
-mirrors Python's `AbstractAsset.__hash__`. Two tokens with the same
-(chainId, symbol, identifier) but different `decimals` are DISTINCT keys.
-This matches Python's behavior (Python's `__hash__` includes decimals, its
-`__eq__` doesn't — a known upstream wart carried forward; see
-`SINAN_OPEN_QUESTIONS.md`).
+`assetHashOf(token) = ${chainId}_${identifier ?? ''}` — keys on the
+stable `Token.sameAsset` identity. `symbol` is intentionally excluded
+because it comes from a live `contract.symbol()` on EVM and falls back
+to `UNKNOWN_<hex>` on RPC failure — keying on it would produce different
+keys for the same asset across transient RPC health. `decimals` is
+excluded because Solana `uiTokenAmount.decimals` variance would
+otherwise split one asset into two non-cancelling rows. Both fields are
+preserved on the stored entry's `token` for display.
+
+Deviation from Python's `AbstractAsset.__hash__` (which is
+`chainId_symbol_identifier_decimals`) — Python's hash and eq disagree
+(`__eq__` excludes decimals but `__hash__` includes them, a known
+upstream wart). TS keys on the `__eq__` identity to keep dict lookups
+consistent. See `SINAN_OPEN_QUESTIONS.md`.
 
 **`upsert` semantics (Python `base/base.py:255-287` parity):**
 - Mutating; returns `void`
@@ -160,6 +176,7 @@ This matches Python's behavior (Python's `__hash__` includes decimals, its
 - On non-zero-net merge: replaces the entry with a new
   `AssetBalanceChange` using `change.decimals` (the newer change wins on
   decimals, not the existing entry's)
+- No decimals-mismatch throw — Python doesn't check either
 
 ## Changed: `EvmGasEstimate` — discriminated by `kind`
 
@@ -179,31 +196,41 @@ if (isEip1559GasEstimate(estimate)) {
 }
 ```
 
-Constructor validates positivity — sub-zero fees throw at construction
-rather than surfacing as an unmineable tx.
+Constructor accepts `>= 0` for all fee fields (matches
+`EvmTransactionGasFees` — subsidised chains and devnets report zero
+prices; throwing there would turn a read-only estimate into an
+exception). Only strictly-negative values throw.
 
 ## Changed: `UtxoChain` reserved-BTC-chainId guard
 
-Constructing a non-BTC UTXO chain (LTC / DOGE / DASH / ZEC / BCH — any
-`slip44CoinId != 0 && != 1`) with a reserved BTC chainId
-(`CHAIN_ID_BITCOIN_MAINNET/TESTNET/SIGNET`) now throws
-`ChainError(InvalidArgument)`. Pick a distinct chainId for your
-non-BTC UTXO chain.
+Constructing a UTXO chain at a reserved BTC chainId
+(`CHAIN_ID_BITCOIN_MAINNET/TESTNET/SIGNET` = `-1/-2/-3`) now requires
+the incoming `params` to be shape-identical to the seeded BTC params
+for that id. Anything else — LTC/DOGE mainnet or testnet, an
+alternate-`walletAddressRegex` fork — throws
+`ChainError(InvalidArgument)`. Pick a distinct chainId for those.
+Uses the exact same comparator that `registerBtcChainParams` uses, so
+both guards enforce one invariant.
 
 **Grep target:** search for `new UtxoChain\(` or `chainId: -1|-2|-3\b` with
 non-BTC `params`.
 
-## Changed: `registerBtcChainParams` — reserved-seed rejection + deep-equal conflict check
+## Changed: `registerBtcChainParams` — reserved-seed idempotent + shape-equal conflict check
 
-- The three seeded chainIds (`-1`, `-2`, `-3`) are now **reserved** —
-  any consumer re-registration attempt throws
-  `ChainError(InvalidArgument)`, even with matching-name params.
-- Non-seeded conflict check now compares identity-relevant fields
-  (`hrp`, `pubKeyHash`, `scriptHash`, `bip32 pub/priv`) rather than
-  `name` alone. Silent-replace-with-different-grammar is not possible
-  on any registered id.
-- New `unregisterBtcChainParams(chainId)` — throws on reserved ids;
-  deletes a consumer-registered entry otherwise.
+- The three seeded chainIds (`-1`, `-2`, `-3`) are **reserved**:
+  re-registration is accepted iff the incoming params are shape-
+  identical to the seed (this is what `BtcChain`'s constructor does
+  every time it constructs). Anything else throws
+  `ChainError(InvalidArgument)`. Pick a distinct chainId for custom
+  BTC-shaped params.
+- Non-seeded conflict check compares all identity-relevant fields
+  (`name`, `hrp`, `slip44CoinId`, `walletAddressRegex.source`+`flags`,
+  `dustValueSats`, `pubKeyHash`, `scriptHash`, `bip32 pub/priv`, plus
+  the contents of `supportedDerivationPurposes`). Silent-replace-with-
+  different-grammar is not possible on any registered id.
+- New `unregisterBtcChainParams(chainId)` — silent no-op on the three
+  reserved ids (so a consumer teardown helper works uniformly for any
+  id), deletes a consumer-registered entry otherwise.
 - Pair with `unregisterChain(id)` from `network_type.ts` when tearing
   down a custom BTC-shaped id. Cross-module coupling is deliberately
   avoided — you call both.
@@ -222,7 +249,6 @@ it to `-2000`. Patch must ship with this train.
 
 ## Verification checklist
 
-- [ ] `npm install decimal.js` in the consumer
 - [ ] All `.balanceChanges` reads updated to `Map<wallet, Map<assetHash, entry>>`
 - [ ] All `.gasFee` reads updated to `status.fees` (typed per subclass)
 - [ ] All `.errorInfo` reads renamed to `.error`

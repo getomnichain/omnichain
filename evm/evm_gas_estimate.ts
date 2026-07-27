@@ -40,20 +40,25 @@ export class EvmGasEstimate {
     this.kind = init.kind;
     this.units = init.units;
     if (init.kind === 'legacy') {
-      if (init.gasPrice <= 0n) {
+      // Accept 0 for subsidised chains / devnets that report a zero
+      // gas price. EvmChain.suggestGas feeds node-reported values in
+      // directly; throwing here would turn a read-only estimate into
+      // an exception on any zero-fee network. Symmetric with
+      // EvmTransactionGasFees, which accepts 0 for the same fields.
+      if (init.gasPrice < 0n) {
         throw new ChainError(
           ChainErrorKinds.InvalidArgument,
-          `EvmGasEstimate(legacy).gasPrice must be > 0, got ${init.gasPrice}`,
+          `EvmGasEstimate(legacy).gasPrice must be >= 0, got ${init.gasPrice}`,
         );
       }
       this.gasPrice = init.gasPrice;
       this.maxFeePerGas = undefined;
       this.maxPriorityFeePerGas = undefined;
     } else {
-      if (init.maxFeePerGas <= 0n) {
+      if (init.maxFeePerGas < 0n) {
         throw new ChainError(
           ChainErrorKinds.InvalidArgument,
-          `EvmGasEstimate(eip1559).maxFeePerGas must be > 0, got ${init.maxFeePerGas}`,
+          `EvmGasEstimate(eip1559).maxFeePerGas must be >= 0, got ${init.maxFeePerGas}`,
         );
       }
       if (init.maxPriorityFeePerGas < 0n) {

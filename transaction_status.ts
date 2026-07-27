@@ -1,5 +1,3 @@
-import Decimal from 'decimal.js';
-
 import { ChainError, ChainErrorKinds } from './errors.ts';
 import { Token } from './token.ts';
 
@@ -15,14 +13,16 @@ export type TransactionStatusType =
 
 /**
  * Stable identity key for a token in `NestedBalanceChanges`. Uses
- * `(chainId, symbol, identifier)` — matches `Token.equals` (which excludes
- * decimals per Python parity). Decimals are preserved on the stored entry's
- * `token` for display, but MUST NOT split the same asset into two rows
- * on a source-vs-destination decimals disagreement — that would leave
- * both legs of a transfer uncancelled and report a phantom double movement.
+ * `(chainId, identifier)` — matches `Token.sameAsset` identity. `symbol`
+ * comes from a live `contract.symbol()` on EVM and falls back to
+ * `UNKNOWN_<hex>` on RPC failure, so keying on it produces different keys
+ * for the same asset across transient RPC health. `decimals` is likewise
+ * omitted (already dropped in iter 1) — Solana `uiTokenAmount.decimals`
+ * variance would otherwise split one asset into two non-cancelling rows.
+ * `symbol`/`decimals` are preserved on the stored entry's `token` for display.
  */
 export function assetHashOf(token: Token): string {
-  return `${token.chainId}_${token.symbol}_${token.identifier ?? ''}`;
+  return `${token.chainId}_${token.identifier ?? ''}`;
 }
 
 export interface AssetBalanceChangeEntry {
@@ -35,15 +35,11 @@ export type NestedBalanceChanges = Map<string, Map<string, AssetBalanceChangeEnt
 /**
  * Per-(wallet, asset) balance delta. Source of truth is `balanceChangeMr`
  * (bigint minor units) — exact and native to every on-chain representation.
- * `balanceChangeHr` (Decimal) is a lazy getter derived from mr / 10^decimals,
- * exposed for consumer display.
  *
- * Storage flip vs Python (which stores `balance_change_hr: Decimal` and
- * computes `balance_change_mr: int` in the constructor): decimal.js defaults
- * to 20 significant digits, so 18-decimal amounts ≥ ~100 tokens silently
- * truncate the last minor-unit digits on Decimal → bigint round-trip. Storing
- * bigint keeps every wei/lamport/satoshi exact; the Decimal accessor is
- * best-effort for human display and inherits decimal.js precision limits.
+ * Wave 2A ships bigint-only. The Python-parity `balance_change_hr: Decimal`
+ * accessor lands in Wave 2B alongside the `decimal.js` consumer install
+ * PRs; until then callers who need a human-readable representation compute
+ * it themselves from `balanceChangeMr` and `decimals`.
  */
 export class AssetBalanceChange {
   readonly balanceChangeMr: bigint;
@@ -60,12 +56,6 @@ export class AssetBalanceChange {
     this.decimals = decimals;
   }
 
-  get balanceChangeHr(): Decimal {
-    return new Decimal(this.balanceChangeMr.toString()).div(
-      new Decimal(10).pow(this.decimals),
-    );
-  }
-
   static zero(decimals: number = 0): AssetBalanceChange {
     return new AssetBalanceChange(0n, decimals);
   }
@@ -75,27 +65,27 @@ export class AssetBalanceChange {
   }
 
   /**
-   * `hr` is a display-oriented factory — accepts a `Decimal` or numeric string
-   * and rounds via `hrToMr`. Prefer `fromMr` in decoders; use `hr` only when
-   * you have a human amount and know the decimal.js precision is enough.
+   * Sum two changes. Uses `this.decimals` for the result — mirrors Python
+   * `AbstractAssetBalanceChange.__add__` (base/base.py:239-311) which
+   * uses `self._decimals`. No decimals-mismatch check; consumers that
+   * care compare `.decimals` themselves before adding.
    */
-  static fromHr(balanceChangeHr: Decimal | string, decimals: number): AssetBalanceChange {
-    const hr = balanceChangeHr instanceof Decimal ? balanceChangeHr : new Decimal(balanceChangeHr);
-    const shifted = hr.mul(new Decimal(10).pow(decimals));
-    const rounded = shifted.trunc();
-    return new AssetBalanceChange(BigInt(rounded.toFixed(0)), decimals);
-  }
-
   add(other: AssetBalanceChange): AssetBalanceChange {
-    if (other.decimals !== this.decimals) {
-      throw new ChainError(
-        ChainErrorKinds.InvalidArgument,
-        `AssetBalanceChange.add: decimals mismatch (this=${this.decimals}, other=${other.decimals})`,
-      );
-    }
     return new AssetBalanceChange(this.balanceChangeMr + other.balanceChangeMr, this.decimals);
   }
 
+  /**
+   * Merge `change` into `balanceChanges[wallet][assetHash]`. Mirrors
+   * Python `AssetBalanceChange.upsert` (base/base.py:255-287): mutating,
+   * returns void; zero-net collapses both the asset row and the wallet
+   * row (when the wallet's inner map empties); on non-zero-net merge the
+   * newer `change.decimals` wins (Python uses `change._decimals`, not
+   * `existing._decimals`).
+   *
+   * No decimals-mismatch throw. Python does not check either — the newer
+   * change's decimals silently win. Consumers with a decimals-consistency
+   * requirement enforce it externally.
+   */
   static upsert(
     balanceChanges: NestedBalanceChanges,
     wallet: string,
@@ -113,12 +103,6 @@ export class AssetBalanceChange {
       perWallet.set(hash, { token, change });
       return;
     }
-    if (existing.change.decimals !== change.decimals) {
-      throw new ChainError(
-        ChainErrorKinds.InvalidArgument,
-        `AssetBalanceChange.upsert: decimals mismatch for (${wallet}, ${hash}) — existing=${existing.change.decimals} vs incoming=${change.decimals}`,
-      );
-    }
     const netMr = existing.change.balanceChangeMr + change.balanceChangeMr;
     if (netMr === 0n) {
       perWallet.delete(hash);
@@ -132,7 +116,7 @@ export class AssetBalanceChange {
   }
 
   toString(): string {
-    return `[change:${this.balanceChangeHr.toFixed()}]`;
+    return `[change:${this.balanceChangeMr.toString()}(mr)]`;
   }
 }
 

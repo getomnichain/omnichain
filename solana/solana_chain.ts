@@ -587,23 +587,36 @@ export class SolanaChain extends Chain {
       );
     }
     if (!tx) {
-      // Could be still propagating (Processed but not yet Confirmed); fall back to signature
-      // status before declaring NotFound. If the sig reports settled but the full tx isn't
-      // fetchable (the RPC may have pruned the slot's ledger data), return Pending so the
-      // caller keeps polling — reporting NotFound here would let a deposit-detector
-      // conclude a finalized-and-settled transfer never happened, and let a broadcaster
-      // consider rebroadcast safe.
+      // Full tx not fetchable; fall back to signature status. Consume BOTH
+      // fields (`confirmationStatus` + `err`) — the previous fix that
+      // always returned Pending on settled-but-unfetchable let a settled-
+      // FAILED tx poll indefinitely.
       const sig = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
       if (!sig || !sig.value) return SolanaTransactionStatus.notFound(this.chainId);
+      const settled =
+        sig.value.confirmationStatus === 'finalized' ||
+        sig.value.confirmationStatus === 'confirmed';
+      if (settled && sig.value.err) {
+        // Fees are not reconstructable from a sig-status only — factory
+        // now accepts fees: null for exactly this case.
+        return SolanaTransactionStatus.failed({
+          chainId: this.chainId,
+          inclusionAt: null,
+          error: { code: 'REVERTED', reason: JSON.stringify(sig.value.err) },
+          fees: null,
+        });
+      }
+      // settled-Success without a fetchable body OR still propagating —
+      // keep polling. NotFound here would misreport a settled deposit.
       return SolanaTransactionStatus.pending(this.chainId);
     }
 
     if (!tx.meta) {
-      throw new ChainError(
-        ChainErrorKinds.TransactionDecodeFailed,
-        `Solana tx ${txHash} returned without meta — cannot construct fees`,
-        { chainId: this.chainId, txHash },
-      );
+      // A returned tx without meta is a valid RPC response shape (some
+      // very old txs or unusual nodes). Report Pending so consumers keep
+      // polling rather than throwing from a status read; matches the
+      // _decodeBalanceChanges guard at the same file.
+      return SolanaTransactionStatus.pending(this.chainId);
     }
 
     const accounts = tx.transaction.message.staticAccountKeys.map((k) => k.toBase58());
@@ -788,8 +801,9 @@ export class SolanaChain extends Chain {
 
   /**
    * Decodes per-account lamport deltas + SPL pre/post token-balance diffs into
-   * BalanceChange[]. Marked internal via naming rather than TS `private` so that
-   * chain-agnostic unit tests can exercise it without spinning up a Connection.
+   * a `NestedBalanceChanges` map. Marked internal via naming rather than TS
+   * `private` so chain-agnostic unit tests can exercise it directly without
+   * spinning up a Connection.
    */
   _decodeBalanceChanges(
     tx: NonNullable<Awaited<ReturnType<Connection['getTransaction']>>>,

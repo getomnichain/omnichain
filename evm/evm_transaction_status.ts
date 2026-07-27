@@ -7,9 +7,6 @@ import {
   TransactionStatusTypes,
 } from '../transaction_status.ts';
 
-const ERC20_TRANSFER_TOPIC =
-  '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
-
 export interface EvmTransactionGasFeesInit {
   gasLimit: bigint;
   gasLimitUsed: bigint;
@@ -63,13 +60,13 @@ export class EvmTransactionGasFees {
   }
 }
 
-export interface EvmErc20TransferLog {
-  tokenContract: string;
-  fromAddress: string;
-  toAddress: string;
-  value: bigint;
-}
-
+/**
+ * Passive holder for an event log entry surfaced on a receipt. Parsing
+ * (Transfer decoding, etc.) lives on the decoders in `evm_chain.ts`
+ * where the address/casing normalisation happens alongside the
+ * `NestedBalanceChanges` construction — a duplicate parser here would
+ * drift out of sync.
+ */
 export class EvmParsedTransactionLog {
   readonly address: string;
   readonly topics: readonly string[];
@@ -79,36 +76,6 @@ export class EvmParsedTransactionLog {
     this.address = address;
     this.topics = topics;
     this.data = data;
-  }
-
-  isTransferLog(): boolean {
-    return this.topics.length === 3 && this.topics[0].toLowerCase() === ERC20_TRANSFER_TOPIC;
-  }
-
-  asTransferLog(): EvmErc20TransferLog {
-    if (!this.isTransferLog()) {
-      throw new ChainError(
-        ChainErrorKinds.InvalidArgument,
-        `Log is not an ERC-20 Transfer (topics=${this.topics.length}, topic0=${this.topics[0] ?? ''})`,
-      );
-    }
-    let value: bigint;
-    try {
-      value = BigInt(this.data);
-    } catch (err) {
-      throw new ChainError(
-        ChainErrorKinds.TransactionDecodeFailed,
-        `Failed to parse Transfer log data as bigint: ${this.data}`,
-        undefined,
-        err,
-      );
-    }
-    return {
-      tokenContract: this.address,
-      fromAddress: `0x${this.topics[1].slice(26)}`,
-      toAddress: `0x${this.topics[2].slice(26)}`,
-      value,
-    };
   }
 }
 
