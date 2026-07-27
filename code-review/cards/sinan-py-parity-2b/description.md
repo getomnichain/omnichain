@@ -203,6 +203,29 @@ the review cycle and confirmed with the user or defensibly deferred:
   `evm_transaction_status.ts` and `docs/UPGRADE_TO_V0_2B.md` no
   longer claim "one parser".
 
+## Hard merge gate: consumer `decimal.js` install
+
+omnichain has no `package.json`; `import Decimal from 'decimal.js'`
+at `transaction_status.ts:1` and `chain.base.ts:1` transitively
+propagates to every consumer via the root barrel. Neither
+`pluton-back-end/package.json` nor `depositron/package.json` declares
+`decimal.js` today. **Merging this branch without landing
+`npm install decimal.js` in both consumers first breaks every code
+path at import time**, not just paths that touch `amountHr`.
+
+This is card-accepted (Wave 2A deliberately deferred `decimal.js` to
+2B so the peer-dep install could be coordinated) but the coordination
+is what makes 2B mergeable, not the code alone. Merge sequence:
+
+1. Open PRs in pluton-back-end + depositron adding `decimal.js` to
+   `dependencies` (or `peerDependencies` if the consumer uses
+   omnichain as a submodule).
+2. Merge those PRs.
+3. Merge this branch and bump the omnichain submodule ref.
+
+If those PRs land after this branch merges, every consumer service
+crashes on the next start with `Cannot find module 'decimal.js'`.
+
 ## Out of scope
 
 - **TON port** (`impl/ton/base.py` ~1700 lines) — explicitly dropped

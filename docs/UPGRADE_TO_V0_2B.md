@@ -9,13 +9,21 @@ public contract:
   `isFullBalance: boolean` / `gasPricing: FeePriority | AbstractGasPricing`
   alongside the existing `amount: bigint`
 
-## New dependency
+## New dependency — **HARD MERGE GATE**
 
-Add **`decimal.js`** to your `package.json`:
+Add **`decimal.js`** to your `package.json` and merge the install PR
+**before** bumping the omnichain submodule ref to this branch:
 
 ```
 npm install decimal.js
 ```
+
+`import Decimal from 'decimal.js'` sits at the root of
+`transaction_status.ts`, transitively pulled through the package
+barrel. **If the consumer bumps the submodule without first landing
+this install, every code path crashes at import time** with
+`Cannot find module 'decimal.js'` — not just paths that touch
+`amountHr`.
 
 Wave 2A shipped `AssetBalanceChange` as bigint-only precisely so this
 install could be coordinated with 2B — no phase ships a half-installed

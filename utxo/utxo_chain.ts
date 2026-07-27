@@ -648,7 +648,13 @@ export class UtxoChain extends Chain {
     targetBlocks: number | undefined
   ): Promise<number> {
     if (overrideRate !== undefined) {
-      if (overrideRate < 1) throw new Error('feeRateSatsPerVByte must be >= 1');
+      if (overrideRate < 1) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `${this.name}: feeRateSatsPerVByte must be >= 1 (got ${overrideRate})`,
+          { chainId: this.chainId },
+        );
+      }
       return Math.ceil(overrideRate);
     }
     const estimate = await this.feeEstimator.getFeeEstimate(
@@ -693,7 +699,10 @@ export class UtxoChain extends Chain {
 
 function bigintToNumber(value: bigint): number {
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error(`UTXO amount ${value} exceeds Number.MAX_SAFE_INTEGER`);
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `UTXO amount ${value} exceeds Number.MAX_SAFE_INTEGER`,
+    );
   }
   return Number(value);
 }
@@ -776,7 +785,10 @@ function encodeMemo(memo: string | undefined): Buffer | null {
   const buf = Buffer.from(memo, 'utf8');
   if (buf.length === 0) return null;
   if (buf.length > OP_RETURN_MAX_BYTES) {
-    throw new Error(`memo length ${buf.length} bytes exceeds OP_RETURN max ${OP_RETURN_MAX_BYTES}`);
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `memo length ${buf.length} bytes exceeds OP_RETURN max ${OP_RETURN_MAX_BYTES}`,
+    );
   }
   return buf;
 }
