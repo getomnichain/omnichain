@@ -1,4 +1,4 @@
-import Decimal from 'decimal.js';
+import { Decimal } from 'decimal.js';
 
 import { GasPricingType } from './abstract_gas_pricing.ts';
 import { ChainError, ChainErrorKinds } from './errors.ts';

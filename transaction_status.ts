@@ -1,4 +1,4 @@
-import Decimal from 'decimal.js';
+import { Decimal } from 'decimal.js';
 
 import { ChainError, ChainErrorKinds } from './errors.ts';
 import { Token } from './token.ts';

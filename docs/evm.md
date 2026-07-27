@@ -152,8 +152,7 @@ matches the on-chain net.
 
 `Failed` status carries `balanceChanges: null` per Python parity — the
 gas that was burned is still on `fees.totalNativeDebitWei` and consumers
-reconstruct sender debits from there for reverted transactions. See
-`docs/UPGRADE_TO_V0_2A.md` for the accounting-gap note.
+reconstruct sender debits from there for reverted transactions.
 
 ## Registry / wiring
 

@@ -27,10 +27,9 @@ export const SOLANA_DEVNET_CHAIN_ID = CHAIN_ID_SOLANA_DEVNET;
  * These are NOT registered as `NetworkType.SOLANA` aliases — a half-wired
  * shim (accept-then-fail-later) is worse than fail-closed for a signing SDK.
  * Consumers with persisted `-100 / -101 / -102` rows MUST call
- * `migrateLegacySolanaChainId(id)` (or run the SQL rewrite in
- * `docs/UPGRADE_TO_V0.md`) before those values enter the SDK; otherwise
- * `networkTypeOf(-100)` throws `ChainError(ChainNotSupported)` at
- * validation time, which is the intended safe behavior.
+ * `migrateLegacySolanaChainId(id)` before those values enter the SDK;
+ * otherwise `networkTypeOf(-100)` throws `ChainError(ChainNotSupported)`
+ * at validation time, which is the intended safe behavior.
  */
 const LEGACY_SOLANA_MAINNET_CHAIN_ID = -100;
 const LEGACY_SOLANA_TESTNET_CHAIN_ID = -101;

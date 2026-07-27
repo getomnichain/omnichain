@@ -1,4 +1,4 @@
-import Decimal from 'decimal.js';
+import { Decimal } from 'decimal.js';
 
 import { resolveTransferAmount } from '../chain.base.ts';
 import { ChainErrorKinds, isChainError } from '../errors.ts';

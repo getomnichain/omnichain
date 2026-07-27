@@ -201,7 +201,7 @@ export function btcParamsForChainId(chainId: bigint): BtcNetworkParams {
     // (LTC/DOGE/etc.), registering BITCOIN_MAINNET_PARAMS here would let
     // BTC addresses validate as if they belonged to the wrong chain.
     // The v0 workaround is `chain.validateAddress(raw)` on the chain
-    // instance directly; see docs/UPGRADE_TO_V0.md.
+    // instance directly.
     throw new ChainError(
       ChainErrorKinds.ChainNotSupported,
       `No BTC network params registered for chainId ${chainId}`,

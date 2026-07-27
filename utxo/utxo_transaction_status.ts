@@ -95,8 +95,7 @@ export interface UtxoTransactionStatusInit {
  * that wallet's own **change output** as a positive `AssetBalanceChange`,
  * NOT a net debit. Consumers doing uniform cross-chain balance
  * reconciliation must special-case UTXO. Input-side accounting is deferred
- * to a later phase; see `docs/UPGRADE_TO_V0_2A.md` under "UTXO
- * balanceChanges semantics" and SINAN_OPEN_QUESTIONS.md.
+ * to a later phase.
  *
  * `inputs` is not yet surfaced (the raw-tx provider returns only txid+vout,
  * insufficient for a meaningful shape). Comes back in the 2C UTXO port.
