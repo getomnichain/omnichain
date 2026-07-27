@@ -11,6 +11,7 @@ export * from './unsigned_utxo_transaction.ts';
 export * from './utxo.ts';
 export * from './utxo_chain.ts';
 export * from './utxo_chains.ts';
+export * from './utxo_gas_pricing.ts';
 export * from './utxo_network_params.ts';
 export * from './utxo_transaction_status.ts';
 export * from './btc/index.ts';

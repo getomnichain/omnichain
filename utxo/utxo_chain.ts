@@ -414,6 +414,32 @@ export class UtxoChain extends Chain {
     req: CreateUtxoTransferOptions,
     getUtxosOptions: GetUtxosOptions | undefined
   ): Promise<UnsignedUtxoTransaction> {
+    // UTXO builder does not yet consume the CreateTransferRequest fields
+    // introduced in Wave 2B (Python-parity amountHr / isFullBalance /
+    // gasPricing). Rejecting them at entry — silently letting an
+    // amountHr-only request through would produce `amount === undefined`
+    // downstream and end in a NaN cointoss after several RPC round-trips.
+    if (req.amountHr !== undefined) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: CreateTransferRequest.amountHr is not yet supported — pass \`amount\` (bigint sats) or \`outputs\` (multi-recipient) instead.`,
+        { chainId: this.chainId },
+      );
+    }
+    if (req.isFullBalance === true) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: CreateTransferRequest.isFullBalance is not yet supported — pass \`amount\` explicitly and reserve fees yourself.`,
+        { chainId: this.chainId },
+      );
+    }
+    if (req.gasPricing !== undefined) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: CreateTransferRequest.gasPricing is not yet consumed by UtxoChain (Phase 2 follow-up). Use \`feeRateSatsPerVByte\` / \`feeTargetBlocks\` on CreateUtxoTransferOptions for now.`,
+        { chainId: this.chainId },
+      );
+    }
     if (!this.validateTokenIdentifier(req.tokenIdentifier)) {
       throw new ChainError(
         ChainErrorKinds.InvalidTokenIdentifier,
@@ -436,13 +462,28 @@ export class UtxoChain extends Chain {
     const hasSingle = req.to !== undefined || req.amount !== undefined;
     const hasMulti = Array.isArray(opts.outputs) && opts.outputs.length > 0;
     if (hasSingle && hasMulti) {
-      throw new Error(
-        `${this.name}: cannot specify both single-output (to/amount) and multi-output (outputs[]) forms`
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: cannot specify both single-output (to/amount) and multi-output (outputs[]) forms`,
+        { chainId: this.chainId },
       );
     }
     if (!hasSingle && !hasMulti) {
-      throw new Error(
-        `${this.name}: must specify either (to, amount) or a non-empty outputs[] array`
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: must specify either (to, amount) or a non-empty outputs[] array`,
+        { chainId: this.chainId },
+      );
+    }
+    // Wave 2B made `amount` optional on the base CreateTransferRequest so
+    // `amountHr` could coexist. UTXO's single-output form still needs
+    // `amount: bigint` — reject `{to, memo}`-without-amount up front
+    // rather than let it propagate through as NaN downstream.
+    if (hasSingle && !hasMulti && req.amount === undefined) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: single-output form requires \`amount: bigint\` (bitcoin satoshis) — omitting amount would produce NaN downstream`,
+        { chainId: this.chainId },
       );
     }
     const normalizedOutputs: UtxoTransferOutput[] = hasMulti
@@ -458,13 +499,26 @@ export class UtxoChain extends Chain {
           { chainId: this.chainId, address: o.to }
         );
       }
+      if (typeof o.amount !== 'bigint') {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `${this.name}: outputs[${i}].amount must be a bigint (got ${typeof o.amount})`,
+          { chainId: this.chainId },
+        );
+      }
       if (o.amount <= 0n) {
-        throw new Error(`${this.name}: outputs[${i}] amount must be > 0`);
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `${this.name}: outputs[${i}] amount must be > 0`,
+          { chainId: this.chainId },
+        );
       }
       const sats = bigintToNumber(o.amount);
       if (sats < this.params.dustValueSats) {
-        throw new Error(
-          `${this.name}: outputs[${i}] amount ${sats} below dust ${this.params.dustValueSats}`
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `${this.name}: outputs[${i}] amount ${sats} below dust ${this.params.dustValueSats}`,
+          { chainId: this.chainId },
         );
       }
     }
@@ -485,7 +539,11 @@ export class UtxoChain extends Chain {
 
     const utxos = await this.getUtxos([fromAddress], getUtxosOptions);
     if (utxos.length === 0) {
-      throw new Error(`${this.name}: no spendable UTXOs available for ${fromAddress}`);
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: no spendable UTXOs available for ${fromAddress}`,
+        { chainId: this.chainId, address: fromAddress },
+      );
     }
 
     const changeAddress: string = opts.changeAddress ?? fromAddress;
@@ -507,8 +565,10 @@ export class UtxoChain extends Chain {
       ),
     });
     if (selection.outcome !== CoinSelectionOutcomes.Success) {
-      throw new Error(
-        `${this.name}: coin selection failed (${selection.outcome}) for target ${totalTargetSats} sats`
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: coin selection failed (${selection.outcome}) for target ${totalTargetSats} sats`,
+        { chainId: this.chainId },
       );
     }
 
@@ -594,7 +654,13 @@ export class UtxoChain extends Chain {
     targetBlocks: number | undefined
   ): Promise<number> {
     if (overrideRate !== undefined) {
-      if (overrideRate < 1) throw new Error('feeRateSatsPerVByte must be >= 1');
+      if (overrideRate < 1) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `${this.name}: feeRateSatsPerVByte must be >= 1 (got ${overrideRate})`,
+          { chainId: this.chainId },
+        );
+      }
       return Math.ceil(overrideRate);
     }
     const estimate = await this.feeEstimator.getFeeEstimate(
@@ -625,8 +691,10 @@ export class UtxoChain extends Chain {
     const uniqueTxids = Array.from(new Set(utxos.map((u) => u.txid)));
     const hexes = await this.rawTxProvider.getRawTransactionHexBatch(uniqueTxids);
     if (hexes.length !== uniqueTxids.length) {
-      throw new Error(
-        `${this.name}: provider returned ${hexes.length} parent txs for ${uniqueTxids.length} requested`
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        `${this.name}: provider returned ${hexes.length} parent txs for ${uniqueTxids.length} requested`,
+        { chainId: this.chainId },
       );
     }
     return new Map(uniqueTxids.map((txid, i) => [txid, hexes[i]]));
@@ -639,7 +707,10 @@ export class UtxoChain extends Chain {
 
 function bigintToNumber(value: bigint): number {
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error(`UTXO amount ${value} exceeds Number.MAX_SAFE_INTEGER`);
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `UTXO amount ${value} exceeds Number.MAX_SAFE_INTEGER`,
+    );
   }
   return Number(value);
 }
@@ -722,7 +793,10 @@ function encodeMemo(memo: string | undefined): Buffer | null {
   const buf = Buffer.from(memo, 'utf8');
   if (buf.length === 0) return null;
   if (buf.length > OP_RETURN_MAX_BYTES) {
-    throw new Error(`memo length ${buf.length} bytes exceeds OP_RETURN max ${OP_RETURN_MAX_BYTES}`);
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `memo length ${buf.length} bytes exceeds OP_RETURN max ${OP_RETURN_MAX_BYTES}`,
+    );
   }
   return buf;
 }

@@ -18,7 +18,7 @@ import {
   getMint,
 } from '@solana/spl-token';
 
-import { Chain, CreateTransferRequest } from '../chain.base.ts';
+import { Chain, CreateTransferRequest, resolveTransferAmount } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
@@ -309,10 +309,42 @@ export class SolanaChain extends Chain {
         { chainId: this.chainId, identifier: req.tokenIdentifier },
       );
     }
-    if (req.amount <= 0n) {
+    // gasPricing not yet consumed by Solana builder (Phase 2 follow-up);
+    // reject rather than silently ignore.
+    if (req.gasPricing !== undefined) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        `Transfer amount must be positive (got ${req.amount})`,
+        'CreateTransferRequest.gasPricing is not yet consumed by SolanaChain (Phase 2 follow-up). Use `priorityFeeMicroLamportsPerCu` / `computeUnitLimit` on SolanaTransferOptions for now.',
+        { chainId: this.chainId },
+      );
+    }
+    // isFullBalance requires a base-fee + rent-exempt reserve before
+    // it can be safely wired — sending all lamports leaves 0 for the
+    // 5000-lamport base fee (and ATA rent when feePayer === from on
+    // the SPL path). Deferred to a follow-up card.
+    if (req.isFullBalance === true) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        'CreateTransferRequest.isFullBalance is not yet supported on SolanaChain — pass `amount` or `amountHr` explicitly.',
+        { chainId: this.chainId },
+      );
+    }
+    // Only fetch decimals when amountHr is the input form — avoids the
+    // extra getMint RPC on every bigint-amount transfer. Native path
+    // uses SDK-declared decimals; SPL path uses resolveMintDecimals
+    // (which already throws on RPC failure — no defensive fallback).
+    const tokenDecimals =
+      req.amountHr !== undefined
+        ? req.tokenIdentifier === undefined
+          ? this._nativeToken.decimals
+          : await this.resolveMintDecimals(new PublicKey(req.tokenIdentifier))
+        : 0;
+    const resolvedAmount = resolveTransferAmount(req, tokenDecimals);
+    const amountMr = resolvedAmount.kind === 'exact' ? resolvedAmount.amountMr : 0n;
+    if (amountMr <= 0n) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Transfer amount must be positive (got ${amountMr})`,
         { chainId: this.chainId },
       );
     }
@@ -352,13 +384,17 @@ export class SolanaChain extends Chain {
         SystemProgram.transfer({
           fromPubkey: fromPk,
           toPubkey: toPk,
-          lamports: req.amount,
+          lamports: amountMr,
         }),
       );
     } else {
       const mintPk = new PublicKey(req.tokenIdentifier);
       const programId = await this.resolveTokenProgramId(mintPk);
-      const decimals = await this.resolveMintDecimals(mintPk);
+      // If amountHr wasn't the input form, tokenDecimals is still 0 and
+      // we haven't fetched the mint yet — do it now for the transfer-
+      // checked instruction (which requires the real decimals).
+      const decimals =
+        tokenDecimals > 0 ? tokenDecimals : await this.resolveMintDecimals(mintPk);
       const sourceAta = getAssociatedTokenAddressSync(mintPk, fromPk, false, programId);
       const destAta = getAssociatedTokenAddressSync(mintPk, toPk, false, programId);
       // Create the destination ATA when missing — the fee payer pays rent.
@@ -374,7 +410,7 @@ export class SolanaChain extends Chain {
           mintPk,
           destAta,
           fromPk,
-          req.amount,
+          amountMr,
           decimals,
           [],
           programId,

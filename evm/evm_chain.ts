@@ -9,7 +9,7 @@ import {
 
 import { NetworkType, tryNetworkTypeOf } from '../network_type.ts';
 
-import { Chain, CreateTransferRequest } from '../chain.base.ts';
+import { Chain, CreateTransferRequest, resolveTransferAmount } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { Priority } from '../priority.ts';
 import { EvmGasEstimate } from './evm_gas_estimate.ts';
@@ -19,6 +19,7 @@ import {
   TransactionErrorInfo,
 } from '../transaction_status.ts';
 import {
+  ERC20_TRANSFER_TOPIC as SHARED_ERC20_TRANSFER_TOPIC,
   EvmParsedTransactionLog,
   EvmTransactionGasFees,
   EvmTransactionStatus,
@@ -68,8 +69,7 @@ function atLeast(n: bigint, min: bigint): bigint {
   return n < min ? min : n;
 }
 
-const ERC20_TRANSFER_TOPIC =
-  '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+const ERC20_TRANSFER_TOPIC = SHARED_ERC20_TRANSFER_TOPIC;
 const ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
   'function decimals() view returns (uint8)',
@@ -432,17 +432,55 @@ export class EvmChain extends Chain {
       );
     }
 
+    // gasPricing is on the CreateTransferRequest interface (Python
+    // parity) but per-chain wiring is deferred to a follow-up card.
+    // Rejecting it here rather than silently ignoring — a money knob
+    // that fails open is worse than not shipping it.
+    if (req.gasPricing !== undefined) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        'CreateTransferRequest.gasPricing is not yet consumed by EvmChain (Phase 2 follow-up). Use ethers tx builder options directly for now.',
+        { chainId: this.chainId },
+      );
+    }
+    // isFullBalance is on the CreateTransferRequest interface (Python
+    // parity) but needs a fee-reserve computation before it can be
+    // safely wired — sending `value = balance` on native leaves 0 for
+    // gas → guaranteed insufficient-funds; on SPL it leaves 0 for rent.
+    // Deferred to a follow-up card that lands the estimated-fee subtract.
+    if (req.isFullBalance === true) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        'CreateTransferRequest.isFullBalance is not yet supported on EvmChain — pass `amount` or `amountHr` explicitly and reserve fees yourself.',
+        { chainId: this.chainId },
+      );
+    }
+    // Only fetch decimals when amountHr is the input form — avoids two
+    // extra eth_calls on every bigint-amount transfer. Native path uses
+    // the SDK-declared decimals; ERC-20 path uses a STRICT resolver
+    // that throws on RPC failure (the defensive fallback to decimals=0
+    // would silently produce a wildly wrong minor-units amount).
+    let tokenDecimals = 0;
+    if (req.amountHr !== undefined) {
+      tokenDecimals =
+        req.tokenIdentifier === undefined
+          ? this._nativeToken.decimals
+          : await this.resolveErc20DecimalsStrict(req.tokenIdentifier);
+    }
+    const resolved = resolveTransferAmount(req, tokenDecimals);
+    const amountMr = resolved.kind === 'exact' ? resolved.amountMr : 0n;
+
     if (req.tokenIdentifier === undefined) {
       return new UnsignedEvmTransaction({
         chainId: this.chainId,
         from: req.from,
         to: req.to,
-        value: req.amount,
+        value: amountMr,
         data: '0x',
       });
     }
 
-    const data = ERC20_INTERFACE.encodeFunctionData('transfer', [req.to, req.amount]);
+    const data = ERC20_INTERFACE.encodeFunctionData('transfer', [req.to, amountMr]);
     return new UnsignedEvmTransaction({
       chainId: this.chainId,
       from: req.from,
@@ -700,6 +738,30 @@ export class EvmChain extends Chain {
       return new EvmToken(this.chainId, symbol, checksum, Number(decimals));
     } catch {
       return placeholder();
+    }
+  }
+
+  /**
+   * STRICT decimals resolver for the transfer builder — throws
+   * `ChainError(RpcError)` on any failure to reach the contract.
+   * Used exclusively when converting `amountHr: Decimal` →
+   * `amountMr: bigint`, where a defensive fallback to `decimals=0`
+   * would silently sign a transaction for a wildly wrong amount
+   * (e.g. `1.5 USDC` → `1n` minor units instead of `1_500_000n`).
+   * The receipt-decoder still uses the defensive variant, since a
+   * placeholder token there is a display concern, not a money one.
+   */
+  private async resolveErc20DecimalsStrict(contractAddress: string): Promise<number> {
+    const provider = this.getProvider();
+    const contract = new Contract(contractAddress, ERC20_ABI, provider);
+    try {
+      const decimals = (await contract.decimals()) as bigint;
+      return Number(decimals);
+    } catch (err) {
+      throw this.rpcError(
+        `Failed to read ERC-20 decimals for ${contractAddress}`,
+        err,
+      );
     }
   }
 

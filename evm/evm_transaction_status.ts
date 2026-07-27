@@ -88,11 +88,33 @@ export class EvmTransactionGasFees {
 }
 
 /**
- * Passive holder for an event log entry surfaced on a receipt. Parsing
- * (Transfer decoding, etc.) lives on the decoders in `evm_chain.ts`
- * where the address/casing normalisation happens alongside the
- * `NestedBalanceChanges` construction — a duplicate parser here would
- * drift out of sync.
+ * Canonical ERC-20 `Transfer(address indexed from, address indexed to,
+ * uint256 value)` topic0 — keccak256("Transfer(address,address,uint256)").
+ */
+export const ERC20_TRANSFER_TOPIC =
+  '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+
+export interface EvmErc20TransferLog {
+  tokenContract: string;
+  fromAddress: string;
+  toAddress: string;
+  value: bigint;
+}
+
+/**
+ * Event log entry surfaced on a receipt. `isTransferLog()` / `asTransferLog()`
+ * mirror Python's `EvmParsedTransactionLog` API (`impl/evm/base.py:1551+`).
+ *
+ * The `evm_chain.ts` receipt-decoder shares the `ERC20_TRANSFER_TOPIC`
+ * topic0 constant with this class but runs its own **lenient** parse
+ * (skips non-standard logs) for the `NestedBalanceChanges` construction.
+ * This class's `asTransferLog()` is **strict** (throws on wrong length /
+ * bad hex). Rewiring the decoder to consume the strict accessor requires
+ * a policy decision on whether non-standard logs should silently drop
+ * or surface as `TransactionDecodeFailed`, and is deferred to a
+ * follow-up card. Consumers doing their own log extraction should
+ * either use the guard/accessor pair with a `try/catch` per log or
+ * wait for a `tryAsTransferLog()` variant to land.
  */
 export class EvmParsedTransactionLog {
   readonly address: string;
@@ -103,6 +125,64 @@ export class EvmParsedTransactionLog {
     this.address = address;
     this.topics = topics;
     this.data = data;
+  }
+
+  isTransferLog(): boolean {
+    return this.topics.length === 3 && this.topics[0].toLowerCase() === ERC20_TRANSFER_TOPIC;
+  }
+
+  /**
+   * Decode this log as an ERC-20 Transfer. Throws
+   * `ChainError(InvalidArgument)` if the log doesn't match the topic0
+   * / topic-count shape, or `ChainError(TransactionDecodeFailed)` if
+   * `data` isn't parseable as a `uint256`. Addresses are returned
+   * lowercased (matches the `balanceChanges` wallet-key convention;
+   * consumers who need EIP-55 should checksum via `EvmAddress`).
+   */
+  asTransferLog(): EvmErc20TransferLog {
+    if (!this.isTransferLog()) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Log is not an ERC-20 Transfer (topics=${this.topics.length}, topic0=${this.topics[0] ?? ''})`,
+      );
+    }
+    const topic1 = this.topics[1];
+    const topic2 = this.topics[2];
+    // 32-byte hex-encoded topics: exactly `0x` + 64 hex chars = 66 total.
+    // Anything else is either truncated (would `slice(26)` a wrong window)
+    // or padded (should not have reached a Transfer topic slot).
+    if (!/^0x[0-9a-fA-F]{64}$/.test(topic1) || !/^0x[0-9a-fA-F]{64}$/.test(topic2)) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionDecodeFailed,
+        `Transfer log topics malformed (topic1=${topic1}, topic2=${topic2})`,
+      );
+    }
+    // ERC-20 Transfer data is exactly one uint256 = 32 bytes = 66-char hex.
+    // Empty string, short data, or blobs longer than 32 bytes all reach
+    // the decoder in the wild via non-standard tokens; fail loudly.
+    if (!/^0x[0-9a-fA-F]{64}$/.test(this.data)) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionDecodeFailed,
+        `Transfer log data must be exactly 32 hex bytes, got '${this.data}'`,
+      );
+    }
+    let value: bigint;
+    try {
+      value = BigInt(this.data);
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionDecodeFailed,
+        `Failed to parse Transfer log data as bigint: ${this.data}`,
+        undefined,
+        err instanceof Error ? err : undefined,
+      );
+    }
+    return {
+      tokenContract: this.address.toLowerCase(),
+      fromAddress: `0x${topic1.slice(26)}`.toLowerCase(),
+      toAddress: `0x${topic2.slice(26)}`.toLowerCase(),
+      value,
+    };
   }
 }
 
