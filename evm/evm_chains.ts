@@ -35,6 +35,7 @@ export const Optimism = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://optimistic.etherscan.io',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:22-28
@@ -81,6 +82,7 @@ export const Unichain = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://uniscan.xyz',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:58-64
@@ -108,6 +110,9 @@ export const Sonic = new EvmChain({
   blockTimeSeconds: 1,
   explorerBaseUrl: 'https://sonicscan.org',
   nativeSymbol: 'S',
+  // hasL1Fee: false — Sonic is a standalone L1, not an OP-stack rollup.
+  // No l1Fee on its receipts; enabling would trigger a wasted second
+  // eth_getTransactionReceipt per status poll.
 });
 
 // impl/evm/chains.py:79-86
@@ -145,6 +150,7 @@ export const Boba = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://bobascan.com',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:108-114
@@ -163,6 +169,7 @@ export const WorldChain = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://worldscan.org',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:122-128
@@ -246,6 +253,7 @@ export const Soneium = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://soneium.blockscout.com',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:187-193
@@ -292,6 +300,7 @@ export const Base = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://basescan.org',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:223-230 — Python uses name="IOTA" (env: IOTA_RPC_URL)
@@ -320,6 +329,7 @@ export const Mode = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://modescan.io',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:245-251
@@ -356,6 +366,7 @@ export const Ink = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://explorer.inkonchain.com',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:273-279
@@ -383,6 +394,7 @@ export const Blast = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://blastscan.io',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:294-300
@@ -401,6 +413,7 @@ export const Scroll = new EvmChain({
   blockTimeSeconds: 3,
   explorerBaseUrl: 'https://scrollscan.com',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
   nativeTransferGasLimit: 360000,
   nativeTransferGasMultiplier: 50.0,
 });
@@ -430,6 +443,7 @@ export const Zora = new EvmChain({
   blockTimeSeconds: 2,
   explorerBaseUrl: 'https://zora.thesuperscan.io',
   nativeSymbol: 'ETH',
+  hasL1Fee: true,
 });
 
 // impl/evm/chains.py:331-337

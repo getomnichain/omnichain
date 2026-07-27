@@ -12,6 +12,7 @@ export * from './utxo.ts';
 export * from './utxo_chain.ts';
 export * from './utxo_chains.ts';
 export * from './utxo_network_params.ts';
+export * from './utxo_transaction_status.ts';
 export * from './btc/index.ts';
 export * from './ltc/index.ts';
 export * from './doge/index.ts';

@@ -1,3 +1,37 @@
+/**
+ * Replace `rpcUrl` in `message` with its host-only form so API keys carried
+ * in the URL path/query don't leak into error strings. Falls back to a
+ * `<rpc>` placeholder if the URL is unparseable.
+ */
+export function sanitizeMessage(message: string, rpcUrl: string | null): string {
+  if (!rpcUrl) return message;
+  let host: string;
+  try {
+    const u = new URL(rpcUrl);
+    host = `${u.protocol}//${u.host}`;
+  } catch {
+    return message.replaceAll(rpcUrl, '<rpc>');
+  }
+  return message.replaceAll(rpcUrl, host);
+}
+
+/**
+ * Build a fresh `Error` from `cause` with a sanitized message and stack,
+ * dropping every other property (axios errors carry `.config.headers`
+ * `Authorization` and `.config.url`/`baseURL` with API keys). Consumers'
+ * structured loggers (pino `err` serializer, `util.inspect({showHidden})`)
+ * walk `error.cause`; this ensures the API key never lands in logs.
+ * Returns `undefined` for non-Error causes so the ChainError constructor
+ * leaves cause unset.
+ */
+export function sanitizeCause(cause: unknown, rpcUrl: string | null): Error | undefined {
+  if (!(cause instanceof Error)) return undefined;
+  const safe = new Error(sanitizeMessage(cause.message, rpcUrl));
+  safe.name = cause.name;
+  if (cause.stack) safe.stack = sanitizeMessage(cause.stack, rpcUrl);
+  return safe;
+}
+
 export const ChainErrorKinds = {
   ChainNotSupported: 'chain_not_supported',
   DuplicateToken: 'duplicate_token',

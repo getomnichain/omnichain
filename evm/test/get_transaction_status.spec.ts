@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 import { JsonRpcProvider, TransactionReceipt, TransactionResponse } from 'ethers';
 
 import { ChainErrorKinds, isChainError } from '../../errors.ts';
-import { TransactionStatusTypes } from '../../transaction_status.ts';
+import { isSuccess, isFailed, TransactionStatusTypes } from '../../transaction_status.ts';
 import { Arbitrum } from '../evm_chains.ts';
 
 const TX_HASH = '0xabc';
@@ -10,7 +10,6 @@ const TX_HASH = '0xabc';
 interface Spies {
   txSpy: jest.SpyInstance;
   receiptSpy: jest.SpyInstance;
-  blockSpy: jest.SpyInstance;
   getBlockSpy: jest.SpyInstance;
   callSpy?: jest.SpyInstance;
 }
@@ -18,18 +17,15 @@ interface Spies {
 function setup(args: {
   tx?: Partial<TransactionResponse> | null;
   receipt?: Partial<TransactionReceipt> | null;
-  blockNumber?: number;
   callError?: Error;
 }): Spies {
-  const tx = args.tx === null ? null : ({ from: '0xA', to: '0xB', value: 0n, ...args.tx } as TransactionResponse);
+  const tx =
+    args.tx === null ? null : ({ from: '0xA', to: '0xB', value: 0n, ...args.tx } as TransactionResponse);
   const receipt = args.receipt === null ? null : (args.receipt as TransactionReceipt | null);
   const txSpy = jest.spyOn(JsonRpcProvider.prototype, 'getTransaction').mockResolvedValue(tx);
   const receiptSpy = jest
     .spyOn(JsonRpcProvider.prototype, 'getTransactionReceipt')
     .mockResolvedValue(receipt as TransactionReceipt | null);
-  const blockSpy = jest
-    .spyOn(JsonRpcProvider.prototype, 'getBlockNumber')
-    .mockResolvedValue(args.blockNumber ?? 0);
   const getBlockSpy = jest
     .spyOn(JsonRpcProvider.prototype, 'getBlock')
     .mockResolvedValue(null);
@@ -37,18 +33,17 @@ function setup(args: {
   if (args.callError !== undefined) {
     callSpy = jest.spyOn(JsonRpcProvider.prototype, 'call').mockRejectedValue(args.callError);
   }
-  return { txSpy, receiptSpy, blockSpy, getBlockSpy, callSpy };
+  return { txSpy, receiptSpy, getBlockSpy, callSpy };
 }
 
 function tearDown(s: Spies): void {
   s.txSpy.mockRestore();
   s.receiptSpy.mockRestore();
-  s.blockSpy.mockRestore();
   s.getBlockSpy.mockRestore();
   s.callSpy?.mockRestore();
 }
 
-describe('getTransactionStatus', () => {
+describe('EvmChain.getTransactionStatus (EvmTransactionStatus subclass)', () => {
   const originalEnv = process.env.ARBITRUM_RPC_URL;
 
   beforeEach(() => {
@@ -62,26 +57,28 @@ describe('getTransactionStatus', () => {
     (Arbitrum as unknown as { _provider: unknown })._provider = null;
   });
 
-  it('returns NotFound when no tx and no receipt exist', async () => {
+  it('returns NotFound with null balanceChanges when no tx and no receipt exist', async () => {
     const s = setup({ tx: null, receipt: null });
     const res = await Arbitrum.getTransactionStatus(TX_HASH);
     expect(res.status).toBe(TransactionStatusTypes.NotFound);
-    expect(res.confirmations).toBeNull();
-    expect(res.balanceChanges).toEqual([]);
-    expect(res.gasFee).toBeNull();
-    expect(res.errorInfo).toBeNull();
+    expect(res.balanceChanges).toBeNull();
+    expect(res.fees).toBeNull();
+    expect(res.error).toBeNull();
+    expect(res.inclusionAt).toBeNull();
     tearDown(s);
   });
 
-  it('returns Pending when tx exists in mempool but no receipt', async () => {
+  it('returns Pending with null balanceChanges + null fees when tx exists in mempool but no receipt', async () => {
     const s = setup({ tx: {}, receipt: null });
     const res = await Arbitrum.getTransactionStatus(TX_HASH);
     expect(res.status).toBe(TransactionStatusTypes.Pending);
-    expect(res.confirmations).toBeNull();
+    expect(res.balanceChanges).toBeNull();
+    expect(res.fees).toBeNull();
+    expect(res.error).toBeNull();
     tearDown(s);
   });
 
-  it('returns Success with confirmations and gasFee when receipt.status=1', async () => {
+  it('returns Success with populated balanceChanges + fees when receipt.status=1', async () => {
     const s = setup({
       tx: { from: '0xSender', to: '0xRecipient', value: 0n },
       receipt: {
@@ -93,14 +90,14 @@ describe('getTransactionStatus', () => {
         to: '0xRecipient',
         logs: [],
       } as unknown as Partial<TransactionReceipt>,
-      blockNumber: 106,
     });
     const res = await Arbitrum.getTransactionStatus(TX_HASH);
-    expect(res.status).toBe(TransactionStatusTypes.Success);
-    expect(res.confirmations).toBe(7);
-    expect(res.gasFee?.amount).toBe(21000n * 1_000_000_000n);
-    expect(res.gasFee?.token.isNative()).toBe(true);
-    expect(res.errorInfo).toBeNull();
+    expect(isSuccess(res)).toBe(true);
+    expect(res.fees?.gasLimitUsed).toBe(21000n);
+    expect(res.fees?.effectiveGasPrice).toBe(1_000_000_000n);
+    expect(res.fees?.totalGasInWei).toBe(21000n * 1_000_000_000n);
+    expect(res.error).toBeNull();
+    expect(res.balanceChanges).not.toBeNull();
     tearDown(s);
   });
 
@@ -116,13 +113,12 @@ describe('getTransactionStatus', () => {
         to: '0xRecipient',
         logs: [],
       } as unknown as Partial<TransactionReceipt>,
-      blockNumber: 101,
       callError: new Error('reverted with no data'),
     });
     const res = await Arbitrum.getTransactionStatus(TX_HASH);
-    expect(res.status).toBe(TransactionStatusTypes.Failed);
-    expect(res.errorInfo?.code).toBe('REVERTED');
-    expect(res.errorInfo?.reason).toBeUndefined();
+    expect(isFailed(res)).toBe(true);
+    expect(res.error?.code).toBe('REVERTED');
+    expect(res.error?.reason).toBeUndefined();
     tearDown(s);
   });
 
@@ -146,17 +142,16 @@ describe('getTransactionStatus', () => {
         to: '0xRecipient',
         logs: [],
       } as unknown as Partial<TransactionReceipt>,
-      blockNumber: 101,
       callError: revertErr,
     });
     const res = await Arbitrum.getTransactionStatus(TX_HASH);
-    expect(res.status).toBe(TransactionStatusTypes.Failed);
-    expect(res.errorInfo?.code).toBe('REVERTED');
-    expect(res.errorInfo?.reason).toBe('ERC20 : insufficient balance');
+    expect(isFailed(res)).toBe(true);
+    expect(res.error?.code).toBe('REVERTED');
+    expect(res.error?.reason).toBe('ERC20 : insufficient balance');
     tearDown(s);
   });
 
-  it('Failed tx with value > 0 emits NO native balanceChanges (reverted on-chain — no funds moved)', async () => {
+  it('Failed tx with value > 0 emits null balanceChanges (Python invariant — Failed carries no balance shifts)', async () => {
     const s = setup({
       tx: { from: '0xSender', to: '0xRecipient', value: 1_000_000n, data: '0x' },
       receipt: {
@@ -168,17 +163,16 @@ describe('getTransactionStatus', () => {
         to: '0xRecipient',
         logs: [],
       } as unknown as Partial<TransactionReceipt>,
-      blockNumber: 101,
       callError: new Error('reverted'),
     });
     const res = await Arbitrum.getTransactionStatus(TX_HASH);
     expect(res.status).toBe(TransactionStatusTypes.Failed);
-    expect(res.balanceChanges).toEqual([]);
-    expect(res.gasFee?.amount).toBe(21000n * 1_000_000_000n);
+    expect(res.balanceChanges).toBeNull();
+    expect(res.fees?.totalGasInWei).toBe(21000n * 1_000_000_000n);
     tearDown(s);
   });
 
-  it('Success tx with value > 0 DOES emit native balanceChanges (funds actually moved)', async () => {
+  it('Success tx with value > 0 emits balanceChanges with sender debited by value+gasCost, recipient credited by value', async () => {
     const s = setup({
       tx: { from: '0xSender', to: '0xRecipient', value: 1_000_000n, data: '0x' },
       receipt: {
@@ -190,15 +184,16 @@ describe('getTransactionStatus', () => {
         to: '0xRecipient',
         logs: [],
       } as unknown as Partial<TransactionReceipt>,
-      blockNumber: 101,
     });
     const res = await Arbitrum.getTransactionStatus(TX_HASH);
-    expect(res.status).toBe(TransactionStatusTypes.Success);
-    expect(res.balanceChanges).toHaveLength(2);
-    const sender = res.balanceChanges.find((c) => c.amount < 0n);
-    const recipient = res.balanceChanges.find((c) => c.amount > 0n);
-    expect(sender?.amount).toBe(-1_000_000n);
-    expect(recipient?.amount).toBe(1_000_000n);
+    expect(isSuccess(res)).toBe(true);
+    const gasCost = 21000n * 1_000_000_000n;
+    const senderInner = res.balanceChanges!.get('0xsender');
+    const recipInner = res.balanceChanges!.get('0xrecipient');
+    const senderEntry = [...senderInner!.values()][0];
+    const recipEntry = [...recipInner!.values()][0];
+    expect(senderEntry.change.balanceChangeMr).toBe(-(1_000_000n + gasCost));
+    expect(recipEntry.change.balanceChangeMr).toBe(1_000_000n);
     tearDown(s);
   });
 
@@ -230,7 +225,6 @@ describe('getTransactionStatus', () => {
         to: '0xRecipient',
         logs: [],
       } as unknown as Partial<TransactionReceipt>,
-      blockNumber: 101,
     });
     await Arbitrum.getTransactionStatus(TX_HASH);
 
@@ -262,12 +256,11 @@ describe('getTransactionStatus', () => {
         to: '0xRecipient',
         logs: [],
       } as unknown as Partial<TransactionReceipt>,
-      blockNumber: 101,
       callError: revertErr,
     });
     const res = await Arbitrum.getTransactionStatus(TX_HASH);
-    expect(res.errorInfo?.code).toBe('REVERTED');
-    expect(res.errorInfo?.reason).toBe('Panic(0x11)');
+    expect(res.error?.code).toBe('REVERTED');
+    expect(res.error?.reason).toBe('Panic(0x11)');
     tearDown(s);
   });
 

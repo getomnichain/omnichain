@@ -5,24 +5,24 @@ import {
   JsonRpcProvider,
   TransactionReceipt,
   TransactionResponse,
-  getAddress,
-  verifyMessage as ethersVerifyMessage,
 } from 'ethers';
 
 import { NetworkType, tryNetworkTypeOf } from '../network_type.ts';
 
-import { Chain, CreateTransferRequest, VerifyMessageSignatureRequest } from '../chain.base.ts';
-import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { Chain, CreateTransferRequest } from '../chain.base.ts';
+import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { Priority } from '../priority.ts';
 import { EvmGasEstimate } from './evm_gas_estimate.ts';
 import {
-  BalanceChange,
-  GasFee,
+  AssetBalanceChange,
+  NestedBalanceChanges,
   TransactionErrorInfo,
-  TransactionStatus,
-  TransactionStatusType,
-  TransactionStatusTypes,
 } from '../transaction_status.ts';
+import {
+  EvmParsedTransactionLog,
+  EvmTransactionGasFees,
+  EvmTransactionStatus,
+} from './evm_transaction_status.ts';
 import { EvmAddress } from './evm_address.ts';
 import { EvmToken } from './evm_token.ts';
 import { UnsignedEvmTransaction } from './unsigned_evm_transaction.ts';
@@ -93,6 +93,15 @@ export interface EvmChainInit {
   rpcUrl?: string;
   supportsEip1559?: boolean;
   /**
+   * OP-stack rollups (Optimism/Base/Unichain/WorldChain/Boba/Sonic and
+   * similar) charge an additional L1 data fee returned as `l1Fee` on the
+   * raw receipt JSON. Ethers v6 strips `l1Fee`/`l1GasUsed`/`l1GasPrice`
+   * from its parsed `TransactionReceipt` shape (whitelist-based), so
+   * reading it requires a raw `eth_getTransactionReceipt` call. Flag
+   * defaults to `false`; enable on chains that carry the L1 fee.
+   */
+  hasL1Fee?: boolean;
+  /**
    * Default gas limit for a native (non-ERC20) transfer. Mirrors Python default 21_000
    * (impl/evm/base.py:479). Scroll overrides to 360_000 etc.
    *
@@ -116,6 +125,7 @@ export interface EvmChainInit {
 export class EvmChain extends Chain {
   readonly rpcUrl: string | undefined;
   readonly supportsEip1559: boolean;
+  readonly hasL1Fee: boolean;
   /**
    * Default gas limit for native transfers. Matches Python's public attribute
    * at `impl/evm/base.py:495` — v0 does not consume it inside the TS SDK
@@ -160,6 +170,7 @@ export class EvmChain extends Chain {
     );
     this.rpcUrl = init.rpcUrl;
     this.supportsEip1559 = init.supportsEip1559 ?? true;
+    this.hasL1Fee = init.hasL1Fee ?? false;
     this.nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;
     this.nativeTransferGasMultiplier = init.nativeTransferGasMultiplier ?? 1.4;
     this._nativeToken = EvmToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 18);
@@ -241,7 +252,7 @@ export class EvmChain extends Chain {
       // Populating maxFeePerGas/maxPriorityFeePerGas as duplicates would let
       // a consumer build a type-2 tx paying the full gasPrice as a tip on
       // top of base fee.
-      return new EvmGasEstimate({ gasPrice: scaled });
+      return new EvmGasEstimate({ kind: 'legacy', gasPrice: scaled });
     }
 
     // 1559 path — mirrors omnichain-py get_1559_fees (impl/evm/base.py:1098-1132).
@@ -310,6 +321,7 @@ export class EvmChain extends Chain {
     // Safety buffer: base fee can climb 12.5%/block; caller may wait multiple blocks.
     const maxFeePerGas = latestBaseFee * 2n + finalTip;
     return new EvmGasEstimate({
+      kind: 'eip1559',
       maxPriorityFeePerGas: finalTip,
       maxFeePerGas,
     });
@@ -448,54 +460,114 @@ export class EvmChain extends Chain {
     }
   }
 
-  async verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean> {
-    let recovered: string;
-    try {
-      recovered = ethersVerifyMessage(req.message, req.signature);
-    } catch {
-      return false;
-    }
-    let expected: string;
-    try {
-      expected = getAddress(req.signer);
-    } catch {
-      return false;
-    }
-    return recovered === expected;
-  }
-
-  async getTransactionStatus(txHash: string): Promise<TransactionStatus> {
+  async getTransactionStatus(txHash: string): Promise<EvmTransactionStatus> {
     const provider = this.getProvider();
     let tx: TransactionResponse | null = null;
     let receipt: TransactionReceipt | null = null;
-    let latestBlock: number = 0;
     try {
-      [tx, receipt, latestBlock] = await Promise.all([
+      [tx, receipt] = await Promise.all([
         provider.getTransaction(txHash),
         provider.getTransactionReceipt(txHash),
-        provider.getBlockNumber(),
       ]);
     } catch (err) {
       throw this.rpcError(`Failed to read tx ${txHash}`, err, { txHash });
     }
 
-    if (tx === null && receipt === null) return emptyStatus(TransactionStatusTypes.NotFound);
-    if (receipt === null) return emptyStatus(TransactionStatusTypes.Pending);
+    if (tx === null && receipt === null) return EvmTransactionStatus.notFound(this.chainId, null);
+    if (receipt === null) return EvmTransactionStatus.pending(this.chainId);
+    // Receipt exists but the tx body doesn't — real race on load-balanced/
+    // pruned RPC endpoints where getTransactionReceipt succeeds while
+    // getTransactionByHash returns null. `tx.value` and `tx.to` are load-
+    // bearing for the native transfer legs of decodeBalanceChanges; falling
+    // back to `?? 0n` / `?? null` would emit a Success with a silently
+    // truncated balanceChanges map (recipient row missing entirely,
+    // sender debit off by the transfer value). Python parity: omnichain-py's
+    // impl/evm/base.py accesses `tx.value` directly and blows up on a
+    // missing body. TS returns Pending — receipt-only is transient node
+    // state; the consumer's next poll will land on a node with the full tx.
+    if (tx === null) return EvmTransactionStatus.pending(this.chainId);
 
-    const statusType: TransactionStatusType =
-      receipt.status === 1 ? TransactionStatusTypes.Success : TransactionStatusTypes.Failed;
-    const confirmations = Math.max(0, latestBlock - receipt.blockNumber + 1);
-    const gasFeeAmount = receipt.gasUsed * receipt.gasPrice;
-    const gasFee: GasFee = { token: this._nativeToken, amount: gasFeeAmount };
+    const succeeded = receipt.status === 1;
 
-    const nativeValue =
-      statusType === TransactionStatusTypes.Success ? (tx?.value ?? 0n) : 0n;
-    let balanceChanges: BalanceChange[];
+    // Parallelize the two independent post-receipt lookups: getBlock (for
+    // inclusionAt) and the OP-stack raw-receipt fetch (for l1Fee). Both
+    // depend only on receipt.blockNumber / txHash, not on each other.
+    const [inclusionAt, l1Fee] = await Promise.all([
+      (async (): Promise<Date | null> => {
+        try {
+          const block = await provider.getBlock(receipt.blockNumber);
+          if (block?.timestamp !== undefined) {
+            return new Date(Number(block.timestamp) * 1000);
+          }
+          return null;
+        } catch {
+          // leave null — a 1970-01-01 sentinel would silently pass
+          // through consumer SLA/age math as a real inclusion time.
+          return null;
+        }
+      })(),
+      (async (): Promise<bigint | undefined> => {
+        // OP-stack rollups charge an L1 data fee (`l1Fee` on the raw
+        // receipt). ethers v6 strips it in its parsed TransactionReceipt
+        // shape, so a second raw fetch is required. Gated on `hasL1Fee`.
+        // Return undefined for "provider did not surface it" (either
+        // hasL1Fee=false or the raw send failed/omitted the field) —
+        // tracked separately from "l1Fee is genuinely 0n" so
+        // fees.l1FeeWei reflects presence, not value.
+        if (!this.hasL1Fee) return undefined;
+        try {
+          const raw = (await provider.send('eth_getTransactionReceipt', [txHash])) as
+            | Record<string, unknown>
+            | null;
+          const rawL1 = raw?.l1Fee;
+          if (rawL1 === undefined || rawL1 === null) return undefined;
+          if (typeof rawL1 === 'bigint') return rawL1;
+          if (typeof rawL1 === 'number') return BigInt(rawL1);
+          if (typeof rawL1 === 'string' && rawL1.length > 0) return BigInt(rawL1);
+          return undefined;
+        } catch {
+          return undefined;
+        }
+      })(),
+    ]);
+
+    // gasLimit: the sender-set limit from tx.gasLimit. `null` when the tx
+    // body isn't available (pruned/receipt-only) — falling back to
+    // receipt.gasUsed here would fabricate a "100% utilization" that
+    // consumers can't distinguish from a real observation.
+    const fees = new EvmTransactionGasFees({
+      gasLimit: tx?.gasLimit ?? null,
+      gasLimitUsed: receipt.gasUsed,
+      effectiveGasPrice: receipt.gasPrice,
+      gasPrice: tx?.gasPrice ?? undefined,
+      maxFeePerGas: tx?.maxFeePerGas ?? undefined,
+      maxPriorityFeePerGas: tx?.maxPriorityFeePerGas ?? undefined,
+      l1FeeWei: l1Fee,
+    });
+
+    if (!succeeded) {
+      const errorInfo = await extractRevertInfo(provider, tx, receipt);
+      return EvmTransactionStatus.failed({
+        chainId: this.chainId,
+        inclusionAt,
+        error: errorInfo,
+        fees,
+      });
+    }
+
+    // Only allocated on the Success path — failed txs carry logs: null.
+    const logs: EvmParsedTransactionLog[] = (receipt.logs ?? []).map(
+      (l) => new EvmParsedTransactionLog(l.address, [...l.topics], l.data),
+    );
+
+    const nativeValue = tx?.value ?? 0n;
+    let balanceChanges: NestedBalanceChanges;
     try {
       balanceChanges = await this.decodeBalanceChanges({
         from: tx ? tx.from : (receipt.from ?? ''),
         to: tx?.to ?? receipt.to ?? null,
         value: nativeValue,
+        gasCost: fees.totalNativeDebitWei,
         receipt,
       });
     } catch (err) {
@@ -508,39 +580,23 @@ export class EvmChain extends Chain {
       );
     }
 
-    const errorInfo: TransactionErrorInfo | null =
-      statusType === TransactionStatusTypes.Failed
-        ? await extractRevertInfo(provider, tx, receipt)
-        : null;
-
-    let txTimestamp: Date | null = null;
-    try {
-      const block = await provider.getBlock(receipt.blockNumber);
-      if (block?.timestamp !== undefined) {
-        txTimestamp = new Date(Number(block.timestamp) * 1000);
-      }
-    } catch {
-      txTimestamp = null;
-    }
-
-    return {
-      status: statusType,
-      confirmations,
-      blockNumber: receipt.blockNumber,
-      txTimestamp,
+    return EvmTransactionStatus.successful({
+      chainId: this.chainId,
+      inclusionAt,
       balanceChanges,
-      gasFee,
-      errorInfo,
-    };
+      logs,
+      fees,
+    });
   }
 
   async decodeBalanceChanges(args: {
     from: string;
     to: string | null;
     value: bigint;
+    gasCost: bigint;
     receipt: TransactionReceipt;
-  }): Promise<BalanceChange[]> {
-    const { from, to, value, receipt } = args;
+  }): Promise<NestedBalanceChanges> {
+    const { from, to, value, gasCost, receipt } = args;
     if (!receipt || !Array.isArray(receipt.logs)) {
       throw new ChainError(
         ChainErrorKinds.TransactionDecodeFailed,
@@ -549,13 +605,20 @@ export class EvmChain extends Chain {
       );
     }
 
-    const changes = new Map<string, bigint>();
+    const rawChanges = new Map<string, Map<string, bigint>>();
     const fromAddr = (from ?? '').toLowerCase();
     const toAddr = to ? to.toLowerCase() : null;
 
-    if (value > 0n && toAddr && toAddr !== fromAddr) {
-      addChange(changes, '', fromAddr, -value);
-      addChange(changes, '', toAddr, value);
+    // Sender's native debit = value + gasCost (matches Python
+    // impl/evm/base.py:_get_balance_changes fee-inclusive semantics).
+    // Credit toAddr whenever value>0 — for self-transfers (from===to) the
+    // per-(wallet,token) netting in upsert cancels the +value against the
+    // -value component of the debit, leaving the -gasCost we actually want.
+    if (fromAddr) {
+      addRaw(rawChanges, fromAddr, '', -(value + gasCost));
+    }
+    if (value > 0n && toAddr) {
+      addRaw(rawChanges, toAddr, '', value);
     }
 
     const tokenContracts = new Set<string>();
@@ -586,21 +649,28 @@ export class EvmChain extends Chain {
     for (const { addr, token } of resolved) tokensByContract.set(addr, token);
 
     for (const t of transferLogs) {
-      if (t.from !== t.to) {
-        addChange(changes, t.contract, t.from, -t.amount);
-        addChange(changes, t.contract, t.to, t.amount);
-      }
+      // Symmetric with the native path: always add both legs. Self-transfer
+      // nets to zero at the per-(wallet, contract) map level and is dropped
+      // by the `delta === 0n` filter below — the explicit gate here would
+      // over-suppress the credit if a future decoder gained non-cancelling
+      // side effects.
+      addRaw(rawChanges, t.from, t.contract, -t.amount);
+      addRaw(rawChanges, t.to, t.contract, t.amount);
     }
 
-    const result: BalanceChange[] = [];
-    for (const [key, amount] of changes) {
-      if (amount === 0n) continue;
-      const sep = key.indexOf('|');
-      const tokenKey = key.slice(0, sep);
-      const address = key.slice(sep + 1);
-      const token = tokenKey === '' ? this._nativeToken : tokensByContract.get(tokenKey);
-      if (!token) continue;
-      result.push({ address, token, amount });
+    const result: NestedBalanceChanges = new Map();
+    for (const [wallet, perTokenAddr] of rawChanges) {
+      for (const [tokenAddr, delta] of perTokenAddr) {
+        if (delta === 0n) continue;
+        const token = tokenAddr === '' ? this._nativeToken : tokensByContract.get(tokenAddr);
+        if (!token) continue;
+        AssetBalanceChange.upsert(
+          result,
+          wallet,
+          token,
+          AssetBalanceChange.fromMr(delta, token.decimals),
+        );
+      }
     }
     return result;
   }
@@ -644,21 +714,18 @@ export class EvmChain extends Chain {
   }
 }
 
-function addChange(map: Map<string, bigint>, tokenKey: string, address: string, delta: bigint): void {
-  const key = `${tokenKey}|${address}`;
-  map.set(key, (map.get(key) ?? 0n) + delta);
-}
-
-function emptyStatus(status: TransactionStatusType): TransactionStatus {
-  return {
-    status,
-    confirmations: null,
-    blockNumber: null,
-    txTimestamp: null,
-    balanceChanges: [],
-    gasFee: null,
-    errorInfo: null,
-  };
+function addRaw(
+  container: Map<string, Map<string, bigint>>,
+  wallet: string,
+  tokenAddr: string,
+  delta: bigint,
+): void {
+  let perToken = container.get(wallet);
+  if (!perToken) {
+    perToken = new Map();
+    container.set(wallet, perToken);
+  }
+  perToken.set(tokenAddr, (perToken.get(tokenAddr) ?? 0n) + delta);
 }
 
 const ERROR_STRING_SELECTOR = '0x08c379a0';
@@ -723,22 +790,3 @@ function envCandidatesFor(name: string, chainId: number): string[] {
   return [normalized, `EVM_${chainId}_RPC_URL`];
 }
 
-function sanitizeMessage(message: string, rpcUrl: string | null): string {
-  if (!rpcUrl) return message;
-  let host: string;
-  try {
-    const u = new URL(rpcUrl);
-    host = `${u.protocol}//${u.host}`;
-  } catch {
-    return message.replaceAll(rpcUrl, '<rpc>');
-  }
-  return message.replaceAll(rpcUrl, host);
-}
-
-function sanitizeCause(cause: unknown, rpcUrl: string | null): Error | undefined {
-  if (!(cause instanceof Error)) return undefined;
-  const safe = new Error(sanitizeMessage(cause.message, rpcUrl));
-  safe.name = cause.name;
-  if (cause.stack) safe.stack = sanitizeMessage(cause.stack, rpcUrl);
-  return safe;
-}

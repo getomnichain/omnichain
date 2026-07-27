@@ -157,7 +157,29 @@ by the cluster — we keep polling.
 `getTransaction(sig, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 })` returns
 the full receipt: slot, meta.fee (in lamports), meta.preBalances / postBalances (per account
 SOL deltas) and meta.preTokenBalances / postTokenBalances (per ATA token deltas). The SDK
-decodes these into `BalanceChange[]` exactly like EVM does for `Transfer` logs.
+decodes these into a `NestedBalanceChanges` — the same nested Map shape EVM emits —
+and returns a `SolanaTransactionStatus` (extends `TransactionStatus`) with `fees:
+SolanaTransactionFees` alongside. Wallet keys are the raw base58 (case-sensitive).
+
+Fallback path when `getTransaction` returns null:
+- `getSignatureStatus` yields no value at all → `NotFound`.
+- `getSignatureStatus` reports `finalized`/`confirmed` with `err` set →
+  `SolanaTransactionStatus.failed` with `fees: null` (settled-but-
+  unfetchable — fees can't be reconstructed from sig-status alone).
+- `getSignatureStatus` reports `processed` or is otherwise settled
+  without `err` → `Pending` so consumers keep polling rather than
+  treating a settled deposit as NotFound.
+- If `getTransaction` returns a body but `tx.meta === null` → `Pending`
+  as well.
+
+Consumers should treat Solana `NotFound` as retryable, not terminal —
+signature-status can lag full-tx availability on a heavily load-
+balanced RPC.
+
+The `balanceChangesExcludingFees(nativeAsset)` helper strips Solana's fee_payer debit
+from the emitted changes for callers who want gross-of-fee movements. It validates that
+`nativeAsset` matches this chain's native token (`chainId` match + empty `identifier`)
+and throws `ChainError(InvalidArgument)` otherwise.
 
 ## Wallet derivation (BIP44 ed25519)
 

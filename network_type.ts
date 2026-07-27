@@ -53,14 +53,26 @@ for (const id of CHAIN_FAMILY_TRON) networkTypeRegistry.set(id, NetworkType.TRON
  * flipping a chainId's family would let `addressFor` parse addresses under
  * the wrong rules.
  *
- * Uses the synthesized `tryNetworkTypeOf` for the conflict check, so
- * "positive ids are EVM unless explicitly unregistered" is a single rule
- * enforced in one place. Import-order-independent: whether or not the
- * `EvmChain` catalogue has evaluated yet, `registerNonEvmChain(1329,
- * COSMOS)` throws unless the consumer has called `unregisterChain(1329)`
- * first.
+ * **Positive chainIds are EVM by construction (EIP-155) and cannot be
+ * reclassified.** `unregisterChain(id)` only removes an explicit
+ * registration entry; `tryNetworkTypeOf` still synthesizes `EVM` for any
+ * positive integer, so a subsequent
+ * `registerNonEvmChain(<positive>, SOLANA)` still conflicts and throws.
+ * Matches `omnichain-py`'s static family sets in
+ * `chain_ids.py` — the Python side has no reclassification hook at all.
+ * Consumers who need a non-EVM chain must use a distinct (negative)
+ * chainId reserved by the family seed.
  */
 export function registerNonEvmChain(chainId: number, networkType: NetworkType): void {
+  // iter-15 minor #1: reject non-integers at the registration point rather than
+  // letting the failure surface much later at first networkTypeOf() lookup.
+  if (!Number.isInteger(chainId)) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `chainId must be an integer (got ${chainId})`,
+      { chainId },
+    );
+  }
   const existing = tryNetworkTypeOf(chainId);
   if (existing !== undefined && existing !== networkType) {
     throw new ChainError(
@@ -80,6 +92,13 @@ export function registerNonEvmChain(chainId: number, networkType: NetworkType): 
  *
  * After `unregisterChain(id)`, `networkTypeOf(id)` returns EVM for positive
  * ids and throws for negatives (same as an id that was never seeded).
+ *
+ * **Paired cleanup**: if you had also called
+ * `registerBtcChainParams(BigInt(id), …)` for the same id, call
+ * `unregisterBtcChainParams(BigInt(id))` from `utxo/btc/network_params.ts`
+ * to keep the two registries in sync. `unregisterChain` deliberately does
+ * NOT reach across into `btcParamsByChainId` to avoid a layering
+ * dependency from this base module into the utxo/btc leaf.
  */
 export function unregisterChain(chainId: number): void {
   networkTypeRegistry.delete(chainId);

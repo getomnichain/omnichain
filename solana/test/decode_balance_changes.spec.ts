@@ -1,3 +1,4 @@
+import { assetHashOf } from '../../transaction_status.ts';
 import { SolanaAddress } from '../solana_address.ts';
 import { SolanaMainnet } from '../solana_chains.ts';
 
@@ -57,8 +58,8 @@ function fakeTx(opts: {
   } as unknown as Parameters<typeof SolanaMainnet._decodeBalanceChanges>[0];
 }
 
-maybeDescribe('SolanaChain._decodeBalanceChanges', () => {
-  it('SPL change: pulls decimals from uiTokenAmount, not the old hard-coded 0', () => {
+maybeDescribe('SolanaChain._decodeBalanceChanges (NestedBalanceChanges shape)', () => {
+  it('SPL change: pulls decimals from uiTokenAmount, keyed by wallet then asset-hash', () => {
     const changes = SolanaMainnet._decodeBalanceChanges(
       fakeTx({
         accountKeys: [ALICE, BOB, USDC_MINT],
@@ -89,19 +90,23 @@ maybeDescribe('SolanaChain._decodeBalanceChanges', () => {
       }),
     );
 
-    const spl = changes.filter((c) => c.token.identifier === USDC_MINT);
-    expect(spl).toHaveLength(2);
+    const aliceInner = changes.get(ALICE);
+    const bobInner = changes.get(BOB);
+    expect(aliceInner).toBeDefined();
+    expect(bobInner).toBeDefined();
 
-    const alicePair = spl.find((c) => c.address === ALICE);
-    const bobPair = spl.find((c) => c.address === BOB);
-    expect(alicePair?.amount).toBe(-1_000_000n);
-    expect(bobPair?.amount).toBe(1_000_000n);
-    // Decimals now surface from the token-balance meta (was hard-coded to 0).
-    expect(alicePair?.token.decimals).toBe(6);
-    expect(bobPair?.token.decimals).toBe(6);
-    // Address is the wallet owner, never the mint.
-    expect(alicePair?.address).not.toBe(USDC_MINT);
-    expect(bobPair?.address).not.toBe(USDC_MINT);
+    const aliceEntry = [...aliceInner!.values()].find(
+      (e) => e.token.identifier === USDC_MINT,
+    );
+    const bobEntry = [...bobInner!.values()].find(
+      (e) => e.token.identifier === USDC_MINT,
+    );
+    expect(aliceEntry?.change.balanceChangeMr).toBe(-1_000_000n);
+    expect(bobEntry?.change.balanceChangeMr).toBe(1_000_000n);
+    expect(aliceEntry?.token.decimals).toBe(6);
+    expect(bobEntry?.token.decimals).toBe(6);
+    // Mint address is never a wallet key.
+    expect(changes.has(USDC_MINT)).toBe(false);
   });
 
   it('drops SPL entries whose token-account owner is null (was writing mint as address)', () => {
@@ -129,10 +134,13 @@ maybeDescribe('SolanaChain._decodeBalanceChanges', () => {
       }),
     );
 
-    // The single owner-less delta is skipped — mint never appears as a wallet address.
-    const spl = changes.filter((c) => c.token.identifier === USDC_MINT);
-    expect(spl).toHaveLength(0);
-    for (const c of changes) expect(c.address).not.toBe(USDC_MINT);
+    // The single owner-less delta is skipped; no SPL entry appears anywhere.
+    for (const [, inner] of changes) {
+      for (const entry of inner.values()) {
+        expect(entry.token.identifier).not.toBe(USDC_MINT);
+      }
+    }
+    expect(changes.has(USDC_MINT)).toBe(false);
   });
 
   it('promotes post-side owner into a pre entry that lacked one (fresh ATA)', () => {
@@ -153,10 +161,14 @@ maybeDescribe('SolanaChain._decodeBalanceChanges', () => {
       }),
     );
 
-    const bobChange = changes.find(
-      (c) => c.token.identifier === USDC_MINT && c.address === BOB,
+    const bobInner = changes.get(BOB);
+    expect(bobInner).toBeDefined();
+    const bobEntry = [...bobInner!.values()].find(
+      (e) => e.token.identifier === USDC_MINT,
     );
-    expect(bobChange?.amount).toBe(1_000_000n);
-    expect(bobChange?.token.decimals).toBe(6);
+    expect(bobEntry?.change.balanceChangeMr).toBe(1_000_000n);
+    expect(bobEntry?.token.decimals).toBe(6);
+    // Hash-key consistency: the inner-map key equals assetHashOf(token).
+    expect(bobInner!.has(assetHashOf(bobEntry!.token))).toBe(true);
   });
 });

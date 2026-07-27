@@ -1,16 +1,30 @@
-import { Psbt } from 'bitcoinjs-lib';
-import * as bitcoinMessage from 'bitcoinjs-message';
+import { Psbt, Transaction } from 'bitcoinjs-lib';
 
-import { Chain, CreateTransferRequest, VerifyMessageSignatureRequest } from '../chain.base.ts';
+import {
+  CHAIN_ID_BITCOIN_MAINNET,
+  CHAIN_ID_BITCOIN_SIGNET,
+  CHAIN_ID_BITCOIN_TESTNET,
+} from '../chain_ids.ts';
+import {
+  BtcNetworkParams,
+  btcParamsForChainId,
+  btcParamsShapeMatches,
+} from './btc/network_params.ts';
+import { Chain, CreateTransferRequest } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
 import { Token } from '../token.ts';
 import {
-  BalanceChange,
-  TransactionStatus,
+  AssetBalanceChange,
+  NestedBalanceChanges,
   TransactionStatusTypes,
 } from '../transaction_status.ts';
+import {
+  UtxoTransactionFees,
+  UtxoTransactionOutput,
+  UtxoTransactionStatus,
+} from './utxo_transaction_status.ts';
 
 import './ecc.ts';
 import {
@@ -39,7 +53,14 @@ import {
   RBF_SEQUENCE,
   UtxoNetworkParams,
 } from './utxo_network_params.ts';
+
 import { UnsignedUtxoTransaction } from './unsigned_utxo_transaction.ts';
+
+const RESERVED_BTC_CHAIN_IDS: readonly number[] = [
+  CHAIN_ID_BITCOIN_MAINNET,
+  CHAIN_ID_BITCOIN_TESTNET,
+  CHAIN_ID_BITCOIN_SIGNET,
+];
 
 export interface UtxoChainInit {
   chainId: number;
@@ -115,6 +136,28 @@ export class UtxoChain extends Chain {
   protected readonly rbfEnabled: boolean;
 
   constructor(init: UtxoChainInit) {
+    // Reject a non-BTC UTXO chain (LTC/DOGE/DASH/ZEC/BCH — mainnet AND
+    // testnet) constructed with a reserved BTC chainId. The prior slip44
+    // heuristic let `litecoinTestnetChain({chainId: -2})` through because
+    // LTC testnet's slip44 is `Slip44.Testnet` (same as BTC testnet). Gate
+    // on the seeded BTC params directly: at reserved ids the constructor
+    // must present params shape-identical to what's already seeded, else
+    // it's a chain claiming a BTC id with foreign address rules.
+    if (RESERVED_BTC_CHAIN_IDS.includes(init.chainId)) {
+      const seeded = btcParamsForChainId(BigInt(init.chainId));
+      const paramsAsBtc = init.params as BtcNetworkParams;
+      // Use the strict comparator exported from btc/network_params.ts so
+      // both this guard and registerBtcChainParams share ONE invariant.
+      // A non-BtcNetworkParams (missing `name`, `hrp`, etc.) fails the
+      // comparator on the first field mismatch.
+      if (init.params !== seeded && !btcParamsShapeMatches(seeded, paramsAsBtc)) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `chainId ${init.chainId} is reserved for BTC; UtxoChain construction with foreign params (slip44=${init.params.slip44CoinId}) is not permitted. Choose a distinct chainId for this network.`,
+          { chainId: init.chainId },
+        );
+      }
+    }
     super(
       init.chainId,
       init.name,
@@ -214,64 +257,150 @@ export class UtxoChain extends Chain {
     return this.chainTipProvider.getChainTipHeight();
   }
 
-  async verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean> {
-    if (!this.validateAddress(req.signer)) return false;
+  async getTransactionStatus(txHash: string): Promise<UtxoTransactionStatus> {
+    // Narrow the try to the provider call only. Constructor asserts and
+    // upsert failures must NOT be silently coerced into NotFound.
+    // Classify: (a) provider signalled "no such tx" (Esplora HTTP 404,
+    // Bitcoin Core RPC code -5) → NotFound; (b) any other throw →
+    // RpcError so consumers can retry rather than treating a 429/timeout
+    // as a definitive miss.
+    let tx;
     try {
-      return bitcoinMessage.verify(
-        req.message,
-        req.signer,
-        req.signature,
-        this.params.networkInfo.messagePrefix,
-        true
+      tx = await this.rawTxProvider.getTransaction(txHash);
+    } catch (err) {
+      if (err instanceof ChainError) throw err;
+      if (isProviderNotFoundError(err)) {
+        return new UtxoTransactionStatus({
+          chainId: this.chainId,
+          status: TransactionStatusTypes.NotFound,
+          confirmationAt: null,
+          balanceChanges: null,
+        });
+      }
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const sanitizedMsg = sanitizeUtxoErrMessage(rawMsg);
+      // Build a scrubbed cause: sanitizeCause strips axios `.config`/
+      // `.request`/`.response` object trees (which carry Authorization
+      // headers + query-string keys) by rebuilding a plain Error with
+      // only sanitized message+stack. Consumers walking `.cause` in a
+      // structured logger no longer leak API keys.
+      const safeCause = err instanceof Error
+        ? sanitizedCauseForUtxo(err, sanitizedMsg)
+        : undefined;
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        `Failed to read UTXO tx ${txHash}: ${sanitizedMsg}`,
+        { chainId: this.chainId, txHash },
+        safeCause,
       );
-    } catch {
-      return false;
     }
-  }
 
-  async getTransactionStatus(txHash: string): Promise<TransactionStatus> {
+    // Bitcoin Core reports `confirmations: -1` for a conflicted/RBF-
+    // replaced tx (a reorged-out deposit). Do not run the shape asserts
+    // that would throw InvalidArgument on the way out — surface as
+    // NotFound so the status poll doesn't crash.
+    if (tx.confirmations < 0) {
+      return new UtxoTransactionStatus({
+        chainId: this.chainId,
+        status: TransactionStatusTypes.NotFound,
+        confirmationAt: null,
+        balanceChanges: null,
+        error: {
+          code: 'CONFLICTED',
+          reason: `Provider reports confirmations=${tx.confirmations} (RBF-replaced / reorged)`,
+        },
+      });
+    }
+
+    // Wrap the decode block so a non-integer valueSats/absoluteSats from a
+    // consumer's provider tool (BTC-float→sats overflow) or a
+    // Transaction.fromHex failure surfaces as a typed
+    // ChainError(TransactionDecodeFailed) rather than a raw RangeError.
+    // Mirrors evm_chain.ts:decodeBalanceChanges catch.
     try {
-      const tx = await this.rawTxProvider.getTransaction(txHash);
-      const status =
-        tx.confirmations === 0
-          ? TransactionStatusTypes.Pending
-          : TransactionStatusTypes.Success;
+      // Populate outputs on both pending AND confirmed paths — a 0-conf
+      // mempool tx still has visible outputs, and BTC/LTC/DOGE deposit
+      // detectors need them. balanceChanges stays null on Pending per the
+      // TransactionStatus base invariant.
+      const outputs: UtxoTransactionOutput[] = tx.vout.map(
+        (o) =>
+          new UtxoTransactionOutput({
+            scriptPubkeyHex: o.scriptPubKeyHex,
+            address: o.address,
+            valueSats: BigInt(o.valueSats),
+          }),
+      );
+      // Derive vsize from the raw hex — bitcoinjs-lib is already a dep
+      // and both Esplora + Bitcoin Core populate tx.hex. Falls back to
+      // null on malformed hex so the status still returns.
+      let vsize: number | null = null;
+      try {
+        if (tx.hex && tx.hex.length > 0) {
+          vsize = Transaction.fromHex(tx.hex).virtualSize();
+        }
+      } catch {
+        vsize = null;
+      }
+      const fees =
+        tx.fees !== null
+          ? new UtxoTransactionFees({ absoluteSats: BigInt(tx.fees.absoluteSats), vsize })
+          : null;
 
+      const isPending = tx.confirmations === 0;
+      if (isPending) {
+        return new UtxoTransactionStatus({
+          chainId: this.chainId,
+          status: TransactionStatusTypes.Pending,
+          confirmationAt: null,
+          balanceChanges: null,
+          confirmations: 0,
+          outputs,
+          vsize,
+          fees,
+        });
+      }
+
+      // Outputs-only per-address native deltas. Full input-side accounting
+      // to compute net native change (Python's `_native_balance_changes`
+      // parity) is deferred — the raw-tx provider currently returns only
+      // vin.txid+vout, no address/value/scriptPubKeyHex. Noted in
+      // SINAN_OPEN_QUESTIONS.md.
+      const balanceChanges: NestedBalanceChanges = new Map();
       const perAddressSats = new Map<string, bigint>();
       for (const out of tx.vout) {
         if (!out.address) continue;
         perAddressSats.set(
           out.address,
-          (perAddressSats.get(out.address) ?? 0n) + BigInt(out.valueSats)
+          (perAddressSats.get(out.address) ?? 0n) + BigInt(out.valueSats),
         );
       }
-      const balanceChanges: BalanceChange[] = [];
-      for (const [address, amount] of perAddressSats) {
-        balanceChanges.push({ address, token: this._nativeToken, amount });
+      for (const [address, sats] of perAddressSats) {
+        AssetBalanceChange.upsert(
+          balanceChanges,
+          address,
+          this._nativeToken,
+          AssetBalanceChange.fromMr(sats, this._nativeToken.decimals),
+        );
       }
 
-      return {
-        status,
-        confirmations: tx.confirmations,
-        blockNumber: tx.blockHeight,
-        txTimestamp: tx.blockTime,
+      return new UtxoTransactionStatus({
+        chainId: this.chainId,
+        status: TransactionStatusTypes.Success,
+        confirmationAt: tx.blockTime,
         balanceChanges,
-        gasFee:
-          tx.fees !== null
-            ? { token: this._nativeToken, amount: BigInt(tx.fees.absoluteSats) }
-            : null,
-        errorInfo: null,
-      };
+        confirmations: tx.confirmations,
+        outputs,
+        vsize,
+        fees,
+      });
     } catch (err) {
-      return {
-        status: TransactionStatusTypes.NotFound,
-        confirmations: 0,
-        blockNumber: null,
-        txTimestamp: null,
-        balanceChanges: [],
-        gasFee: null,
-        errorInfo: { reason: (err as Error).message },
-      };
+      if (err instanceof ChainError) throw err;
+      throw new ChainError(
+        ChainErrorKinds.TransactionDecodeFailed,
+        `Failed to decode UTXO tx ${txHash}: ${err instanceof Error ? err.message : String(err)}`,
+        { chainId: this.chainId, txHash },
+        err instanceof Error ? err : undefined,
+      );
     }
   }
 
@@ -513,6 +642,79 @@ function bigintToNumber(value: bigint): number {
     throw new Error(`UTXO amount ${value} exceeds Number.MAX_SAFE_INTEGER`);
   }
   return Number(value);
+}
+
+/**
+ * Detect whether the underlying provider signalled "no such tx" (as opposed
+ * to a transport failure). Two canonical shapes are recognised:
+ *
+ *   - Esplora / any axios-based HTTP provider → `response.status === 404`
+ *   - Bitcoin Core `getrawtransaction` on an unknown txid → RPC error code
+ *     `-5` (surfaces via `bitcoin-core.tool.ts` as
+ *     `Error("bitcoin-core getrawtransaction: -5 <msg>")`).
+ *
+ * Everything else is treated as a transport failure and wrapped in
+ * `ChainError(RpcError)` so consumers can retry.
+ */
+function isProviderNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const anyErr = err as { response?: { status?: unknown }; message?: unknown };
+  const status = anyErr.response?.status;
+  if (typeof status === 'number' && status === 404) return true;
+  const message = typeof anyErr.message === 'string' ? anyErr.message : '';
+  if (/getrawtransaction:\s*-5\b/.test(message)) {
+    // Bitcoin Core RPC code -5 has TWO meanings:
+    //   - "No such mempool or blockchain transaction" → genuinely unknown
+    //     (node has -txindex enabled, or the tx is unknown even in mempool)
+    //   - "No such mempool transaction. Use -txindex or provide a block hash…"
+    //     → the tx MIGHT exist on-chain but the node can't look it up
+    //     without a block hash. Reporting NotFound here would silently
+    //     misreport every confirmed deposit as missing on a non-txindex
+    //     node — a real-money fail-open. Route it as RpcError so the
+    //     consumer sees a node-misconfiguration signal.
+    if (/mempool or blockchain/i.test(message)) return true;
+    return false;
+  }
+  return false;
+}
+
+/**
+ * Best-effort scrub for provider error messages so API keys and auth
+ * tokens don't leak into `TransactionErrorInfo.reason`. The UTXO
+ * providers (Esplora, Unisat, Ordiscan) carry keys in URL query strings,
+ * Authorization headers, AND URL paths (`/v1/<key>/tx/…`); a raw axios
+ * error stringifies the full request URL. Matches EVM's
+ * `sanitizeMessage` intent (errors.ts).
+ */
+function sanitizeUtxoErrMessage(msg: string): string {
+  return msg
+    // Basic-auth credentials in a URL: http://user:pass@host — the
+    // canonical Bitcoin Core RPC form, which the -5 branch above
+    // specifically expects and could otherwise expose.
+    .replace(/(:\/\/)[^:@\s/]+:[^@\s/]+@/g, '$1***:***@')
+    // Query-string API key params.
+    .replace(/([?&][A-Za-z_-]*(?:key|token|apikey|api_key|auth)=)[^&\s]+/gi, '$1***')
+    // Bearer / Authorization headers.
+    .replace(/(Authorization|Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 ***')
+    // Hex/base58-ish 32+-char tokens embedded in URL paths (hosted
+    // Esplora often uses `/v1/<key>/…`).
+    .replace(/\/[A-Fa-f0-9]{32,}\b/g, '/***')
+    // Provider-prefixed key markers (Blockstream/Unisat/Ordiscan style).
+    .replace(/\b(?:pk|sk|ghp|gho)_[A-Za-z0-9]{20,}\b/g, '***');
+}
+
+/**
+ * Rebuild a fresh Error from `cause` with the sanitized message + a
+ * sanitized stack. Drops axios `.config` / `.response` / `.request`
+ * object trees that carry Authorization headers and full request URLs.
+ * Symmetric with `sanitizeCause` (errors.ts) but with the UTXO-specific
+ * regex sweeps applied instead of a per-chain rpcUrl scrub.
+ */
+function sanitizedCauseForUtxo(cause: Error, sanitizedMsg: string): Error {
+  const safe = new Error(sanitizedMsg);
+  safe.name = cause.name;
+  if (cause.stack) safe.stack = sanitizeUtxoErrMessage(cause.stack);
+  return safe;
 }
 
 function encodeMemo(memo: string | undefined): Buffer | null {
