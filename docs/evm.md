@@ -130,14 +130,30 @@ from the contract on first balance call and caches the result.
 
 ```ts
 const status = await arb.getTransactionStatus(txHash);
-// status.status: 'Pending' | 'Success' | 'Failed' | 'NotFound'
-// status.confirmations: number
-// status.gasFee: { token: nativeToken, amount: bigint } | null
-// status.balanceChanges: [{ address, token, amount }] (decoded ERC-20 transfers)
+// EvmTransactionStatus (extends TransactionStatus):
+//   status:         'Pending' | 'Success' | 'Failed' | 'NotFound'
+//   inclusionAt:    Date | null
+//   error:          TransactionErrorInfo | null
+//   balanceChanges: NestedBalanceChanges | null
+//                   = Map<walletLowercase, Map<assetHash, {token, change}>>
+//   logs:           EvmParsedTransactionLog[] | null
+//   fees:           EvmTransactionGasFees | null
+//                     .gasLimitUsed, .effectiveGasPrice, .totalGasInWei
+//                     .l1FeeWei (OP-stack rollups only)
+//                     .totalNativeDebitWei = totalGasInWei + (l1FeeWei ?? 0)
 ```
 
-For ERC-20 transfers, the chain decodes `Transfer(from, to, value)` logs
-in the receipt and emits one `BalanceChange` entry per log.
+For ERC-20 transfers, `decodeBalanceChanges` decodes `Transfer(from, to, value)`
+logs into the nested balance-change map. On OP-stack rollups
+(Optimism/Base/Unichain/WorldChain/Boba/Sonic) the sender's native debit
+includes the receipt's `l1Fee` — this is exposed on `fees.l1FeeWei` and
+folded into the sender's `balanceChanges` row so the emitted delta
+matches the on-chain net.
+
+`Failed` status carries `balanceChanges: null` per Python parity — the
+gas that was burned is still on `fees.totalNativeDebitWei` and consumers
+reconstruct sender debits from there for reverted transactions. See
+`docs/UPGRADE_TO_V0_2A.md` for the accounting-gap note.
 
 ## Registry / wiring
 

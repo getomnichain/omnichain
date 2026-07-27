@@ -125,11 +125,59 @@ if (status instanceof EvmTransactionStatus) {
 
 **Known accounting gap (Python parity):** `Failed` status has
 `balanceChanges: null` — the actual gas/fee that was burned by a
-reverted tx (EVM `gasUsed × effectiveGasPrice`, Solana `feeLamports`)
+reverted tx (EVM `fees.totalNativeDebitWei`, Solana `feeLamports`)
 is NOT surfaced through `balanceChanges` and must be reconstructed by
 the consumer from `status.fees` when reconciling debits. This mirrors
 `omnichain-py`'s `AbstractTransactionStatus` invariant (Failed →
 `balance_changes is None`); TS honors it verbatim.
+
+**Wallet-key case normalization** — the outer key of `NestedBalanceChanges`
+is chain-specific and NOT normalized by the base:
+- **EVM** — lowercased addresses. Consumers doing
+  `status.balanceChanges.get(userAddr)` must lowercase `userAddr`.
+- **Solana** — raw base58, case-sensitive. Use verbatim.
+- **UTXO** — the raw provider-returned address string. Modern providers
+  emit lowercase bech32, but code that mixes providers should normalize.
+
+**OP-stack L1 fee (EVM)** — On Optimism/Base/Unichain/WorldChain/Boba/
+Sonic and other OP-stack rollups, the sender pays a separate L1 data fee
+in addition to L2 execution gas. `EvmTransactionGasFees.l1FeeWei`
+surfaces it (undefined on L1 chains), and
+`.totalNativeDebitWei = totalGasInWei + (l1FeeWei ?? 0)` is what the
+sender's native `balanceChanges` row is debited by. Iter-3 fix — prior
+2A shipped without L1-fee accounting and under-counted OP-stack sender
+debits.
+
+**0-conf UTXO visibility** — Mempool (unconfirmed, `confirmations === 0`)
+UTXO transactions return `status: 'Pending'` with `balanceChanges: null`
+(base invariant), but `outputs` and `fees` are populated on the Pending
+path so BTC/LTC/DOGE consumers can still enumerate per-address output
+credits for 0-conf deposit detection.
+
+**UTXO NotFound signal** — `UtxoChain.getTransactionStatus` returns
+`UtxoTransactionStatus` with `status: 'NotFound'` for two provider-
+recognised not-found signals: Esplora/axios HTTP 404, and Bitcoin Core
+`getrawtransaction` RPC error code `-5`. Any other provider throw is
+wrapped as `ChainError(RpcError)` — so 429/timeout/network failures are
+retryable, and a genuine unknown-txid does not poll indefinitely. If
+your consumer uses a custom `UtxoRawTransactionProvider` implementation
+whose not-found signal differs, add its shape to the
+`isProviderNotFoundError` helper (or throw
+`ChainError(RpcError)` from the provider tool for anything that isn't
+a definitive not-found).
+
+**Factory ergonomic divergence** — three subclass factories mirror
+Python exactly, which yields three different notFound construction
+shapes for one concept:
+- `EvmTransactionStatus.notFound(chainId, error)` — `error` is a
+  positional-required `TransactionErrorInfo | null`
+- `SolanaTransactionStatus.notFound(chainId, error?)` — `error` defaults
+  to null
+- `UtxoTransactionStatus` — no static factories at all; construct via
+  `new UtxoTransactionStatus({ chainId, status: TransactionStatusTypes.NotFound, … })`
+
+Deliberate parity with `omnichain-py`. If you'd prefer a unified
+signature, wrap them at the call site.
 
 ## New: `AssetBalanceChange` + `NestedBalanceChanges`
 

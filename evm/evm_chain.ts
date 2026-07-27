@@ -478,6 +478,28 @@ export class EvmChain extends Chain {
       // pass through consumer SLA/age math as a real inclusion time.
     }
 
+    // OP-stack rollups (Optimism/Base/Unichain/WorldChain/Boba/Sonic and
+    // similar) charge an additional L1 data fee that the receipt exposes
+    // as `l1Fee` (bigint). It's a real debit from the sender's native
+    // balance and must be included in `gasCost` for balanceChanges to
+    // match the on-chain delta. Non-OP receipts don't have the field.
+    const l1Fee = ((): bigint => {
+      const raw = (receipt as unknown as { l1Fee?: unknown }).l1Fee;
+      if (typeof raw === 'bigint') return raw;
+      if (typeof raw === 'string' && raw.length > 0) {
+        try {
+          return BigInt(raw);
+        } catch {
+          return 0n;
+        }
+      }
+      if (typeof raw === 'number') return BigInt(raw);
+      return 0n;
+    })();
+    // gasLimit: prefer tx.gasLimit (the actual limit set by sender); fall
+    // back to receipt.gasUsed only when tx is unavailable — noted as
+    // "derived when tx body missing" (a wart pending a nullable field
+    // decision in a later card).
     const fees = new EvmTransactionGasFees({
       gasLimit: tx?.gasLimit ?? receipt.gasUsed,
       gasLimitUsed: receipt.gasUsed,
@@ -485,6 +507,7 @@ export class EvmChain extends Chain {
       gasPrice: tx?.gasPrice ?? undefined,
       maxFeePerGas: tx?.maxFeePerGas ?? undefined,
       maxPriorityFeePerGas: tx?.maxPriorityFeePerGas ?? undefined,
+      l1FeeWei: l1Fee > 0n ? l1Fee : undefined,
     });
 
     const logs: EvmParsedTransactionLog[] = (receipt.logs ?? []).map(
@@ -508,7 +531,7 @@ export class EvmChain extends Chain {
         from: tx ? tx.from : (receipt.from ?? ''),
         to: tx?.to ?? receipt.to ?? null,
         value: nativeValue,
-        gasCost: fees.totalGasInWei,
+        gasCost: fees.totalNativeDebitWei,
         receipt,
       });
     } catch (err) {

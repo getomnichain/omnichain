@@ -166,6 +166,15 @@ export function btcParamsShapeMatches(a: BtcNetworkParams, b: BtcNetworkParams):
   if (a.networkInfo.scriptHash !== b.networkInfo.scriptHash) return false;
   if (a.networkInfo.bip32.public !== b.networkInfo.bip32.public) return false;
   if (a.networkInfo.bip32.private !== b.networkInfo.bip32.private) return false;
+  // Also compare the address-grammar fields the bitcoinjs Network carries
+  // separately from bip32/pubKeyHash. A consumer who spoofs
+  // `{...seed, networkInfo: {...seed.networkInfo, bech32: 'tb'}}` would
+  // otherwise pass this check, replace the seeded entry, and payments/Psbt
+  // downstream would derive testnet-HRP addresses under the mainnet id
+  // while walletAddressRegex still validates mainnet strings.
+  if (a.networkInfo.bech32 !== b.networkInfo.bech32) return false;
+  if (a.networkInfo.messagePrefix !== b.networkInfo.messagePrefix) return false;
+  if (a.networkInfo.wif !== b.networkInfo.wif) return false;
   if (a.supportedDerivationPurposes.size !== b.supportedDerivationPurposes.size) return false;
   for (const p of a.supportedDerivationPurposes) {
     if (!b.supportedDerivationPurposes.has(p)) return false;

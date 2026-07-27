@@ -591,7 +591,17 @@ export class SolanaChain extends Chain {
       // fields (`confirmationStatus` + `err`) — the previous fix that
       // always returned Pending on settled-but-unfetchable let a settled-
       // FAILED tx poll indefinitely.
-      const sig = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+      let sig;
+      try {
+        sig = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+      } catch (err) {
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          `Failed to read Solana signature status ${txHash}: ${err instanceof Error ? err.message : String(err)}`,
+          { chainId: this.chainId, txHash },
+          err,
+        );
+      }
       if (!sig || !sig.value) return SolanaTransactionStatus.notFound(this.chainId);
       const settled =
         sig.value.confirmationStatus === 'finalized' ||

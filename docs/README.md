@@ -20,7 +20,7 @@ mounted at each service's own `chain` directory.
 | `UnsignedTransaction` | [unsigned_transaction.ts](../unsigned_transaction.ts) | Abstract base for an unsigned tx; per-chain subclasses add the bytes |
 | `NetworkType` | [network_type.ts](../network_type.ts) | Enum (`EVM`, `COSMOS`, `TON`, `SOLANA`, `BTC`) + `registerNonEvmChain(chainId, type)` registry |
 | `TransactionStatus` | [transaction_status.ts](../transaction_status.ts) | Abstract base — chainId, status, inclusionAt, error, balanceChanges. Per-network subclasses: `EvmTransactionStatus` (+logs, +fees), `SolanaTransactionStatus` (+fees), `UtxoTransactionStatus` (+inputs, +outputs, +vsize, +confirmations) |
-| `AssetBalanceChange` | [transaction_status.ts](../transaction_status.ts) | Per-(wallet, asset) balance delta with `.balanceChangeHr: Decimal` + `.balanceChangeMr: bigint` + `.decimals`. `NestedBalanceChanges = Map<wallet, Map<assetHash, {token, change}>>` |
+| `AssetBalanceChange` | [transaction_status.ts](../transaction_status.ts) | Per-(wallet, asset) balance delta with `.balanceChangeMr: bigint` + `.decimals` (Wave 2A — bigint only; the Python-parity `.balanceChangeHr: Decimal` accessor arrives in Wave 2B alongside `decimal.js`). `NestedBalanceChanges = Map<wallet, Map<assetHash, {token, change}>>` |
 | `Priority` | [priority.ts](../priority.ts) | Shared `Priority` enum (`SLOW`/`NORMAL`/`FAST`) used by per-chain `suggestGas` / `suggestFeeRate` / `suggestPriorityFeeMicroLamports` |
 | `ChainError` | [errors.ts](../errors.ts) | Module-internal error with a `kind` discriminator |
 | `addressFor(chainId, raw)` | [address.factory.ts](../address.factory.ts) | Network-aware address constructor |
@@ -132,11 +132,21 @@ if (isSuccess(status)) {
   // balanceChanges is now Map<wallet, Map<assetHash, {token, change}>>
   for (const [wallet, perAsset] of status.balanceChanges) {
     for (const { token, change } of perAsset.values()) {
-      console.log(wallet, token.symbol, change.balanceChangeHr.toString());
+      // Wave 2A ships bigint minor units only. balanceChangeHr (Decimal)
+      // returns in Wave 2B alongside decimal.js.
+      console.log(wallet, token.symbol, change.balanceChangeMr);
     }
   }
 }
 ```
+
+**Wallet-key case normalization** — the wallet key used in
+`NestedBalanceChanges` is chain-specific: EVM addresses are lowercased,
+Solana keys are the raw base58 (case-sensitive), UTXO keys are the raw
+provider-returned address (bech32 lower-case in practice; providers
+don't uppercase). If you do `status.balanceChanges.get(userAddress)`
+directly, normalise `userAddress` to the same form (`toLowerCase()` for
+EVM). Same rules land in `UPGRADE_TO_V0_2A.md`.
 
 For consumer migration off the Phase 1 flat shape, see
 [UPGRADE_TO_V0_2A.md](./UPGRADE_TO_V0_2A.md).

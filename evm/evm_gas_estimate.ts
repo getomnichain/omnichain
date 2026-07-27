@@ -74,7 +74,15 @@ export class EvmGasEstimate {
   }
 
   effectiveGasPrice(): bigint {
-    return this.kind === 'legacy' ? (this.gasPrice as bigint) : (this.maxFeePerGas as bigint);
+    // Discriminant narrowing — no cast needed. The constructor sets exactly
+    // one side of the shape based on `kind`, and the >= 0 validators
+    // guarantee both are bigints (never undefined) within their branch.
+    if (isLegacyGasEstimate(this)) return this.gasPrice;
+    if (isEip1559GasEstimate(this)) return this.maxFeePerGas;
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `EvmGasEstimate: unknown kind '${String((this as { kind: string }).kind)}'`,
+    );
   }
 
   nativeCost(): bigint | undefined {

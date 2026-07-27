@@ -158,15 +158,27 @@ export class SolanaTransactionStatus extends TransactionStatus {
         'balanceChangesExcludingFees requires non-null fees to know which fee_payer to credit',
       );
     }
+    // Validate the caller-provided `nativeAsset` is actually a native token
+    // for this chain — otherwise `upsert` would silently create a phantom
+    // `+feeLamports` credit under a foreign asset key on the fee_payer's
+    // row (a fabricated balance movement that no consumer would notice
+    // until reconciliation drift).
+    if (nativeAsset.chainId !== this.chainId) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `balanceChangesExcludingFees: nativeAsset.chainId=${nativeAsset.chainId} does not match this.chainId=${this.chainId}`,
+      );
+    }
+    if (nativeAsset.identifier !== undefined && nativeAsset.identifier !== '') {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `balanceChangesExcludingFees: nativeAsset must be a native token (identifier undefined/empty), got identifier="${nativeAsset.identifier}"`,
+      );
+    }
     // The fee-payer's native row may be *absent* — the decoder drops
     // delta === 0n rows, so a fee-payer whose received lamports exactly
     // offset the fee has no entry. The upsert below handles that
-    // correctly (creates a fresh +feeLamports entry). We only need to
-    // guard against a genuine asset-identity mismatch: if the fee-payer
-    // row exists AND has a non-native asset entry (same identifier as
-    // nativeAsset would key the same hash — that's fine), a foreign
-    // asset in the fee payer's row means the caller passed the wrong
-    // token.
+    // correctly (creates a fresh +feeLamports entry).
     const copy: NestedBalanceChanges = new Map();
     for (const [wallet, perWallet] of this.balanceChanges) {
       const inner = new Map<string, { token: Token; change: AssetBalanceChange }>();

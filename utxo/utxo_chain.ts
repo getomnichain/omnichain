@@ -259,26 +259,49 @@ export class UtxoChain extends Chain {
 
   async getTransactionStatus(txHash: string): Promise<UtxoTransactionStatus> {
     // Narrow the try to the provider call only. Constructor asserts and
-    // upsert failures must NOT be silently coerced into NotFound; a
-    // transport error must NOT be reported as "tx doesn't exist" (that
-    // would let deposit detectors and rebroadcasters conclude the wrong
-    // thing).
+    // upsert failures must NOT be silently coerced into NotFound.
+    // Classify: (a) provider signalled "no such tx" (Esplora HTTP 404,
+    // Bitcoin Core RPC code -5) → NotFound; (b) any other throw →
+    // RpcError so consumers can retry rather than treating a 429/timeout
+    // as a definitive miss.
     let tx;
     try {
       tx = await this.rawTxProvider.getTransaction(txHash);
     } catch (err) {
       if (err instanceof ChainError) throw err;
-      // Provider surface doesn't distinguish "not found" from "transport
-      // failure" today (see SINAN_OPEN_QUESTIONS.md). Wrap all failures
-      // as RpcError so consumers can retry rather than treating a 429/
-      // timeout as a definitive miss. Sanitize the reason.
+      if (isProviderNotFoundError(err)) {
+        return new UtxoTransactionStatus({
+          chainId: this.chainId,
+          status: TransactionStatusTypes.NotFound,
+          confirmationAt: null,
+          balanceChanges: null,
+        });
+      }
+      const rawMsg = err instanceof Error ? err.message : String(err);
       throw new ChainError(
         ChainErrorKinds.RpcError,
-        `Failed to read UTXO tx ${txHash}: ${sanitizeUtxoErrMessage((err as Error).message)}`,
+        `Failed to read UTXO tx ${txHash}: ${sanitizeUtxoErrMessage(rawMsg)}`,
         { chainId: this.chainId, txHash },
         err,
       );
     }
+
+    // Populate outputs on both pending AND confirmed paths — a 0-conf
+    // mempool tx still has visible outputs, and BTC/LTC/DOGE deposit
+    // detectors need them. balanceChanges stays null on Pending per the
+    // TransactionStatus base invariant.
+    const outputs: UtxoTransactionOutput[] = tx.vout.map(
+      (o) =>
+        new UtxoTransactionOutput({
+          scriptPubkeyHex: o.scriptPubKeyHex,
+          address: o.address,
+          valueSats: BigInt(o.valueSats),
+        }),
+    );
+    const fees =
+      tx.fees !== null
+        ? new UtxoTransactionFees({ absoluteSats: BigInt(tx.fees.absoluteSats), vsize: 0 })
+        : null;
 
     const isPending = tx.confirmations === 0;
     if (isPending) {
@@ -288,6 +311,8 @@ export class UtxoChain extends Chain {
         confirmationAt: null,
         balanceChanges: null,
         confirmations: 0,
+        outputs,
+        fees,
       });
     }
 
@@ -313,21 +338,6 @@ export class UtxoChain extends Chain {
         AssetBalanceChange.fromMr(sats, this._nativeToken.decimals),
       );
     }
-
-    // Populate what the raw-tx provider surfaces; leave inputs/vsize null
-    // until the provider gains per-input address+value (Wave 2C).
-    const outputs: UtxoTransactionOutput[] = tx.vout.map(
-      (o) =>
-        new UtxoTransactionOutput({
-          scriptPubkeyHex: o.scriptPubKeyHex,
-          address: o.address,
-          valueSats: BigInt(o.valueSats),
-        }),
-    );
-    const fees =
-      tx.fees !== null
-        ? new UtxoTransactionFees({ absoluteSats: BigInt(tx.fees.absoluteSats), vsize: 0 })
-        : null;
 
     return new UtxoTransactionStatus({
       chainId: this.chainId,
@@ -578,6 +588,29 @@ function bigintToNumber(value: bigint): number {
     throw new Error(`UTXO amount ${value} exceeds Number.MAX_SAFE_INTEGER`);
   }
   return Number(value);
+}
+
+/**
+ * Detect whether the underlying provider signalled "no such tx" (as opposed
+ * to a transport failure). Two canonical shapes are recognised:
+ *
+ *   - Esplora / any axios-based HTTP provider → `response.status === 404`
+ *   - Bitcoin Core `getrawtransaction` on an unknown txid → RPC error code
+ *     `-5` (surfaces via `bitcoin-core.tool.ts` as
+ *     `Error("bitcoin-core getrawtransaction: -5 <msg>")`).
+ *
+ * Everything else is treated as a transport failure and wrapped in
+ * `ChainError(RpcError)` so consumers can retry.
+ */
+function isProviderNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const anyErr = err as { response?: { status?: unknown }; message?: unknown };
+  const status = anyErr.response?.status;
+  if (typeof status === 'number' && status === 404) return true;
+  const message = typeof anyErr.message === 'string' ? anyErr.message : '';
+  // Bitcoin Core: "bitcoin-core getrawtransaction: -5 …"
+  if (/getrawtransaction:\s*-5\b/.test(message)) return true;
+  return false;
 }
 
 /**

@@ -14,6 +14,13 @@ export interface EvmTransactionGasFeesInit {
   gasPrice?: bigint;
   maxFeePerGas?: bigint;
   maxPriorityFeePerGas?: bigint;
+  /**
+   * OP-stack L1 data fee (wei) — present on Optimism / Base / Unichain /
+   * WorldChain / Boba / Sonic and other L2s that publish tx data to L1.
+   * Omitted on L1 chains. Included in the sender's native debit computed
+   * by `decodeBalanceChanges` when populated.
+   */
+  l1FeeWei?: bigint;
 }
 
 export class EvmTransactionGasFees {
@@ -23,6 +30,7 @@ export class EvmTransactionGasFees {
   readonly gasPrice: bigint | undefined;
   readonly maxFeePerGas: bigint | undefined;
   readonly maxPriorityFeePerGas: bigint | undefined;
+  readonly l1FeeWei: bigint | undefined;
 
   constructor(init: EvmTransactionGasFeesInit) {
     // Observed on-chain values (not caller inputs) — reject negatives only.
@@ -47,16 +55,29 @@ export class EvmTransactionGasFees {
         `EvmTransactionGasFees.effectiveGasPrice must be >= 0, got ${init.effectiveGasPrice}`,
       );
     }
+    if (init.l1FeeWei !== undefined && init.l1FeeWei < 0n) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `EvmTransactionGasFees.l1FeeWei must be >= 0, got ${init.l1FeeWei}`,
+      );
+    }
     this.gasLimit = init.gasLimit;
     this.gasLimitUsed = init.gasLimitUsed;
     this.effectiveGasPrice = init.effectiveGasPrice;
     this.gasPrice = init.gasPrice;
     this.maxFeePerGas = init.maxFeePerGas;
     this.maxPriorityFeePerGas = init.maxPriorityFeePerGas;
+    this.l1FeeWei = init.l1FeeWei;
   }
 
+  /** L2 execution gas only. Does NOT include OP-stack `l1FeeWei`. */
   get totalGasInWei(): bigint {
     return this.gasLimitUsed * this.effectiveGasPrice;
+  }
+
+  /** Full sender native debit: L2 gas + OP-stack L1 data fee (when present). */
+  get totalNativeDebitWei(): bigint {
+    return this.totalGasInWei + (this.l1FeeWei ?? 0n);
   }
 }
 
