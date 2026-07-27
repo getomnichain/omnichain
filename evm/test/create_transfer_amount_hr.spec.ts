@@ -1,4 +1,4 @@
-import Decimal from 'decimal.js';
+import { Decimal } from 'decimal.js';
 
 import { ChainErrorKinds, isChainError } from '../../errors.ts';
 import { FeePriority } from '../../priority.ts';
