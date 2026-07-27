@@ -180,7 +180,11 @@ the review cycle and confirmed with the user or defensibly deferred:
   `amount: bigint` path.** Pre-Wave-2B, `EvmChain.createTransferUnsignedTransaction`
   passed `amount: 0n` straight through to `value: 0n` /
   `transfer(to, 0)`. Iter-1 unified the check inside
-  `resolveTransferAmount` so all three chains reject zero uniformly.
+  `resolveTransferAmount` so EVM + Solana reject zero uniformly (UTXO
+  enforces its own > 0 + dust checks in `UtxoChain.buildTransfer` since
+  it doesn't route through `resolveTransferAmount`; all UTXO
+  validation errors carry `ChainErrorKinds.InvalidArgument` for
+  cross-chain narrowing symmetry).
   Behavior change vs `main` on EVM. Recorded here + in
   `docs/UPGRADE_TO_V0_2B.md` under the "Contract" description.
 

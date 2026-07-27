@@ -462,13 +462,28 @@ export class UtxoChain extends Chain {
     const hasSingle = req.to !== undefined || req.amount !== undefined;
     const hasMulti = Array.isArray(opts.outputs) && opts.outputs.length > 0;
     if (hasSingle && hasMulti) {
-      throw new Error(
-        `${this.name}: cannot specify both single-output (to/amount) and multi-output (outputs[]) forms`
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: cannot specify both single-output (to/amount) and multi-output (outputs[]) forms`,
+        { chainId: this.chainId },
       );
     }
     if (!hasSingle && !hasMulti) {
-      throw new Error(
-        `${this.name}: must specify either (to, amount) or a non-empty outputs[] array`
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: must specify either (to, amount) or a non-empty outputs[] array`,
+        { chainId: this.chainId },
+      );
+    }
+    // Wave 2B made `amount` optional on the base CreateTransferRequest so
+    // `amountHr` could coexist. UTXO's single-output form still needs
+    // `amount: bigint` — reject `{to, memo}`-without-amount up front
+    // rather than let it propagate through as NaN downstream.
+    if (hasSingle && !hasMulti && req.amount === undefined) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `${this.name}: single-output form requires \`amount: bigint\` (bitcoin satoshis) — omitting amount would produce NaN downstream`,
+        { chainId: this.chainId },
       );
     }
     const normalizedOutputs: UtxoTransferOutput[] = hasMulti
@@ -484,13 +499,26 @@ export class UtxoChain extends Chain {
           { chainId: this.chainId, address: o.to }
         );
       }
+      if (typeof o.amount !== 'bigint') {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `${this.name}: outputs[${i}].amount must be a bigint (got ${typeof o.amount})`,
+          { chainId: this.chainId },
+        );
+      }
       if (o.amount <= 0n) {
-        throw new Error(`${this.name}: outputs[${i}] amount must be > 0`);
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `${this.name}: outputs[${i}] amount must be > 0`,
+          { chainId: this.chainId },
+        );
       }
       const sats = bigintToNumber(o.amount);
       if (sats < this.params.dustValueSats) {
-        throw new Error(
-          `${this.name}: outputs[${i}] amount ${sats} below dust ${this.params.dustValueSats}`
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `${this.name}: outputs[${i}] amount ${sats} below dust ${this.params.dustValueSats}`,
+          { chainId: this.chainId },
         );
       }
     }

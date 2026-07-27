@@ -62,9 +62,18 @@ New optional fields on `CreateTransferRequest`:
 **Contract:** exactly one of `{amount, amountHr, isFullBalance}` must be
 supplied. Ambiguous input (two or more set) throws
 `ChainError(InvalidArgument)`. Enforced by `resolveTransferAmount`
-exported from `chain.base.ts`. Both `amount` and `amountHr` must
-convert to `> 0` minor units — zero amounts are rejected uniformly
-across chains.
+exported from `chain.base.ts` for **EvmChain** and **SolanaChain**.
+Both `amount` and `amountHr` must convert to `> 0` minor units on
+those two chains.
+
+**UTXO's single-output form still requires `amount: bigint`** (bitcoin
+satoshis) — the multi-recipient `outputs[]` form has its own semantics
+and doesn't route through `resolveTransferAmount`. `UtxoChain` rejects
+`amountHr`, `isFullBalance`, `gasPricing`, AND `amount === undefined`
+on the single-output form at entry with
+`ChainError(InvalidArgument)`. All UTXO validation errors also carry
+`ChainErrorKinds.InvalidArgument` (converted from the plain `Error`
+throws in prior waves).
 
 ```ts
 // BEFORE (Wave 2A)
