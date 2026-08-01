@@ -779,6 +779,7 @@ export class EvmChain extends Chain {
         inclusionAt,
         error: errorInfo,
         fees,
+        blockNumber: receipt.blockNumber,
       });
     }
 
@@ -813,6 +814,7 @@ export class EvmChain extends Chain {
       balanceChanges,
       logs,
       fees,
+      blockNumber: receipt.blockNumber,
     });
   }
 
