@@ -1,6 +1,6 @@
 {
   "name": "@getomnichain/omnichain",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Multi-chain SDK for EVM, Solana, UTXO (BTC/LTC/DOGE/DASH/ZEC/BCH), TON, and Tron. TypeScript parity port of omnichain-py.",
   "keywords": [
     "omnichain",
@@ -25,28 +25,34 @@
     "url": "git+https://github.com/getomnichain/omnichain.git"
   },
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
     },
     "./evm": {
-      "types": "./dist/evm/index.d.ts",
-      "default": "./dist/evm/index.js"
+      "types": "./dist/esm/evm/index.d.ts",
+      "import": "./dist/esm/evm/index.js",
+      "require": "./dist/cjs/evm/index.js"
     },
     "./solana": {
-      "types": "./dist/solana/index.d.ts",
-      "default": "./dist/solana/index.js"
+      "types": "./dist/esm/solana/index.d.ts",
+      "import": "./dist/esm/solana/index.js",
+      "require": "./dist/cjs/solana/index.js"
     },
     "./utxo": {
-      "types": "./dist/utxo/index.d.ts",
-      "default": "./dist/utxo/index.js"
+      "types": "./dist/esm/utxo/index.d.ts",
+      "import": "./dist/esm/utxo/index.js",
+      "require": "./dist/cjs/utxo/index.js"
     },
     "./ton": {
-      "types": "./dist/ton/index.d.ts",
-      "default": "./dist/ton/index.js"
+      "types": "./dist/esm/ton/index.d.ts",
+      "import": "./dist/esm/ton/index.js",
+      "require": "./dist/cjs/ton/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -58,7 +64,9 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && npm run build:esm && npm run build:cjs && node scripts/write-dist-pkg-types.mjs",
+    "build:esm": "tsc -p tsconfig.build.esm.json",
+    "build:cjs": "tsc -p tsconfig.build.cjs.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-vm-modules --no-warnings node_modules/jest/bin/jest.js",
     "release": "bash scripts/release.sh",
@@ -69,18 +77,26 @@
     "@solana/web3.js": "^1.98.0",
     "axios": "^1.7.0",
     "bitcoinjs-lib": "^7.0.1",
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.15.1",
     "coininfo": "^5.2.1",
     "decimal.js": "^10.4.3",
     "ethers": "^6.13.0",
     "js-sha3": "^0.9.3",
     "tiny-secp256k1": "^2.2.3"
   },
+  "peerDependencies": {
+    "class-transformer": "^0.5.0",
+    "class-validator": "^0.14.0 || ^0.15.0 || ^0.16.0"
+  },
+  "peerDependenciesMeta": {
+    "class-transformer": { "optional": false },
+    "class-validator": { "optional": false }
+  },
   "devDependencies": {
     "@jest/globals": "^29.7.0",
     "@types/jest": "^29.5.12",
     "@types/node": "^22.13.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.0",
     "typescript": "^5.7.0"
