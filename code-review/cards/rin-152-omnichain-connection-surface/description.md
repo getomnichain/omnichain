@@ -20,10 +20,10 @@ Every current `chain.getProvider().*` and `chain.getConnection().*` escape hatch
 
 ### Extensions to EXISTING shapes (no new methods)
 
-**`CreateTransferRequest` gains optional fields:**
-- `authorizationList?: Eip7702Authorization[]` (EVM). When present, `createTransferUnsignedTransaction` returns an `UnsignedEvmTransaction` typed as type-4 with the authorization list attached. Empty array is rejected (`InvalidArgument`).
-- `addressLookupTables?: AltAccount[]` (Solana). When present, the returned `UnsignedSolanaTransaction` compiles its `MessageV0` against these ALTs, unlocking >1232-byte transactions.
-- `rawCalldata?: string` (EVM only, mutually exclusive with `tokenIdentifier`). Bypasses the transfer-selector builder for arbitrary contract calls — value + calldata go straight into the unsigned tx.
+**`CreateTransferRequest` gains ONE optional field:**
+- `addressLookupTables?: AltAccount[]` (Solana). When present, the returned `UnsignedSolanaTransaction` compiles its `MessageV0` against these ALTs, unlocking transfers that would otherwise exceed 1232 bytes (many-ATA scenarios).
+
+**Note on 7702 and arbitrary calls:** these are NOT semantically transfers, so they DO NOT go on `CreateTransferRequest`. They live on the new general primitive `createUnsignedTransaction` (below).
 
 **`UnsignedEvmTransaction` gains optional fields:**
 - `type?: 2 | 4`. Defaults to 2 unless `authorizationList` is present, then 4.
@@ -46,27 +46,32 @@ Every current `chain.getProvider().*` and `chain.getConnection().*` escape hatch
 - Existing `RpcError` covers network / 5xx.
 - Existing `InvalidArgument` covers malformed input.
 
-### NEW methods on `Chain` — 9 total
+### NEW methods on `Chain` — 10 total
 
-1. **`Chain.broadcast(signed, opts?)`** — the only fundamentally new capability on `Chain` base. Accepts hex string (EVM) or bytes (Solana). Returns tx hash / signature. `opts` shape is chain-specific:
+1. **`Chain.createUnsignedTransaction(req)`** — the general primitive for building any transaction that isn't a token transfer. Semantically distinct from `createTransferUnsignedTransaction`. Per-family request shapes:
+   - **EVM**: `{ from, to, data?, value?, authorizationList?, gasLimit?, nonce?, maxFeePerGas?, maxPriorityFeePerGas? }` → `UnsignedEvmTransaction`. When `authorizationList` present, emitted as type-4 (requires `supports7702: true` on the chain, all `authorizationList[i].chainId === chain.chainId`, non-empty list).
+   - **Solana**: `{ payer, instructions, addressLookupTables? }` → `UnsignedSolanaTransaction`. Internally fetches blockhash; the returned unsigned tx exposes `digestForSigning: Uint8Array` and `finalizeAndSerialize(signatures): Uint8Array` so consumers can sign externally and then feed the bytes to `broadcast`.
+   - Existing `createTransferUnsignedTransaction` is unchanged — the well-known "transfer this token" builder. Consumers pick the method that matches their intent.
+
+2. **`Chain.broadcast(signed, opts?)`** — accepts hex string (EVM) or bytes (Solana). Returns tx hash / signature. `opts` shape is chain-specific:
    - EVM: `{ signal?: AbortSignal }`
    - Solana: `{ skipPreflight?: boolean; maxRetries?: number; via?: 'direct' | 'jito'; signal?: AbortSignal }` — Jito path folded into the same method; `via: 'jito'` requires the chain to be constructed with `jito: {...}`.
 
-2. **`EvmChain.getPendingNonce(address)`** — replaces `.getProvider().getTransactionCount(addr, 'pending')`. Single-purpose, no overload.
+3. **`EvmChain.getPendingNonce(address)`** — replaces `.getProvider().getTransactionCount(addr, 'pending')`. Single-purpose. Kept separate from `getDelegation` because the two are typically read for DIFFERENT addresses (signer vs recipient), so folding them would force wasted RPC calls.
 
-3. **`EvmChain.getDelegation(address): Promise<{ delegate: string } | null>`** — reads `eth_getCode`, parses the EIP-7702 `0xef0100<20-byte-delegate>` indicator, returns the delegate address or `null`. Fully replaces the case-by-case `getCode` handling consumers do today.
+4. **`EvmChain.getDelegation(address): Promise<{ delegate: string } | null>`** — reads `eth_getCode`, parses the EIP-7702 `0xef0100<20-byte-delegate>` indicator, returns the delegate address or `null`. Fully replaces the case-by-case `getCode` handling consumers do today.
 
-4. **`EvmChain.call({ to, data, blockTag?, from?, value?, estimateGas?: boolean }): Promise<{ result?: string; gasEstimate?: bigint }>`** — one method for `eth_call` and `eth_estimateGas`. `estimateGas: false` (default) returns `{ result }`; `estimateGas: true` returns `{ gasEstimate }`. Replaces two operations that would otherwise need separate methods.
+5. **`EvmChain.call({ to, data, blockTag?, from?, value?, estimateGas?: boolean }): Promise<{ result?: string; gasEstimate?: bigint }>`** — one method for `eth_call` and `eth_estimateGas`. `estimateGas: false` (default) returns `{ result }`; `estimateGas: true` returns `{ gasEstimate }`. Replaces two operations that would otherwise need separate methods.
 
-5. **`EvmChain.buildAuthorizationDigest({ delegate, nonce, chainId }): Uint8Array`** — pure-compute digest the wallet signs for a 7702 authorization. Consumer signs externally, then passes `{ delegate, nonce, chainId, signature }` as an element in `CreateTransferRequest.authorizationList`. No `assembleAuthorization` companion — consumer inlines the object.
+6. **`EvmChain.buildAuthorizationDigest({ delegate, nonce, chainId }): Uint8Array`** — pure-compute digest the wallet signs for a 7702 authorization. Consumer signs externally, then passes `{ delegate, nonce, chainId, signature }` as an element in `createUnsignedTransaction`'s `authorizationList`. No `assembleAuthorization` companion — consumer inlines the object.
 
-6. **`SolanaChain.getAccountInfo(pubkey, opts?)`** — accepts `pubkey: string | string[]`. Single form returns `SolanaAccountInfo | null`; array form returns `(SolanaAccountInfo | null)[]`. Replaces `getAccountInfo` + `getMultipleAccountsInfo` in one method via the union.
+7. **`SolanaChain.getAccountInfo(pubkey, opts?)`** — accepts `pubkey: string | string[]`. Single form returns `SolanaAccountInfo | null`; array form returns `(SolanaAccountInfo | null)[]`. Replaces `getAccountInfo` + `getMultipleAccountsInfo` in one method via the union.
 
-7. **`SolanaChain.getTokenAccount(owner, mint, opts?): Promise<{ ata: string; exists: boolean; balanceMr?: bigint }>`** — combines ATA derivation + existence check + balance in one call. Consumer replaces `getAssociatedTokenAddress(...) + getAccountInfo(...) + parse(...)` — three operations that always come together at gasless — with a single method.
+8. **`SolanaChain.getTokenAccount(owner, mint, opts?): Promise<{ ata: string; exists: boolean; balanceMr?: bigint }>`** — combines ATA derivation + existence check + balance in one call. Consumer replaces `getAssociatedTokenAddress(...) + getAccountInfo(...) + parse(...)` — three operations that always come together at gasless — with a single method.
 
-8. **`SolanaChain.compileVersionedMessage({ payer, instructions, addressLookupTables? }): Promise<CompiledMessage>`** — for consumer-composed instruction lists (Jito bundles, 7702-parity delegate calls on Solana in the future). Returns a `CompiledMessage` object whose members are: `digestForSigning: Uint8Array`, `lastValidBlockHeight: number`, `finalizeAndSerialize(signatures: Uint8Array[]): Uint8Array`. Internally fetches the blockhash — no separate `getRecentBlockhash` method needed.
+9. **`SolanaChain.fetchAddressLookupTable(altAddress): Promise<AltAccount>`** — deserializes the on-chain account into an `AltAccount` typed alias. Consumers feed the result into `CreateTransferRequest.addressLookupTables` or `createUnsignedTransaction`'s `addressLookupTables`.
 
-9. **`SolanaChain.getBundleStatus(bundleId): Promise<JitoBundleStatus>`** — Jito status polling. Only reachable when `chain.jito !== null`; otherwise throws `FeatureNotSupported`. `getBundleStatuses` batch is `getBundleStatus(bundleId | bundleId[])` via the same union pattern as `getAccountInfo`.
+10. **`SolanaChain.getBundleStatus(bundleId): Promise<JitoBundleStatus>`** — Jito status polling. Only reachable when `chain.jito !== null`; otherwise throws `FeatureNotSupported`. Accepts `bundleId: string | string[]` for batch polling via the same union pattern.
 
 ### Typed wrappers (types only, no methods)
 
@@ -77,10 +82,6 @@ Every current `chain.getProvider().*` and `chain.getConnection().*` escape hatch
 - `JitoBundleStatus = { bundleId: string; state: 'Pending' | 'Landed' | 'Failed'; slot?: number; err?: string }` — plain data.
 
 Wait — that says the consumer receives `AltAccount` from a fetcher. That's a NEW method too. Let me revise: fold into `getAccountInfo` returning a specialized shape when the account is an ALT — OR add a 10th method. The consumer's flow is: get the ALT, use it in `addressLookupTables`. If getAccountInfo returns bare data, the consumer would have to parse. Cleanest: one small helper.
-
-**Correction:**
-
-10. **`SolanaChain.fetchAddressLookupTable(altAddress): Promise<AltAccount>`** — the tenth method. Deserializes the on-chain account into an `AltAccount` typed alias. Consumers use this to feed `addressLookupTables` in `CreateTransferRequest` or `compileVersionedMessage`.
 
 **Total new methods on `Chain`: 10.**
 
@@ -123,7 +124,7 @@ Zero renames, zero removals, zero behavior changes on existing methods. Every ex
 
 ## Functional Requirements
 
-- A consumer with `@getomnichain/omnichain` as its only chain-touching dependency can build/sign/broadcast/track any EVM tx (native, ERC-20, arbitrary calldata via `rawCalldata`, EIP-7702 via `authorizationList`), any Solana tx (native, SPL, Token-2022, arbitrary instruction list via `compileVersionedMessage`, ALT via `addressLookupTables`, Jito via `broadcast({via:'jito'})`) and any UTXO tx (unchanged).
+- A consumer with `@getomnichain/omnichain` as its only chain-touching dependency can build/sign/broadcast/track any EVM tx (native + ERC-20 via `createTransferUnsignedTransaction`; arbitrary contract calls + EIP-7702 authorizations via `createUnsignedTransaction`), any Solana tx (native + SPL + Token-2022 via `createTransferUnsignedTransaction`; arbitrary instruction lists + ALT via `createUnsignedTransaction`; Jito via `broadcast({via:'jito'})`) and any UTXO tx (unchanged).
 - Every current `chain.getProvider().*` and `chain.getConnection().*` call in gasless has a corresponding SDK expression after this card (verified by post-migration grep).
 - Every existing depositron call site compiles + behaves identically without code changes (verified by a snapshot of depositron's `chain` module test suite run against the new version).
 - Adding a new chain to the registry requires zero SDK code change; multi-endpoint config, 7702 support, Jito config all pass through the existing constructor config plumbing.
@@ -143,10 +144,10 @@ Zero renames, zero removals, zero behavior changes on existing methods. Every ex
 
 - `chain.base.ts` — `broadcast(signed, opts?)` abstract, new `ChainErrorKinds` values, extended `getTransactionStatus` signature.
 - `errors.ts` — enum values + helpers `isBlockhashExpiredError`, `isSimulationError`, `isNonceError`, `isTransactionTooLargeError`.
-- `evm/evm_chain.ts` — `broadcast`, `getPendingNonce`, `getDelegation`, `call`, `buildAuthorizationDigest`, `blockNumber` restoration on status, `type-4` codegen in `createTransferUnsignedTransaction`, `rawCalldata` codegen.
+- `evm/evm_chain.ts` — `broadcast`, `getPendingNonce`, `getDelegation`, `call`, `buildAuthorizationDigest`, `createUnsignedTransaction` (general primitive: accepts `data`, `value`, `authorizationList`; emits type-2 or type-4), `blockNumber` restoration on status.
 - `evm/evm_rpc_client.ts` (new, internal) — multi-endpoint client, URL redactor.
 - `evm/eip7702.ts` (new, internal) — digest computation + `0xef0100` parse.
-- `solana/solana_chain.ts` — `broadcast` (with `via` folding), `getAccountInfo` (union sig), `getTokenAccount`, `compileVersionedMessage`, `fetchAddressLookupTable`, `getBundleStatus` (Jito gate), ALT plumbing inside `createTransferUnsignedTransaction`.
+- `solana/solana_chain.ts` — `broadcast` (with `via` folding), `getAccountInfo` (union sig), `getTokenAccount`, `createUnsignedTransaction` (general primitive replacing what would have been `compileVersionedMessage`), `fetchAddressLookupTable`, `getBundleStatus` (Jito gate), ALT plumbing inside both `createTransferUnsignedTransaction` and `createUnsignedTransaction`.
 - `solana/solana_rpc_client.ts` (new, internal) — multi-endpoint client, URL redactor.
 - `solana/solana_jito.ts` (new, internal) — Jito wire calls, race-dedupe.
 - `solana/compiled_message.ts` (new) — `CompiledMessage` class + `finalizeAndSerialize`.
@@ -178,30 +179,34 @@ None. Stateless SDK.
 
 Errors: `BroadcastRejected`, `NonceTooLow`, `InsufficientFunds`, `BlockhashExpired`, `SimulationFailed`, `TransactionTooLarge`, `FeatureNotSupported` (when `via: 'jito'` on a non-Jito chain), `RpcError` (network / 5xx), `InvalidArgument` (malformed input).
 
-## createTransferUnsignedTransaction — type-4 form
+## createUnsignedTransaction — EVM 7702 form
 
 ```
-chain.createTransferUnsignedTransaction({
-  from, to, tokenIdentifier?, amount?, amountHr?, isFullBalance?, memo?,
-  authorizationList: Eip7702Authorization[],  // NEW — makes it type-4
+chain.createUnsignedTransaction({
+  from, to,
+  data: '0x...',                                 // arbitrary calldata (e.g. delegate.executeBatch(...))
+  value?: bigint,                                // optional native leg
+  authorizationList: Eip7702Authorization[],     // makes it type-4
+  gasLimit?, nonce?, maxFeePerGas?, maxPriorityFeePerGas?,
 });
 // -> UnsignedEvmTransaction { chainId, to, value, data, type: 4, authorizationList }
 ```
 
 Guards: `authorizationList.length === 0` → `InvalidArgument`. `supports7702 !== true` on chain → `FeatureNotSupported`. Any `authorizationList[i].chainId !== chain.chainId` → `InvalidArgument` (cross-chain replay guard).
 
-## createTransferUnsignedTransaction — arbitrary EVM call
+## createUnsignedTransaction — Solana arbitrary instructions
 
 ```
-chain.createTransferUnsignedTransaction({
-  from, to,
-  rawCalldata: '0x...',   // NEW — bypasses transfer selector
-  amount?,                // native value; ERC-20 handling by-passed
+const unsigned = await chain.createUnsignedTransaction({
+  payer: senderPubkey,
+  instructions: [...],                           // consumer-composed instruction list
+  addressLookupTables?: AltAccount[],
 });
-// -> UnsignedEvmTransaction { chainId, to, value, data: rawCalldata }
+// -> UnsignedSolanaTransaction with .digestForSigning + .finalizeAndSerialize([signatures])
+const sig = await wallet.signRaw(unsigned.digestForSigning);
+const bytes = unsigned.finalizeAndSerialize([sig]);
+const txSig = await chain.broadcast(bytes);
 ```
-
-Mutually exclusive with `tokenIdentifier`. Value MAY be present (native leg of the call).
 
 # Acceptance Criteria
 
@@ -235,7 +240,7 @@ Mutually exclusive with `tokenIdentifier`. Value MAY be present (native leg of t
 - **Multi-endpoint failover under an in-flight raw-broadcast** — if endpoint A returns success (tx hash) but endpoint B was already partway through the same call and returns success too, both hashes MUST be equal (deterministic — same signed bytes → same hash). Test asserts.
 - **ALT-referenced account not yet activated at target slot** — surfaces as `SimulationFailed` with the underlying preflight error; not `TransactionTooLarge`.
 - **7702 chain with `nonce=0`** — authorization builder must produce a valid digest.
-- **`rawCalldata` with a bogus selector** — SDK does NOT validate the calldata semantically; that's the consumer's responsibility. SDK only validates hex shape.
+- **`createUnsignedTransaction` `data` with a bogus selector** — SDK does NOT validate the calldata semantically; that's the consumer's responsibility. SDK only validates hex shape.
 
 # Testing Requirements
 
@@ -243,12 +248,15 @@ Mutually exclusive with `tokenIdentifier`. Value MAY be present (native leg of t
 
 - `broadcast` — happy path + malformed hex + oversized Solana tx + already-known-nonce + rejected preflight + `via: 'jito'` on non-Jito chain rejects.
 - 7702 — digest binds `(chainId, delegate, nonce)`; cross-chain re-use produces a different digest; `getDelegation` accepts `0xef0100…` and rejects `0xef01<other>`, `0xef0200…`, arbitrary code.
-- `createTransferUnsignedTransaction` with `authorizationList` — type-4 emitted; `authorizationList[i].chainId !== chain.chainId` rejected; empty list rejected.
-- `createTransferUnsignedTransaction` with `rawCalldata` — value + calldata in unsigned; mutually-exclusive-with-`tokenIdentifier` guard.
+- `createUnsignedTransaction` on EVM with `authorizationList` — type-4 emitted; `authorizationList[i].chainId !== chain.chainId` rejected; empty list rejected; `supports7702 !== true` rejected.
+- `createUnsignedTransaction` on EVM with arbitrary `data` — value + calldata in unsigned; no `tokenIdentifier`-shape guard (this is the general primitive; contract-selector correctness is consumer's).
+- `createUnsignedTransaction` on Solana — deterministic `digestForSigning`; `finalizeAndSerialize` reconstructs a valid VersionedTransaction.
+- `createTransferUnsignedTransaction` unchanged callers still work (regression proof).
 - `call` — read result vs `estimateGas: true` → gasEstimate; each covers the wire happy path.
 - `getAccountInfo` — single form + array form.
 - `getTokenAccount` — existing ATA + missing ATA + Token-2022 owner detection.
-- `compileVersionedMessage` — `digestForSigning` deterministic; `finalizeAndSerialize` reconstructs a valid VersionedTransaction the consumer can broadcast.
+- `createUnsignedTransaction` on Solana — `digestForSigning` deterministic; `finalizeAndSerialize` reconstructs a valid VersionedTransaction the consumer can broadcast.
+- `createUnsignedTransaction` on EVM — with `authorizationList` emits type-4 with the correct RLP shape; without it emits type-2; guard checks reject cross-chain-replayed authorizations at build time.
 - `fetchAddressLookupTable` — decodes an ALT and yields it in the right shape for `addressLookupTables`.
 - Multi-endpoint failover — primary 5xx → secondary tried, WARN logged, request served; all-endpoints-fail bubbles last error; no public-fallback path exercised.
 - URL redactor — `apiKey` / `bearer` / path-embedded key redacted in error messages.
