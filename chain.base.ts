@@ -235,8 +235,6 @@ export abstract class Chain {
 
   abstract createTransferUnsignedTransaction(req: CreateTransferRequest): Promise<UnsignedTransaction>;
 
-  abstract createUnsignedTransaction(req: CreateUnsignedTransactionRequest): Promise<UnsignedTransaction>;
-
   abstract broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string>;
 
   abstract getTransactionStatus(
