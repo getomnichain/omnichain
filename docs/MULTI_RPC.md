@@ -17,11 +17,15 @@ const chain = new EvmChain({
 });
 ```
 
-## Semantics
+## Precedence
 
-- The primary endpoint is the first URL in `rpcUrls`. When `rpcUrl` is ALSO set, it prepends.
-- Endpoint order is authoritative. On failure, the SDK advances down the list — it never falls back to a URL that isn't in the configured list.
-- Retryable errors: `5xx`, `429`, `ECONNRESET`, `ETIMEDOUT`. Non-retryable errors (revert, malformed input, `NonceTooLow`, etc.) short-circuit.
+`rpcUrl` (single) → `rpcUrls[0]` (primary of the list) → env-var chain → `defaultRpcUrl` (Solana only).
+
+Endpoint order is authoritative — the SDK does not silently fall back to a URL that isn't in the configured list or env fallback chain.
+
+## 0.3.0 status
+
+Only the **primary** entry of `rpcUrls` is used at wire time in this release. **Automatic failover retry on 5xx / 429 / ECONNRESET / ETIMEDOUT lands in 0.3.1** — the API surface is stable so consumers pinning `rpcUrls: [primary, backup]` today will benefit as soon as the internal retry client ships. Until then, pass a single healthy endpoint or wrap the SDK with your own retry.
 
 ## URL redactor
 
@@ -29,6 +33,6 @@ All error messages / thrown `ChainError.message` / logs pass through a redactor 
 - `?apiKey=<key>` → `?apiKey=<redacted>`
 - `?key=<key>` → `?key=<redacted>`
 - `Authorization: Bearer <token>` → `Authorization: Bearer <redacted>`
-- Path-embedded keys `/v3/<hex>/` → `/v3/<redacted>/`
+- Path-embedded keys (Infura `/v3/<key>`, Alchemy `/v2/<key>`) → `/v3/<redacted>` / `/v2/<redacted>`
 
-Keyed URLs never appear in logs — safe to add Alchemy, Infura, QuickNode, Ankr URLs directly.
+Keyed URLs never appear in logs — safe to pass Alchemy, Infura, QuickNode, Ankr URLs directly.

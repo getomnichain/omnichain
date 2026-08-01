@@ -245,6 +245,10 @@ export class SolanaChain extends Chain {
    */
   private readRpcUrl(): string {
     if (this.rpcUrl && this.rpcUrl.trim().length > 0) return this.rpcUrl.trim();
+    if (this.rpcUrls.length > 0) {
+      const first = this.rpcUrls[0];
+      if (first && first.trim().length > 0) return first.trim();
+    }
     const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
     const candidates = [
       this.name.replace(/ /g, '_').toUpperCase() + '_RPC_URL',
