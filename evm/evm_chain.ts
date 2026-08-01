@@ -5,11 +5,26 @@ import {
   JsonRpcProvider,
   TransactionReceipt,
   TransactionResponse,
+  concat,
+  encodeRlp,
+  getAddress,
+  getBytes,
+  hexlify,
+  keccak256,
+  toBeArray,
 } from 'ethers';
 
 import { NetworkType, tryNetworkTypeOf } from '../network_type.ts';
 
-import { Chain, CreateTransferRequest, resolveTransferAmount } from '../chain.base.ts';
+import {
+  BroadcastOpts,
+  Chain,
+  CreateTransferRequest,
+  CreateUnsignedTransactionRequest,
+  Eip7702Authorization,
+  GetTransactionStatusOpts,
+  resolveTransferAmount,
+} from '../chain.base.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { Priority } from '../priority.ts';
 import { EvmGasEstimate } from './evm_gas_estimate.ts';
@@ -120,6 +135,33 @@ export interface EvmChainInit {
    * **Declarative-only in v0** — see `nativeTransferGasLimit` note above.
    */
   nativeTransferGasMultiplier?: number;
+  supports7702?: boolean;
+}
+
+export interface CreateEvmUnsignedTransactionRequest extends CreateUnsignedTransactionRequest {
+  to: string;
+  data?: string;
+  value?: bigint;
+  authorizationList?: Eip7702Authorization[];
+  gasLimit?: bigint;
+  nonce?: bigint;
+  maxFeePerGas?: bigint;
+  maxPriorityFeePerGas?: bigint;
+}
+
+export interface EvmCallRequest {
+  to: string;
+  data: string;
+  blockTag?: string | number;
+  from?: string;
+  value?: bigint;
+  estimateGas?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface EvmCallResult {
+  result?: string;
+  gasEstimate?: bigint;
 }
 
 export class EvmChain extends Chain {
@@ -141,6 +183,7 @@ export class EvmChain extends Chain {
    * `nativeTransferGasLimit`.
    */
   readonly nativeTransferGasMultiplier: number;
+  readonly supports7702: boolean;
   private readonly _nativeToken: EvmToken;
   private _provider: JsonRpcProvider | null = null;
   private _resolvedRpcUrl: string | null = null;
@@ -173,6 +216,7 @@ export class EvmChain extends Chain {
     this.hasL1Fee = init.hasL1Fee ?? false;
     this.nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;
     this.nativeTransferGasMultiplier = init.nativeTransferGasMultiplier ?? 1.4;
+    this.supports7702 = init.supports7702 ?? false;
     this._nativeToken = EvmToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 18);
     // NOTE: no `registerNonEvmChain(id, EVM)` call — a module-scope write on
     // 48 pre-baked chains would let a consumer's earlier
@@ -498,6 +542,150 @@ export class EvmChain extends Chain {
     }
   }
 
+  async broadcast(signed: string | Uint8Array, _opts?: BroadcastOpts): Promise<string> {
+    const hex = typeof signed === 'string'
+      ? (signed.startsWith('0x') ? signed : `0x${signed}`)
+      : hexlify(signed);
+    try {
+      const resp = await this.getProvider().broadcastTransaction(hex);
+      return resp.hash;
+    } catch (err) {
+      throw this.classifyBroadcastError(err);
+    }
+  }
+
+  async getPendingNonce(address: string): Promise<bigint> {
+    try {
+      const n = await this.getProvider().getTransactionCount(address, 'pending');
+      return BigInt(n);
+    } catch (err) {
+      throw this.rpcError(`Failed to read pending nonce for ${address}`, err, { address });
+    }
+  }
+
+  async getDelegation(address: string): Promise<{ delegate: string } | null> {
+    let code: string;
+    try {
+      code = await this.getProvider().getCode(address);
+    } catch (err) {
+      throw this.rpcError(`Failed to read code for ${address}`, err, { address });
+    }
+    const stripped = code.startsWith('0x') ? code.slice(2).toLowerCase() : code.toLowerCase();
+    if (stripped.length !== 46) return null;
+    if (!stripped.startsWith('ef0100')) return null;
+    return { delegate: getAddress(`0x${stripped.slice(6)}`) };
+  }
+
+  async call(req: EvmCallRequest): Promise<EvmCallResult> {
+    const provider = this.getProvider();
+    const tx = {
+      to: req.to,
+      data: req.data,
+      from: req.from,
+      value: req.value,
+    };
+    try {
+      if (req.estimateGas) {
+        const g = await provider.estimateGas(tx);
+        return { gasEstimate: BigInt(g) };
+      }
+      const result = await provider.call(
+        req.blockTag !== undefined ? { ...tx, blockTag: req.blockTag } : tx,
+      );
+      return { result };
+    } catch (err) {
+      throw this.rpcError(`eth_${req.estimateGas ? 'estimateGas' : 'call'} on ${req.to} failed`, err);
+    }
+  }
+
+  buildAuthorizationDigest(input: { delegate: string; nonce: bigint; chainId: number }): Uint8Array {
+    const rlp = encodeRlp([
+      toBeArray(BigInt(input.chainId)),
+      getAddress(input.delegate),
+      toBeArray(input.nonce),
+    ]);
+    const payload = concat(['0x05', rlp]);
+    return getBytes(keccak256(payload));
+  }
+
+  async createUnsignedTransaction(
+    req: CreateEvmUnsignedTransactionRequest,
+  ): Promise<UnsignedEvmTransaction> {
+    if (!req.from) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        'CreateEvmUnsignedTransactionRequest.from is required',
+        { chainId: this.chainId },
+      );
+    }
+    if (req.authorizationList !== undefined) {
+      if (!Array.isArray(req.authorizationList) || req.authorizationList.length === 0) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          'authorizationList must be a non-empty array when provided',
+          { chainId: this.chainId },
+        );
+      }
+      if (!this.supports7702) {
+        throw new ChainError(
+          ChainErrorKinds.FeatureNotSupported,
+          `EVM chain ${this.name} was not initialized with supports7702: true`,
+          { chainId: this.chainId },
+        );
+      }
+      for (const auth of req.authorizationList) {
+        if (auth.chainId !== this.chainId && auth.chainId !== 0) {
+          throw new ChainError(
+            ChainErrorKinds.InvalidArgument,
+            `Authorization chainId ${auth.chainId} does not match ${this.chainId} (0 = any is allowed)`,
+            { chainId: this.chainId },
+          );
+        }
+      }
+    }
+    return new UnsignedEvmTransaction({
+      chainId: this.chainId,
+      to: req.to,
+      value: req.value ?? 0n,
+      data: req.data ?? '0x',
+      type: req.authorizationList !== undefined ? 4 : 2,
+      authorizationList: req.authorizationList,
+      gasLimit: req.gasLimit,
+      nonce: req.nonce,
+      maxFeePerGas: req.maxFeePerGas,
+      maxPriorityFeePerGas: req.maxPriorityFeePerGas,
+    });
+  }
+
+  private classifyBroadcastError(err: unknown): ChainError {
+    const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+    if (msg.includes('nonce too low') || msg.includes('nonce_too_low')) {
+      return new ChainError(
+        ChainErrorKinds.NonceTooLow,
+        `EVM broadcast rejected: nonce too low on ${this.name}`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (msg.includes('insufficient funds')) {
+      return new ChainError(
+        ChainErrorKinds.InsufficientFunds,
+        `EVM broadcast rejected: insufficient funds on ${this.name}`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (msg.includes('replacement') || msg.includes('reject') || msg.includes('invalid')) {
+      return new ChainError(
+        ChainErrorKinds.BroadcastRejected,
+        `EVM broadcast rejected on ${this.name}: ${err instanceof Error ? err.message : String(err)}`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    return this.rpcError(`EVM broadcast failed on ${this.name}`, err);
+  }
+
   async getTransactionStatus(txHash: string): Promise<EvmTransactionStatus> {
     const provider = this.getProvider();
     let tx: TransactionResponse | null = null;
@@ -765,7 +953,7 @@ export class EvmChain extends Chain {
     }
   }
 
-  private rpcError(message: string, cause: unknown, extra: { txHash?: string } = {}): ChainError {
+  private rpcError(message: string, cause: unknown, extra: { txHash?: string; address?: string } = {}): ChainError {
     const sanitizedMessage = sanitizeMessage(`${message}: ${stringifyErr(cause)}`, this._resolvedRpcUrl);
     return new ChainError(
       ChainErrorKinds.RpcError,

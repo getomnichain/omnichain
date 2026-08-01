@@ -1,3 +1,4 @@
+import { Eip7702Authorization } from '../chain.base.ts';
 import { NetworkType } from '../network_type.ts';
 
 import { UnsignedTransaction } from '../unsigned_transaction.ts';
@@ -10,6 +11,12 @@ export interface UnsignedEvmTransactionInit {
   data?: string;
   from?: string;
   gasEstimate?: EvmGasEstimate;
+  type?: 0 | 2 | 4;
+  authorizationList?: Eip7702Authorization[];
+  gasLimit?: bigint;
+  nonce?: bigint;
+  maxFeePerGas?: bigint;
+  maxPriorityFeePerGas?: bigint;
 }
 
 export class UnsignedEvmTransaction extends UnsignedTransaction {
@@ -18,6 +25,12 @@ export class UnsignedEvmTransaction extends UnsignedTransaction {
   readonly data: string;
   readonly from?: string;
   readonly gasEstimate?: EvmGasEstimate;
+  readonly type?: 0 | 2 | 4;
+  readonly authorizationList?: Eip7702Authorization[];
+  readonly gasLimit?: bigint;
+  readonly nonce?: bigint;
+  readonly maxFeePerGas?: bigint;
+  readonly maxPriorityFeePerGas?: bigint;
 
   constructor(init: UnsignedEvmTransactionInit) {
     super(init.chainId, NetworkType.EVM);
@@ -26,5 +39,11 @@ export class UnsignedEvmTransaction extends UnsignedTransaction {
     this.data = init.data ?? '0x';
     this.from = init.from;
     this.gasEstimate = init.gasEstimate;
+    this.type = init.type;
+    this.authorizationList = init.authorizationList;
+    this.gasLimit = init.gasLimit;
+    this.nonce = init.nonce;
+    this.maxFeePerGas = init.maxFeePerGas;
+    this.maxPriorityFeePerGas = init.maxPriorityFeePerGas;
   }
 }

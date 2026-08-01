@@ -10,7 +10,12 @@ import {
   btcParamsForChainId,
   btcParamsShapeMatches,
 } from './btc/network_params.ts';
-import { Chain, CreateTransferRequest } from '../chain.base.ts';
+import {
+  BroadcastOpts,
+  Chain,
+  CreateTransferRequest,
+  CreateUnsignedTransactionRequest,
+} from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
@@ -408,6 +413,31 @@ export class UtxoChain extends Chain {
     req: CreateUtxoTransferOptions | CreateTransferRequest
   ): Promise<UnsignedUtxoTransaction> {
     return this.buildTransfer(req as CreateUtxoTransferOptions, undefined);
+  }
+
+  async createUnsignedTransaction(
+    _req: CreateUnsignedTransactionRequest,
+  ): Promise<UnsignedUtxoTransaction> {
+    throw new ChainError(
+      ChainErrorKinds.FeatureNotSupported,
+      'UtxoChain does not support arbitrary createUnsignedTransaction — use createTransferUnsignedTransaction with multi-recipient outputs instead',
+      { chainId: this.chainId },
+    );
+  }
+
+  async broadcast(signed: string | Uint8Array, _opts?: BroadcastOpts): Promise<string> {
+    const hex = typeof signed === 'string' ? signed : Buffer.from(signed).toString('hex');
+    try {
+      const { txid } = await this.broadcaster.broadcast(hex);
+      return txid;
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.BroadcastRejected,
+        `UTXO broadcast rejected on ${this.name}: ${err instanceof Error ? err.message : String(err)}`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
   }
 
   protected async buildTransfer(

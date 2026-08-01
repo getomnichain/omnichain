@@ -18,7 +18,13 @@ import {
   getMint,
 } from '@solana/spl-token';
 
-import { Chain, CreateTransferRequest, resolveTransferAmount } from '../chain.base.ts';
+import {
+  BroadcastOpts,
+  Chain,
+  CreateTransferRequest,
+  CreateUnsignedTransactionRequest,
+  resolveTransferAmount,
+} from '../chain.base.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
@@ -736,6 +742,72 @@ export class SolanaChain extends Chain {
 
   async getChainTipHeight(): Promise<number> {
     return this.getConnection().getSlot('confirmed');
+  }
+
+  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts & { skipPreflight?: boolean; maxRetries?: number; via?: 'direct' | 'jito' }): Promise<string> {
+    if (opts?.via === 'jito') {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        'Jito broadcast requires SolanaChain to be constructed with jito config (not yet wired)',
+        { chainId: this.chainId },
+      );
+    }
+    const bytes = typeof signed === 'string'
+      ? Buffer.from(signed.startsWith('0x') ? signed.slice(2) : signed, 'hex')
+      : signed;
+    try {
+      const sig = await this.getConnection().sendRawTransaction(bytes, {
+        skipPreflight: opts?.skipPreflight ?? false,
+        maxRetries: opts?.maxRetries,
+      });
+      return sig;
+    } catch (err) {
+      throw this.classifyBroadcastError(err);
+    }
+  }
+
+  async createUnsignedTransaction(
+    _req: CreateUnsignedTransactionRequest,
+  ): Promise<UnsignedSolanaTransaction> {
+    throw new ChainError(
+      ChainErrorKinds.FeatureNotSupported,
+      'SolanaChain.createUnsignedTransaction is not yet implemented in this wave',
+      { chainId: this.chainId },
+    );
+  }
+
+  private classifyBroadcastError(err: unknown): ChainError {
+    const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+    if (msg.includes('blockhash not found') || msg.includes('blockhash')) {
+      return new ChainError(
+        ChainErrorKinds.BlockhashExpired,
+        `Solana broadcast rejected: blockhash expired on ${this.name}`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (msg.includes('preflight') || msg.includes('simulation')) {
+      return new ChainError(
+        ChainErrorKinds.SimulationFailed,
+        `Solana broadcast rejected: preflight simulation failed on ${this.name}: ${err instanceof Error ? err.message : String(err)}`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (msg.includes('too large')) {
+      return new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Solana broadcast rejected: transaction exceeds 1232 bytes on ${this.name} (use ALT)`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    return new ChainError(
+      ChainErrorKinds.BroadcastRejected,
+      `Solana broadcast rejected on ${this.name}: ${err instanceof Error ? err.message : String(err)}`,
+      { chainId: this.chainId },
+      err instanceof Error ? err : undefined,
+    );
   }
 
   /**

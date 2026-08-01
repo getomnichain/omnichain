@@ -43,6 +43,30 @@ export interface CreateTransferRequest {
    */
   gasPricing?: GasPricingType;
   memo?: string;
+  addressLookupTables?: unknown[];
+}
+
+export interface Eip7702Authorization {
+  chainId: number;
+  delegate: string;
+  nonce: bigint;
+  signature: { r: string; s: string; yParity: 0 | 1 };
+}
+
+export interface CreateUnsignedTransactionRequest {
+  from: string;
+  signal?: AbortSignal;
+}
+
+export interface BroadcastOpts {
+  signal?: AbortSignal;
+}
+
+export interface GetTransactionStatusOpts {
+  wait?: boolean;
+  timeoutMs?: number;
+  confirmations?: number;
+  signal?: AbortSignal;
 }
 
 export type ResolvedTransferAmount =
@@ -212,7 +236,14 @@ export abstract class Chain {
 
   abstract createTransferUnsignedTransaction(req: CreateTransferRequest): Promise<UnsignedTransaction>;
 
-  abstract getTransactionStatus(txHash: string): Promise<TransactionStatus>;
+  abstract createUnsignedTransaction(req: CreateUnsignedTransactionRequest): Promise<UnsignedTransaction>;
+
+  abstract broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string>;
+
+  abstract getTransactionStatus(
+    txHash: string | string[],
+    opts?: GetTransactionStatusOpts,
+  ): Promise<TransactionStatus | TransactionStatus[]>;
 
   abstract getChainTipHeight(): Promise<number>;
 

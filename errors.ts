@@ -41,6 +41,13 @@ export const ChainErrorKinds = {
   InvalidAddress: 'invalid_address',
   InvalidTokenIdentifier: 'invalid_token_identifier',
   InvalidArgument: 'invalid_argument',
+  BroadcastRejected: 'broadcast_rejected',
+  NonceTooLow: 'nonce_too_low',
+  InsufficientFunds: 'insufficient_funds',
+  BlockhashExpired: 'blockhash_expired',
+  SimulationFailed: 'simulation_failed',
+  TransactionTooLarge: 'transaction_too_large',
+  FeatureNotSupported: 'feature_not_supported',
 } as const;
 
 export type ChainErrorKind = (typeof ChainErrorKinds)[keyof typeof ChainErrorKinds];
@@ -69,4 +76,20 @@ export class ChainError extends Error {
 export function isChainError(err: unknown, kind?: ChainErrorKind): err is ChainError {
   if (!(err instanceof ChainError)) return false;
   return kind === undefined || err.kind === kind;
+}
+
+export function isBlockhashExpiredError(err: unknown): err is ChainError {
+  return isChainError(err, ChainErrorKinds.BlockhashExpired);
+}
+
+export function isSimulationError(err: unknown): err is ChainError {
+  return isChainError(err, ChainErrorKinds.SimulationFailed);
+}
+
+export function isNonceError(err: unknown): err is ChainError {
+  return isChainError(err, ChainErrorKinds.NonceTooLow);
+}
+
+export function isTransactionTooLargeError(err: unknown): err is ChainError {
+  return isChainError(err, ChainErrorKinds.TransactionTooLarge);
 }
