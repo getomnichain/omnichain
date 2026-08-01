@@ -1,4 +1,6 @@
 import {
+  AccountInfo,
+  AddressLookupTableAccount,
   ComputeBudgetProgram,
   Connection,
   MessageV0,
@@ -73,6 +75,26 @@ export interface SolanaChainInit {
   legacyRpcEnvNames?: readonly string[];
   /** CAIP-2 genesis hash (first 32 chars). Surfaced for the depositron `chainAgnosticName` column. */
   chainAgnosticGenesisHash: string;
+}
+
+export interface CreateSolanaUnsignedTransactionRequest extends CreateUnsignedTransactionRequest {
+  payer: string;
+  instructions: TransactionInstruction[];
+  addressLookupTables?: AddressLookupTableAccount[];
+}
+
+export interface SolanaAccountInfoResult {
+  owner: string;
+  lamports: bigint;
+  data: Uint8Array;
+  executable: boolean;
+  rentEpoch?: bigint;
+}
+
+export interface SolanaTokenAccountResult {
+  ata: string;
+  exists: boolean;
+  balanceMr?: bigint;
 }
 
 export interface SolanaTransferOptions extends CreateTransferRequest {
@@ -767,13 +789,90 @@ export class SolanaChain extends Chain {
   }
 
   async createUnsignedTransaction(
-    _req: CreateUnsignedTransactionRequest,
+    req: CreateSolanaUnsignedTransactionRequest,
   ): Promise<UnsignedSolanaTransaction> {
-    throw new ChainError(
-      ChainErrorKinds.FeatureNotSupported,
-      'SolanaChain.createUnsignedTransaction is not yet implemented in this wave',
-      { chainId: this.chainId },
-    );
+    if (!req.payer) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        'CreateSolanaUnsignedTransactionRequest.payer is required',
+        { chainId: this.chainId },
+      );
+    }
+    if (!Array.isArray(req.instructions) || req.instructions.length === 0) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        'CreateSolanaUnsignedTransactionRequest.instructions must be a non-empty array',
+        { chainId: this.chainId },
+      );
+    }
+    const connection = this.getConnection();
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+    const message = MessageV0.compile({
+      payerKey: new PublicKey(req.payer),
+      instructions: req.instructions,
+      recentBlockhash: blockhash,
+      addressLookupTableAccounts: req.addressLookupTables ?? [],
+    });
+    const tx = new VersionedTransaction(message);
+    if (tx.serialize().length > 1232) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Compiled Solana tx exceeds 1232-byte wire limit; supply addressLookupTables to reduce size`,
+        { chainId: this.chainId },
+      );
+    }
+    return new UnsignedSolanaTransaction({
+      chainId: this.chainId,
+      transaction: tx,
+      feePayer: req.payer,
+      recentBlockhash: blockhash,
+      lastValidBlockHeight,
+      instructions: req.instructions,
+    });
+  }
+
+  async getAccountInfo(pubkey: string): Promise<SolanaAccountInfoResult | null>;
+  async getAccountInfo(pubkeys: string[]): Promise<(SolanaAccountInfoResult | null)[]>;
+  async getAccountInfo(
+    pubkey: string | string[],
+  ): Promise<SolanaAccountInfoResult | null | (SolanaAccountInfoResult | null)[]> {
+    const connection = this.getConnection();
+    if (Array.isArray(pubkey)) {
+      const pks = pubkey.map((s) => new PublicKey(s));
+      const infos = await connection.getMultipleAccountsInfo(pks);
+      return infos.map((info) => (info === null ? null : toAccountInfoResult(info)));
+    }
+    const info = await connection.getAccountInfo(new PublicKey(pubkey));
+    return info === null ? null : toAccountInfoResult(info);
+  }
+
+  async getTokenAccount(owner: string, mint: string): Promise<SolanaTokenAccountResult> {
+    const ownerPk = new PublicKey(owner);
+    const mintPk = new PublicKey(mint);
+    const programId = await this.resolveTokenProgramId(mintPk);
+    const ataPk = getAssociatedTokenAddressSync(mintPk, ownerPk, false, programId);
+    let balanceMr: bigint | undefined;
+    let exists = false;
+    try {
+      const acc = await getAccount(this.getConnection(), ataPk, undefined, programId);
+      exists = true;
+      balanceMr = acc.amount;
+    } catch {
+      exists = false;
+    }
+    return { ata: ataPk.toBase58(), exists, balanceMr };
+  }
+
+  async fetchAddressLookupTable(altAddress: string): Promise<AddressLookupTableAccount> {
+    const res = await this.getConnection().getAddressLookupTable(new PublicKey(altAddress));
+    if (!res.value) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Address lookup table ${altAddress} not found`,
+        { chainId: this.chainId, address: altAddress } as never,
+      );
+    }
+    return res.value;
   }
 
   private classifyBroadcastError(err: unknown): ChainError {
@@ -1040,4 +1139,14 @@ export class SolanaChain extends Chain {
     }
     return result;
   }
+}
+
+function toAccountInfoResult(info: AccountInfo<Buffer>): SolanaAccountInfoResult {
+  return {
+    owner: info.owner.toBase58(),
+    lamports: BigInt(info.lamports),
+    data: Uint8Array.from(info.data),
+    executable: info.executable,
+    rentEpoch: info.rentEpoch === undefined ? undefined : BigInt(info.rentEpoch),
+  };
 }

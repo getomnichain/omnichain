@@ -54,7 +54,6 @@ export interface Eip7702Authorization {
 }
 
 export interface CreateUnsignedTransactionRequest {
-  from: string;
   signal?: AbortSignal;
 }
 

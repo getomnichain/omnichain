@@ -139,6 +139,7 @@ export interface EvmChainInit {
 }
 
 export interface CreateEvmUnsignedTransactionRequest extends CreateUnsignedTransactionRequest {
+  from: string;
   to: string;
   data?: string;
   value?: bigint;
