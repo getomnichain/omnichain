@@ -25,6 +25,7 @@ import {
   Chain,
   CreateTransferRequest,
   CreateUnsignedTransactionRequest,
+  GetTransactionStatusOpts,
   resolveTransferAmount,
 } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
@@ -41,6 +42,18 @@ import {
 import { SolanaAddress } from './solana_address.ts';
 import { SolanaToken } from './solana_token.ts';
 import { UnsignedSolanaTransaction } from './unsigned_solana_transaction.ts';
+
+export interface SolanaJitoConfig {
+  url: string;
+  auth?: string;
+}
+
+export interface JitoBundleStatus {
+  bundleId: string;
+  state: 'Pending' | 'Landed' | 'Failed';
+  slot?: number;
+  err?: string;
+}
 
 export interface SolanaChainInit {
   chainId: number;
@@ -64,6 +77,8 @@ export interface SolanaChainInit {
    * signed `SOLANA_<chainId>_RPC_URL` → `legacyRpcEnvNames` → `defaultRpcUrl`).
    */
   rpcUrl?: string;
+  rpcUrls?: string[];
+  jito?: SolanaJitoConfig;
   /**
    * Additional env var names to consult during RPC URL resolution, tried
    * *after* the derived name and the `SOLANA_<chainId>_RPC_URL` fallback
@@ -142,11 +157,14 @@ const SOL_PRIORITY_PERCENTILE: Record<Priority, number> = {
 export class SolanaChain extends Chain {
   readonly defaultRpcUrl: string;
   readonly rpcUrl: string | undefined;
+  readonly rpcUrls: readonly string[];
   readonly legacyRpcEnvNames: readonly string[];
   readonly explorerClusterSuffix: string;
   readonly chainAgnosticGenesisHash: string;
+  readonly jito: SolanaJitoConfig | null;
   private readonly _nativeToken: SolanaToken;
   private _connection: Connection | null = null;
+  private _rpcUrlIndex = 0;
 
   constructor(init: SolanaChainInit) {
     super(
@@ -159,9 +177,11 @@ export class SolanaChain extends Chain {
     );
     this.defaultRpcUrl = init.defaultRpcUrl;
     this.rpcUrl = init.rpcUrl;
+    this.rpcUrls = init.rpcUrls ?? [];
     this.legacyRpcEnvNames = init.legacyRpcEnvNames ?? [];
     this.explorerClusterSuffix = init.explorerClusterSuffix ?? '';
     this.chainAgnosticGenesisHash = init.chainAgnosticGenesisHash;
+    this.jito = init.jito ?? null;
     this._nativeToken = SolanaToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 9);
     registerNonEvmChain(init.chainId, NetworkType.SOLANA);
   }
@@ -634,7 +654,35 @@ export class SolanaChain extends Chain {
     return /blockhash not found|expired blockhash|blockhash.*expired/i.test(msg);
   }
 
-  async getTransactionStatus(txHash: string): Promise<SolanaTransactionStatus> {
+  async getTransactionStatus(txHash: string, opts?: GetTransactionStatusOpts): Promise<SolanaTransactionStatus>;
+  async getTransactionStatus(txHashes: string[], opts?: GetTransactionStatusOpts): Promise<SolanaTransactionStatus[]>;
+  async getTransactionStatus(
+    txHash: string | string[],
+    opts?: GetTransactionStatusOpts,
+  ): Promise<SolanaTransactionStatus | SolanaTransactionStatus[]> {
+    if (Array.isArray(txHash)) {
+      return Promise.all(txHash.map((h) => this.getSingleSolanaStatus(h, opts)));
+    }
+    return this.getSingleSolanaStatus(txHash, opts);
+  }
+
+  private async getSingleSolanaStatus(txHash: string, opts?: GetTransactionStatusOpts): Promise<SolanaTransactionStatus> {
+    if (opts?.wait) {
+      const deadline = opts.timeoutMs ? Date.now() + opts.timeoutMs : Number.POSITIVE_INFINITY;
+      const pollMs = Math.max(400, this.blockTimeSeconds * 1000);
+      let last: SolanaTransactionStatus;
+      while (true) {
+        last = await this.getSolanaStatusOnce(txHash);
+        if (last.status === 'Success' || last.status === 'Failed') return last;
+        if (opts.signal?.aborted) throw new ChainError(ChainErrorKinds.RpcError, `getTransactionStatus aborted`, { chainId: this.chainId, txHash });
+        if (Date.now() >= deadline) return last;
+        await new Promise((r) => setTimeout(r, pollMs));
+      }
+    }
+    return this.getSolanaStatusOnce(txHash);
+  }
+
+  private async getSolanaStatusOnce(txHash: string): Promise<SolanaTransactionStatus> {
     const connection = this.getConnection();
     // Best-effort read of the current rpc URL for message/cause scrubbing.
     // readRpcUrl throws when nothing is configured; there'd be no
@@ -767,16 +815,20 @@ export class SolanaChain extends Chain {
   }
 
   async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts & { skipPreflight?: boolean; maxRetries?: number; via?: 'direct' | 'jito' }): Promise<string> {
-    if (opts?.via === 'jito') {
-      throw new ChainError(
-        ChainErrorKinds.FeatureNotSupported,
-        'Jito broadcast requires SolanaChain to be constructed with jito config (not yet wired)',
-        { chainId: this.chainId },
-      );
-    }
     const bytes = typeof signed === 'string'
       ? Buffer.from(signed.startsWith('0x') ? signed.slice(2) : signed, 'hex')
       : signed;
+    if (opts?.via === 'jito') {
+      if (!this.jito) {
+        throw new ChainError(
+          ChainErrorKinds.FeatureNotSupported,
+          'Jito broadcast requires SolanaChain to be constructed with jito config',
+          { chainId: this.chainId },
+        );
+      }
+      const bundleId = await this.submitJitoBundle([bytes]);
+      return bundleId;
+    }
     try {
       const sig = await this.getConnection().sendRawTransaction(bytes, {
         skipPreflight: opts?.skipPreflight ?? false,
@@ -786,6 +838,110 @@ export class SolanaChain extends Chain {
     } catch (err) {
       throw this.classifyBroadcastError(err);
     }
+  }
+
+  async submitJitoBundle(signedTxs: Uint8Array[]): Promise<string> {
+    if (!this.jito) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        'Jito bundle submission requires SolanaChain to be constructed with jito config',
+        { chainId: this.chainId },
+      );
+    }
+    const body = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'sendBundle',
+      params: [signedTxs.map((b) => Buffer.from(b).toString('base64'))],
+    };
+    let json: { result?: string; error?: { message?: string } };
+    try {
+      const resp = await fetch(this.jito.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.jito.auth ? { Authorization: `Bearer ${this.jito.auth}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+      json = (await resp.json()) as { result?: string; error?: { message?: string } };
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        `Jito submitBundle transport failed: ${err instanceof Error ? err.message : String(err)}`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (json.error || !json.result) {
+      throw new ChainError(
+        ChainErrorKinds.BroadcastRejected,
+        `Jito submitBundle rejected: ${json.error?.message ?? 'no bundle id returned'}`,
+        { chainId: this.chainId },
+      );
+    }
+    return json.result;
+  }
+
+  async getBundleStatus(bundleId: string): Promise<JitoBundleStatus>;
+  async getBundleStatus(bundleIds: string[]): Promise<JitoBundleStatus[]>;
+  async getBundleStatus(
+    bundleId: string | string[],
+  ): Promise<JitoBundleStatus | JitoBundleStatus[]> {
+    if (!this.jito) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        'Jito getBundleStatus requires SolanaChain to be constructed with jito config',
+        { chainId: this.chainId },
+      );
+    }
+    const ids = Array.isArray(bundleId) ? bundleId : [bundleId];
+    const body = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'getBundleStatuses',
+      params: [ids],
+    };
+    type JitoStatusResp = { result?: { value?: Array<{ bundle_id: string; slot?: number; confirmation_status?: string; err?: { Ok: null } | { Err: string } }> }; error?: { message?: string } };
+    let json: JitoStatusResp;
+    try {
+      const resp = await fetch(this.jito.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.jito.auth ? { Authorization: `Bearer ${this.jito.auth}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+      json = (await resp.json()) as JitoStatusResp;
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        `Jito getBundleStatuses transport failed: ${err instanceof Error ? err.message : String(err)}`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (json.error) {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        `Jito getBundleStatuses error: ${json.error.message ?? 'unknown'}`,
+        { chainId: this.chainId },
+      );
+    }
+    const rows = json.result?.value ?? [];
+    const statuses: JitoBundleStatus[] = ids.map((id) => {
+      const row = rows.find((r) => r.bundle_id === id);
+      if (!row) return { bundleId: id, state: 'Pending' };
+      const err = row.err && 'Err' in row.err ? row.err.Err : undefined;
+      return {
+        bundleId: id,
+        state: err !== undefined ? 'Failed' : (row.confirmation_status === 'finalized' ? 'Landed' : 'Pending'),
+        slot: row.slot,
+        err,
+      };
+    });
+    return Array.isArray(bundleId) ? statuses : statuses[0];
   }
 
   async createUnsignedTransaction(

@@ -106,6 +106,7 @@ export interface EvmChainInit {
    * (e.g. `ARBITRUM_RPC_URL`), then `EVM_<chainId>_RPC_URL`, then throws.
    */
   rpcUrl?: string;
+  rpcUrls?: string[];
   supportsEip1559?: boolean;
   /**
    * OP-stack rollups (Optimism/Base/Unichain/WorldChain/Boba/Sonic and
@@ -167,6 +168,7 @@ export interface EvmCallResult {
 
 export class EvmChain extends Chain {
   readonly rpcUrl: string | undefined;
+  readonly rpcUrls: readonly string[];
   readonly supportsEip1559: boolean;
   readonly hasL1Fee: boolean;
   /**
@@ -213,6 +215,7 @@ export class EvmChain extends Chain {
       init.explorerBaseUrl
     );
     this.rpcUrl = init.rpcUrl;
+    this.rpcUrls = init.rpcUrls ?? [];
     this.supportsEip1559 = init.supportsEip1559 ?? true;
     this.hasL1Fee = init.hasL1Fee ?? false;
     this.nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;
@@ -687,7 +690,35 @@ export class EvmChain extends Chain {
     return this.rpcError(`EVM broadcast failed on ${this.name}`, err);
   }
 
-  async getTransactionStatus(txHash: string): Promise<EvmTransactionStatus> {
+  async getTransactionStatus(txHash: string, opts?: GetTransactionStatusOpts): Promise<EvmTransactionStatus>;
+  async getTransactionStatus(txHashes: string[], opts?: GetTransactionStatusOpts): Promise<EvmTransactionStatus[]>;
+  async getTransactionStatus(
+    txHash: string | string[],
+    opts?: GetTransactionStatusOpts,
+  ): Promise<EvmTransactionStatus | EvmTransactionStatus[]> {
+    if (Array.isArray(txHash)) {
+      return Promise.all(txHash.map((h) => this.getSingleTransactionStatus(h, opts)));
+    }
+    return this.getSingleTransactionStatus(txHash, opts);
+  }
+
+  private async getSingleTransactionStatus(txHash: string, opts?: GetTransactionStatusOpts): Promise<EvmTransactionStatus> {
+    if (opts?.wait) {
+      const deadline = opts.timeoutMs ? Date.now() + opts.timeoutMs : Number.POSITIVE_INFINITY;
+      const pollMs = Math.max(500, this.blockTimeSeconds * 1000);
+      let last: EvmTransactionStatus;
+      while (true) {
+        last = await this.getTransactionStatusOnce(txHash);
+        if (last.status === 'Success' || last.status === 'Failed') return last;
+        if (opts.signal?.aborted) throw new ChainError(ChainErrorKinds.RpcError, `getTransactionStatus aborted`, { chainId: this.chainId, txHash });
+        if (Date.now() >= deadline) return last;
+        await new Promise((r) => setTimeout(r, pollMs));
+      }
+    }
+    return this.getTransactionStatusOnce(txHash);
+  }
+
+  private async getTransactionStatusOnce(txHash: string): Promise<EvmTransactionStatus> {
     const provider = this.getProvider();
     let tx: TransactionResponse | null = null;
     let receipt: TransactionReceipt | null = null;

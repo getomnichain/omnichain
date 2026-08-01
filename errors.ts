@@ -4,15 +4,19 @@
  * `<rpc>` placeholder if the URL is unparseable.
  */
 export function sanitizeMessage(message: string, rpcUrl: string | null): string {
-  if (!rpcUrl) return message;
-  let host: string;
+  let out = message;
+  out = out.replace(/apiKey=[^\s"&]+/gi, 'apiKey=<redacted>');
+  out = out.replace(/[?&]key=[^\s"&]+/gi, (m) => `${m[0]}key=<redacted>`);
+  out = out.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <redacted>');
+  out = out.replace(/\/(v\d+|api)\/[A-Fa-f0-9]{16,}\//g, '/$1/<redacted>/');
+  if (!rpcUrl) return out;
   try {
     const u = new URL(rpcUrl);
-    host = `${u.protocol}//${u.host}`;
+    const host = `${u.protocol}//${u.host}`;
+    return out.replaceAll(rpcUrl, host);
   } catch {
-    return message.replaceAll(rpcUrl, '<rpc>');
+    return out.replaceAll(rpcUrl, '<rpc>');
   }
-  return message.replaceAll(rpcUrl, host);
 }
 
 /**
