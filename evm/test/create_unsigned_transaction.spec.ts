@@ -19,12 +19,12 @@ describe('EvmChain.createUnsignedTransaction — arbitrary call', () => {
     const chain = makeChain(1);
     const unsigned = await chain.createUnsignedTransaction({
       from: '0x000000000000000000000000000000000000dEaD',
-      to: '0x000000000000000000000000000000000000BeEf',
+      to: '0x000000000000000000000000000000000000bEEF',
       data: '0xabcdef',
       value: 1n,
     });
     expect(unsigned.type).toBe(2);
-    expect(unsigned.to).toBe('0x000000000000000000000000000000000000BeEf');
+    expect(unsigned.to).toBe('0x000000000000000000000000000000000000bEEF');
     expect(unsigned.data).toBe('0xabcdef');
     expect(unsigned.value).toBe(1n);
     expect(unsigned.authorizationList).toBeUndefined();
@@ -35,7 +35,7 @@ describe('EvmChain.createUnsignedTransaction — arbitrary call', () => {
     try {
       await chain.createUnsignedTransaction({
         from: '',
-        to: '0x000000000000000000000000000000000000BeEf',
+        to: '0x000000000000000000000000000000000000bEEF',
       });
       fail('should reject');
     } catch (err) {
@@ -56,7 +56,7 @@ describe('EvmChain.createUnsignedTransaction — EIP-7702 form', () => {
     const chain = makeChain(1);
     const unsigned = await chain.createUnsignedTransaction({
       from: '0x000000000000000000000000000000000000dEaD',
-      to: '0x000000000000000000000000000000000000BeEf',
+      to: '0x000000000000000000000000000000000000bEEF',
       data: '0xabcdef',
       authorizationList: [validAuth],
     });
@@ -69,7 +69,7 @@ describe('EvmChain.createUnsignedTransaction — EIP-7702 form', () => {
     try {
       await chain.createUnsignedTransaction({
         from: '0x000000000000000000000000000000000000dEaD',
-        to: '0x000000000000000000000000000000000000BeEf',
+        to: '0x000000000000000000000000000000000000bEEF',
         authorizationList: [validAuth],
       });
       fail('should reject');
@@ -83,7 +83,7 @@ describe('EvmChain.createUnsignedTransaction — EIP-7702 form', () => {
     try {
       await chain.createUnsignedTransaction({
         from: '0x000000000000000000000000000000000000dEaD',
-        to: '0x000000000000000000000000000000000000BeEf',
+        to: '0x000000000000000000000000000000000000bEEF',
         authorizationList: [],
       });
       fail('should reject');
@@ -97,7 +97,7 @@ describe('EvmChain.createUnsignedTransaction — EIP-7702 form', () => {
     try {
       await chain.createUnsignedTransaction({
         from: '0x000000000000000000000000000000000000dEaD',
-        to: '0x000000000000000000000000000000000000BeEf',
+        to: '0x000000000000000000000000000000000000bEEF',
         authorizationList: [{ ...validAuth, chainId: 5 }],
       });
       fail('should reject');
@@ -111,7 +111,7 @@ describe('EvmChain.createUnsignedTransaction — EIP-7702 form', () => {
     try {
       await chain.createUnsignedTransaction({
         from: '0x000000000000000000000000000000000000dEaD',
-        to: '0x000000000000000000000000000000000000BeEf',
+        to: '0x000000000000000000000000000000000000bEEF',
         authorizationList: [{ ...validAuth, chainId: 0 }],
       });
       fail('should reject');

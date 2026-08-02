@@ -584,6 +584,15 @@ export class EvmChain extends Chain {
       const resp = await this.getProvider().broadcastTransaction(hex);
       return resp.hash;
     } catch (err) {
+      const rawMsg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+      if (rawMsg.includes('already known') || rawMsg.includes('known transaction')) {
+        // The identical signed bytes were already accepted (mempool/canonical
+        // chain hit on a retry-after-timeout or multi-endpoint double-send).
+        // The tx hash is deterministic from the signed bytes, so the
+        // transaction WILL land — surface as success to keep the consumer
+        // on the polling path, not the re-sign path (double-spend hazard).
+        return keccak256(hex);
+      }
       throw this.classifyBroadcastError(err);
     }
   }
@@ -682,6 +691,34 @@ export class EvmChain extends Chain {
         { chainId: this.chainId },
       );
     }
+    if (!this.validateAddress(req.from)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidAddress,
+        `Invalid EVM 'from' address (fails EIP-55 checksum or byte length): ${req.from}`,
+        { chainId: this.chainId, address: req.from },
+      );
+    }
+    if (!req.to) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        'CreateEvmUnsignedTransactionRequest.to is required',
+        { chainId: this.chainId },
+      );
+    }
+    if (!this.validateAddress(req.to)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidAddress,
+        `Invalid EVM 'to' address (fails EIP-55 checksum or byte length): ${req.to}`,
+        { chainId: this.chainId, address: req.to },
+      );
+    }
+    if (req.data !== undefined && !/^0x([0-9a-fA-F]{2})*$/.test(req.data)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `CreateEvmUnsignedTransactionRequest.data must be a 0x-prefixed even-length hex string`,
+        { chainId: this.chainId },
+      );
+    }
     if (req.authorizationList !== undefined) {
       if (!Array.isArray(req.authorizationList) || req.authorizationList.length === 0) {
         throw new ChainError(
@@ -753,13 +790,20 @@ export class EvmChain extends Chain {
         safeCause,
       );
     }
-    if (strCode === 'REPLACEMENT_UNDERPRICED' || msg.includes('replacement') || msg.includes('already known') || msg.includes('underpriced')) {
+    if (strCode === 'REPLACEMENT_UNDERPRICED' || msg.includes('replacement') || msg.includes('underpriced')) {
       return new ChainError(
         ChainErrorKinds.BroadcastRejected,
         sanitizeMessage(`EVM broadcast rejected on ${this.name} (replacement/known-nonce)`, rpc),
         { chainId: this.chainId, rpcHost: this.rpcHost() },
         safeCause,
       );
+    }
+    const rateLimitCodes = new Set([-32005, -32007, -32016, -32029, 429]);
+    if (numCode !== undefined && rateLimitCodes.has(numCode)) {
+      return this.rpcError(`EVM broadcast rate-limited on ${this.name}`, err);
+    }
+    if (msg.includes('too many requests') || msg.includes('rate limit') || msg.includes('rate-limit')) {
+      return this.rpcError(`EVM broadcast rate-limited on ${this.name}`, err);
     }
     if (typeof numCode === 'number' && numCode >= -32099 && numCode <= -32000 && !msg.includes('api key')) {
       return new ChainError(

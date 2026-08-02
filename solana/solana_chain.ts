@@ -1376,7 +1376,7 @@ export class SolanaChain extends Chain {
     const rpc = this.resolvedRpcUrlForRedaction();
     const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
     const safeCause = sanitizeCause(err, rpc);
-    const transportSignals = /econnreset|econnrefused|econnaborted|etimedout|enotfound|network request failed|fetch failed|socket hang up|502|503|504/;
+    const transportSignals = /econnreset|econnrefused|econnaborted|etimedout|enotfound|network request failed|fetch failed|socket hang up|429|too\s+many\s+requests|rate.?limit|502|503|504/;
     if (/blockhash\s+not\s+found|blockhash\s+expired/.test(msg)) {
       return new ChainError(
         ChainErrorKinds.BlockhashExpired,

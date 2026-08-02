@@ -1,3 +1,5 @@
+import { keccak256 } from 'ethers';
+
 import { ChainErrorKinds, isChainError } from '../../errors.ts';
 import { EvmChain } from '../evm_chain.ts';
 
@@ -60,6 +62,60 @@ describe('EvmChain.broadcast input validation', () => {
       fail('should reject');
     } catch (err) {
       expect(isChainError(err, ChainErrorKinds.InvalidArgument)).toBe(true);
+    }
+  });
+});
+
+describe('EvmChain.broadcast — error classification', () => {
+  function chainWithProviderError(err: Error): EvmChain {
+    const c = new EvmChain({
+      chainId: 1,
+      name: 'TestChain',
+      blockTimeSeconds: 12,
+      nativeSymbol: 'ETH',
+      nativeDecimals: 18,
+      explorerBaseUrl: 'https://example.com',
+      rpcUrl: 'http://127.0.0.1:1',
+    });
+    (c as unknown as { _provider: unknown })._provider = {
+      broadcastTransaction: async () => { throw err; },
+    };
+    return c;
+  }
+
+  it("'already known' returns the deterministic tx hash as success (not BroadcastRejected)", async () => {
+    const chain = chainWithProviderError(new Error('already known'));
+    const sig = '0x02f8730180810a850a1e5a45f082520894000000000000000000000000000000000000dead0180c0808080';
+    const hash = await chain.broadcast(sig);
+    expect(hash).toBe(keccak256(sig));
+  });
+
+  it("'known transaction' returns the deterministic tx hash as success", async () => {
+    const chain = chainWithProviderError(new Error('known transaction: 0xabc'));
+    const sig = '0xdeadbeef';
+    const hash = await chain.broadcast(sig);
+    expect(hash).toBe(keccak256(sig));
+  });
+
+  it('Infura rate-limit code -32005 → RpcError (retryable), NOT BroadcastRejected', async () => {
+    const err = Object.assign(new Error('limit exceeded'), { code: -32005 });
+    const chain = chainWithProviderError(err);
+    try {
+      await chain.broadcast('0xdead');
+      fail('should reject');
+    } catch (e) {
+      expect(isChainError(e, ChainErrorKinds.RpcError)).toBe(true);
+    }
+  });
+
+  it('429 rate-limit → RpcError (retryable)', async () => {
+    const err = Object.assign(new Error('too many requests'), { code: 429 });
+    const chain = chainWithProviderError(err);
+    try {
+      await chain.broadcast('0xdead');
+      fail('should reject');
+    } catch (e) {
+      expect(isChainError(e, ChainErrorKinds.RpcError)).toBe(true);
     }
   });
 });
