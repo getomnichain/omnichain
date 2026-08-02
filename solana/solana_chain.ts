@@ -1019,6 +1019,65 @@ export class SolanaChain extends Chain {
     return this.rpcWrap(() => this.getConnection().getSlot('confirmed'), 'getSlot');
   }
 
+  async getLatestBlockhash(
+    commitment: 'processed' | 'confirmed' | 'finalized' = 'confirmed',
+  ): Promise<{ blockhash: string; lastValidBlockHeight: number }> {
+    return this.rpcWrap(async () => {
+      const { blockhash, lastValidBlockHeight } = await this.getConnection().getLatestBlockhash(commitment);
+      return { blockhash, lastValidBlockHeight };
+    }, `getLatestBlockhash(${commitment})`);
+  }
+
+  async simulateTransaction(
+    signed: string | Uint8Array,
+    opts?: { sigVerify?: boolean; replaceRecentBlockhash?: boolean; commitment?: 'processed' | 'confirmed' | 'finalized' },
+  ): Promise<{ unitsConsumed: number | null; err: unknown | null; logs: string[] | null }> {
+    let bytes: Uint8Array;
+    if (typeof signed === 'string') {
+      const stripped = signed.startsWith('0x') ? signed.slice(2) : signed;
+      if (!/^[0-9a-fA-F]+$/.test(stripped) || stripped.length % 2 !== 0 || stripped.length === 0) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `Solana simulateTransaction: signed must be Uint8Array or 0x-prefixed hex; got malformed string (len ${signed.length}).`,
+          { chainId: this.chainId },
+        );
+      }
+      bytes = new Uint8Array(Buffer.from(stripped, 'hex'));
+    } else {
+      bytes = signed;
+    }
+    if (bytes.length < 65) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana simulateTransaction: signed bytes must be >= 65 bytes (1 sig-count + 64-byte signature), got ${bytes.length}`,
+        { chainId: this.chainId },
+      );
+    }
+    let tx: VersionedTransaction;
+    try {
+      tx = VersionedTransaction.deserialize(bytes);
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana simulateTransaction: could not deserialize signed bytes into a VersionedTransaction`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    return this.rpcWrap(async () => {
+      const sim = await this.getConnection().simulateTransaction(tx, {
+        sigVerify: opts?.sigVerify ?? false,
+        replaceRecentBlockhash: opts?.replaceRecentBlockhash ?? false,
+        commitment: opts?.commitment,
+      });
+      return {
+        unitsConsumed: sim.value.unitsConsumed ?? null,
+        err: sim.value.err ?? null,
+        logs: sim.value.logs ?? null,
+      };
+    }, 'simulateTransaction');
+  }
+
   async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts & { skipPreflight?: boolean; maxRetries?: number; via?: 'direct' | 'jito' }): Promise<string> {
     if (opts && (opts as { signal?: unknown }).signal !== undefined) {
       throw new ChainError(

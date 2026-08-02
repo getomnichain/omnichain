@@ -12,6 +12,23 @@ _Nothing yet. Add entries here as PRs merge; on release, rename this section to 
 
 ---
 
+## [0.3.1] — 2026-08-02
+
+Additive minor. Two new `SolanaChain` read primitives to unblock the gasless `RIN-153` migration finish — consumers assembling `MessageV0` locally (custom fee ix + Jito tip + ALTs merged with aggregator swap bytes) can now route every chain **read** through the SDK without being pushed into the opinionated full-builder. Local computation (compile + sign) stays consumer-side by design.
+
+### Added
+
+- **`SolanaChain.getLatestBlockhash(commitment?)`** — thin passthrough to `Connection.getLatestBlockhash`. Returns `{ blockhash, lastValidBlockHeight }`. Defaults to `'confirmed'`; accepts `'processed' | 'confirmed' | 'finalized'` (consumers with Jito flows should pass `'processed'` — RPC lag vs Jito's leader tip can otherwise reject a submitted bundle as `Invalid`). Transport failures wrap as `ChainError(RpcError)` with URL-redacted messages.
+- **`SolanaChain.simulateTransaction(signed, opts?)`** — passthrough to `Connection.simulateTransaction`. Accepts a signed `VersionedTransaction` as `Uint8Array` or `0x`-prefixed hex; deserializes internally. Returns `{ unitsConsumed, err, logs }`. Opts: `{ sigVerify?, replaceRecentBlockhash?, commitment? }`. Input validation matches `broadcast` (rejects empty / <65 bytes / malformed hex as `InvalidArgument`). Companion to `estimateAndApplyCu`, which only sizes SDK-built transactions — this is the raw primitive for consumers that build the tx themselves.
+
+Both methods reuse the internal `rpcWrap` sanitizer path so no keyed URL can leak through their error messages.
+
+### Notes
+
+- `SolanaChain.estimateAndApplyCu` and `SolanaChain.createUnsignedTransaction` continue to be the preferred paths when the SDK owns the tx build; these primitives are for the consumer-owned-build case.
+
+---
+
 ## [0.3.0] — 2026-08-02
 
 Complete chain-connection surface. Consumers (gasless, depositron, rango-intents, …) can now build any protocol flow — including EIP-7702 relayers, Solana Jito bundles, arbitrary contract calls — without importing `ethers`, `@solana/web3.js`, `@solana/spl-token`, or `bitcoinjs-lib` directly.
