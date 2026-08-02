@@ -1001,7 +1001,7 @@ export class SolanaChain extends Chain {
   }
 
   async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts & { skipPreflight?: boolean; maxRetries?: number; via?: 'direct' | 'jito' }): Promise<string> {
-    if (opts && 'signal' in opts) {
+    if (opts && (opts as { signal?: unknown }).signal !== undefined) {
       throw new ChainError(
         ChainErrorKinds.FeatureNotSupported,
         `Solana broadcast: signal is not honored in 0.3.0 (silently ignoring would let a caller conclude 'not sent' while the tx still lands). Cancellation returns in 0.3.1.`,

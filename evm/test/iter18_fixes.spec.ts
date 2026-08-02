@@ -41,6 +41,30 @@ describe('EvmChain.createUnsignedTransaction — address normalization', () => {
   });
 });
 
+describe('EvmChain.createUnsignedTransaction — 0X-prefixed address (iter-23 regression)', () => {
+  it('accepts 0X-prefixed (uppercase) address and normalizes without raw TypeError', async () => {
+    const chain = makeChain();
+    const upperPrefix = '0X000000000000000000000000000000000000dEaD';
+    const unsigned = await chain.createUnsignedTransaction({
+      from: upperPrefix,
+      to: '0x0000000000000000000000000000000000000000',
+    });
+    expect(unsigned.from!.startsWith('0x')).toBe(true);
+    expect(unsigned.from!.toLowerCase()).toBe(upperPrefix.toLowerCase());
+  });
+});
+
+describe('EvmChain.broadcast — {signal: undefined} spread is benign (iter-22 regression)', () => {
+  it('accepts opts with explicit undefined signal (common spread pattern)', async () => {
+    const chain = makeChain();
+    (chain as unknown as { getProvider(): { broadcastTransaction: (h: string) => Promise<{ hash: string }> } })
+      .getProvider = () => ({ broadcastTransaction: async () => ({ hash: '0x' + '11'.repeat(32) }) });
+    const optsWithUndefinedSignal = { signal: undefined } as never;
+    const hash = await chain.broadcast('0xdead', optsWithUndefinedSignal);
+    expect(hash).toBe('0x' + '11'.repeat(32));
+  });
+});
+
 describe('EvmChain.buildAuthorizationDigest — invalid delegate', () => {
   it('throws ChainError(InvalidAddress), not raw TypeError', () => {
     const chain = makeChain();

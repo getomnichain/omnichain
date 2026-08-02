@@ -444,6 +444,20 @@ export class EvmChain extends Chain {
     }
   }
 
+  private normalizeAddressOrThrow(raw: string, field: string): string {
+    const body = raw.replace(/^0[xX]/, '');
+    try {
+      return getAddress(`0x${body}`);
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidAddress,
+        `Invalid EVM address for ${field}: ${raw}`,
+        { chainId: this.chainId, address: raw },
+        err instanceof Error ? err : undefined,
+      );
+    }
+  }
+
   validateTokenIdentifier(raw: string | undefined): boolean {
     if (raw === undefined) return true;
     return this.validateAddress(raw);
@@ -565,7 +579,7 @@ export class EvmChain extends Chain {
   }
 
   async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
-    if (opts && 'signal' in opts) {
+    if (opts && (opts as { signal?: unknown }).signal !== undefined) {
       throw new ChainError(
         ChainErrorKinds.FeatureNotSupported,
         `EVM broadcast: signal is not honored in 0.3.0 (silently ignoring would let a caller conclude 'not sent' while the tx still lands). Cancellation returns in 0.3.1.`,
@@ -618,7 +632,7 @@ export class EvmChain extends Chain {
         { chainId: this.chainId, address },
       );
     }
-    const normalized = getAddress(address.startsWith('0x') || address.startsWith('0X') ? address : `0x${address}`);
+    const normalized = this.normalizeAddressOrThrow(address, 'getPendingNonce.address');
     try {
       const n = await this.getProvider().getTransactionCount(normalized, 'pending');
       return BigInt(n);
@@ -677,11 +691,9 @@ export class EvmChain extends Chain {
     }
     const provider = this.getProvider();
     const tx = {
-      to: getAddress(req.to.startsWith('0x') || req.to.startsWith('0X') ? req.to : `0x${req.to}`),
+      to: this.normalizeAddressOrThrow(req.to, 'call.to'),
       data: req.data,
-      from: req.from === undefined
-        ? undefined
-        : getAddress(req.from.startsWith('0x') || req.from.startsWith('0X') ? req.from : `0x${req.from}`),
+      from: req.from === undefined ? undefined : this.normalizeAddressOrThrow(req.from, 'call.from'),
       value: req.value,
     };
     try {
@@ -875,8 +887,8 @@ export class EvmChain extends Chain {
     const emittedType = req.authorizationList !== undefined ? 4 : this.supportsEip1559 ? 2 : 0;
     return new UnsignedEvmTransaction({
       chainId: this.chainId,
-      from: getAddress(req.from.startsWith('0x') || req.from.startsWith('0X') ? req.from : `0x${req.from}`),
-      to: getAddress(req.to.startsWith('0x') || req.to.startsWith('0X') ? req.to : `0x${req.to}`),
+      from: this.normalizeAddressOrThrow(req.from, 'createUnsignedTransaction.from'),
+      to: this.normalizeAddressOrThrow(req.to, 'createUnsignedTransaction.to'),
       value: req.value ?? 0n,
       data: req.data ?? '0x',
       type: emittedType,

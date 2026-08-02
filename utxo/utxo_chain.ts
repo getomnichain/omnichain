@@ -451,7 +451,7 @@ export class UtxoChain extends Chain {
   }
 
   async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
-    if (opts && 'signal' in opts) {
+    if (opts && (opts as { signal?: unknown }).signal !== undefined) {
       throw new ChainError(
         ChainErrorKinds.FeatureNotSupported,
         `UTXO broadcast: signal is not honored in 0.3.0 (silently ignoring would let a caller conclude 'not sent' while the tx still lands). Cancellation returns in 0.3.1.`,
