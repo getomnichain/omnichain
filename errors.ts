@@ -15,8 +15,9 @@ export function sanitizeMessage(message: string, rpcUrl: string | null): string 
   });
   // Long base64 runs (Solana / Jito payloads). base64 signed-tx is ~200 chars.
   out = out.replace(/[A-Za-z0-9+/]{160,}={0,2}/g, (m) => `<signed-bytes-b64:${m.length}c>`);
-  out = out.replace(/([?&])([a-zA-Z_-]*(?:api[-_]?key|key|token|access[-_]?token|secret))=[^\s"&]+/gi, '$1$2=<redacted>');
+  out = out.replace(/([?&])([a-zA-Z_-]*(?:api[-_]?key|key|token|access[-_]?token|secret|auth))=[^\s"&]+/gi, '$1$2=<redacted>');
   out = out.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer <redacted>');
+  out = out.replace(/Authorization:\s*[A-Za-z0-9._~+/=-]+/gi, 'Authorization: <redacted>');
   out = out.replace(/(\/v\d+|\/api)\/[A-Za-z0-9_-]{16,}(?=\/|$|\s|["'])/gi, '$1/<redacted>');
   out = out.replace(/https?:\/\/[^\s"'`]*\.(?:alchemy\.com|infura\.io|quiknode\.pro|helius-rpc\.com|ankr\.com|blastapi\.io|drpc\.org)\/[A-Za-z0-9_./=-]{8,}/gi, (m) => {
     try {

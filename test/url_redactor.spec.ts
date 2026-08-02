@@ -49,6 +49,26 @@ describe('sanitizeMessage — URL redactor', () => {
     expect(out).not.toContain('aBcDeFgHiJkL');
   });
 
+  it('redacts ?auth= query param (Blockstream/Esplora shape)', () => {
+    const msg = 'GET https://blockstream.info/api/tx?auth=sk_live_ABC123 → 401';
+    const out = sanitizeMessage(msg, null);
+    expect(out).not.toContain('sk_live_ABC123');
+    expect(out).toContain('?auth=<redacted>');
+  });
+
+  it('redacts bare Authorization header value (no Bearer keyword)', () => {
+    const msg = 'axios req headers: Authorization: aBc123.token';
+    const out = sanitizeMessage(msg, null);
+    expect(out).not.toContain('aBc123.token');
+    expect(out).toContain('Authorization: <redacted>');
+  });
+
+  it('redacts Authorization: Bearer combined form (either rule wins)', () => {
+    const msg = 'Authorization: Bearer TOK_ABC';
+    const out = sanitizeMessage(msg, null);
+    expect(out).not.toContain('TOK_ABC');
+  });
+
   it('preserves non-sensitive substrings', () => {
     const msg = 'balance too low; nonce too low; try again';
     expect(sanitizeMessage(msg, null)).toBe(msg);

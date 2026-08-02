@@ -779,12 +779,7 @@ export class SolanaChain extends Chain {
     opts?: GetTransactionStatusOpts,
   ): Promise<SolanaTransactionStatus | SolanaTransactionStatus[]> {
     if (Array.isArray(txHash)) {
-      return runSolanaBatchStatus(txHash, (h) => this.getSingleSolanaStatus(h, opts), (_h, err) =>
-        SolanaTransactionStatus.notFound(this.chainId, {
-          code: 'BATCH_ITEM_FAILED',
-          reason: err instanceof Error ? err.message : String(err),
-        }),
-      );
+      return runSolanaBatchStatus(txHash, (h) => this.getSingleSolanaStatus(h, opts));
     }
     return this.getSingleSolanaStatus(txHash, opts);
   }
@@ -1751,19 +1746,20 @@ const SOLANA_BATCH_STATUS_CONCURRENCY = 8;
 async function runSolanaBatchStatus<T>(
   items: string[],
   fetchOne: (item: string) => Promise<T>,
-  failureFallback: (item: string, err: unknown) => T,
 ): Promise<T[]> {
   const results = new Array<T>(items.length);
   let cursor = 0;
+  let aborted = false;
   const workers: Promise<void>[] = [];
   const spawn = async (): Promise<void> => {
-    while (true) {
+    while (!aborted) {
       const idx = cursor++;
       if (idx >= items.length) return;
       try {
         results[idx] = await fetchOne(items[idx]);
       } catch (err) {
-        results[idx] = failureFallback(items[idx], err);
+        aborted = true;
+        throw err;
       }
     }
   };

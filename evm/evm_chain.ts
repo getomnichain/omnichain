@@ -925,10 +925,7 @@ export class EvmChain extends Chain {
     opts?: GetTransactionStatusOpts,
   ): Promise<EvmTransactionStatus | EvmTransactionStatus[]> {
     if (Array.isArray(txHash)) {
-      return runBatchStatus(txHash, (h) => this.getSingleTransactionStatus(h, opts), (h, err) => EvmTransactionStatus.notFound(this.chainId, {
-        code: 'BATCH_ITEM_FAILED',
-        reason: err instanceof Error ? err.message : String(err),
-      }));
+      return runBatchStatus(txHash, (h) => this.getSingleTransactionStatus(h, opts));
     }
     return this.getSingleTransactionStatus(txHash, opts);
   }
@@ -1334,19 +1331,20 @@ const BATCH_STATUS_CONCURRENCY = 8;
 async function runBatchStatus<T>(
   items: string[],
   fetchOne: (item: string) => Promise<T>,
-  failureFallback: (item: string, err: unknown) => T,
 ): Promise<T[]> {
   const results = new Array<T>(items.length);
   let cursor = 0;
+  let aborted = false;
   const workers: Promise<void>[] = [];
   const spawn = async (): Promise<void> => {
-    while (true) {
+    while (!aborted) {
       const idx = cursor++;
       if (idx >= items.length) return;
       try {
         results[idx] = await fetchOne(items[idx]);
       } catch (err) {
-        results[idx] = failureFallback(items[idx], err);
+        aborted = true;
+        throw err;
       }
     }
   };

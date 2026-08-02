@@ -277,21 +277,16 @@ export class UtxoChain extends Chain {
     if (Array.isArray(txHash)) {
       const results = new Array<UtxoTransactionStatus>(txHash.length);
       let cursor = 0;
+      let aborted = false;
       const spawn = async (): Promise<void> => {
-        while (true) {
+        while (!aborted) {
           const idx = cursor++;
           if (idx >= txHash.length) return;
           try {
             results[idx] = await this.getUtxoStatusOnce(txHash[idx]);
           } catch (err) {
-            results[idx] = new UtxoTransactionStatus({
-              chainId: this.chainId,
-              status: TransactionStatusTypes.NotFound,
-              error: {
-                code: 'BATCH_ITEM_FAILED',
-                reason: err instanceof Error ? err.message : String(err),
-              },
-            });
+            aborted = true;
+            throw err;
           }
         }
       };
