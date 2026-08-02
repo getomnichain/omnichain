@@ -6,7 +6,7 @@ describe('sanitizeMessage — URL redactor', () => {
     const msg = `broadcast failed with payload ${signedTx} on chain`;
     const out = sanitizeMessage(msg, null);
     expect(out).not.toContain(signedTx);
-    expect(out).toMatch(/<signed-tx:\d+B>/);
+    expect(out).toMatch(/<signed-bytes:\d+B>/);
   });
 
   it('redacts apiKey= query param', () => {

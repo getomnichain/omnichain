@@ -163,6 +163,8 @@ export interface EvmCallRequest {
 export interface EvmCallResult {
   result?: string;
   gasEstimate?: bigint;
+  /** Raw ABI-encoded revert data when the call reverted (0x-prefixed hex). Present only on SimulationFailed. */
+  revertData?: string;
 }
 
 export class EvmChain extends Chain {
@@ -678,6 +680,26 @@ export class EvmChain extends Chain {
       );
       return { result };
     } catch (err) {
+      const strCode = ethersErrCode(err);
+      const rawData = (err as { data?: unknown; info?: { error?: { data?: unknown } } }).data
+        ?? (err as { info?: { error?: { data?: unknown } } }).info?.error?.data;
+      const revertData = typeof rawData === 'string' && /^0x[0-9a-fA-F]*$/.test(rawData) ? rawData : undefined;
+      if (strCode === 'CALL_EXCEPTION' || revertData !== undefined) {
+        throw new ChainError(
+          ChainErrorKinds.SimulationFailed,
+          sanitizeMessage(`eth_${req.estimateGas ? 'estimateGas' : 'call'} on ${req.to} reverted`, this._resolvedRpcUrl),
+          { chainId: this.chainId, revertData },
+          sanitizeCause(err, this._resolvedRpcUrl),
+        );
+      }
+      if (strCode === 'INSUFFICIENT_FUNDS') {
+        throw new ChainError(
+          ChainErrorKinds.InsufficientFunds,
+          sanitizeMessage(`eth_${req.estimateGas ? 'estimateGas' : 'call'} on ${req.to}: insufficient funds`, this._resolvedRpcUrl),
+          { chainId: this.chainId },
+          sanitizeCause(err, this._resolvedRpcUrl),
+        );
+      }
       throw this.rpcError(`eth_${req.estimateGas ? 'estimateGas' : 'call'} on ${req.to} failed`, err);
     }
   }
@@ -903,7 +925,10 @@ export class EvmChain extends Chain {
     opts?: GetTransactionStatusOpts,
   ): Promise<EvmTransactionStatus | EvmTransactionStatus[]> {
     if (Array.isArray(txHash)) {
-      return Promise.all(txHash.map((h) => this.getSingleTransactionStatus(h, opts)));
+      return runBatchStatus(txHash, (h) => this.getSingleTransactionStatus(h, opts), (h, err) => EvmTransactionStatus.notFound(this.chainId, {
+        code: 'BATCH_ITEM_FAILED',
+        reason: err instanceof Error ? err.message : String(err),
+      }));
     }
     return this.getSingleTransactionStatus(txHash, opts);
   }
@@ -1302,6 +1327,33 @@ async function extractRevertInfo(
 function stringifyErr(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+const BATCH_STATUS_CONCURRENCY = 8;
+
+async function runBatchStatus<T>(
+  items: string[],
+  fetchOne: (item: string) => Promise<T>,
+  failureFallback: (item: string, err: unknown) => T,
+): Promise<T[]> {
+  const results = new Array<T>(items.length);
+  let cursor = 0;
+  const workers: Promise<void>[] = [];
+  const spawn = async (): Promise<void> => {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= items.length) return;
+      try {
+        results[idx] = await fetchOne(items[idx]);
+      } catch (err) {
+        results[idx] = failureFallback(items[idx], err);
+      }
+    }
+  };
+  const workerCount = Math.min(BATCH_STATUS_CONCURRENCY, items.length);
+  for (let i = 0; i < workerCount; i++) workers.push(spawn());
+  await Promise.all(workers);
+  return results;
 }
 
 async function interruptibleSleep(ms: number, signal?: AbortSignal): Promise<void> {

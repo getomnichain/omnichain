@@ -779,7 +779,12 @@ export class SolanaChain extends Chain {
     opts?: GetTransactionStatusOpts,
   ): Promise<SolanaTransactionStatus | SolanaTransactionStatus[]> {
     if (Array.isArray(txHash)) {
-      return Promise.all(txHash.map((h) => this.getSingleSolanaStatus(h, opts)));
+      return runSolanaBatchStatus(txHash, (h) => this.getSingleSolanaStatus(h, opts), (_h, err) =>
+        SolanaTransactionStatus.notFound(this.chainId, {
+          code: 'BATCH_ITEM_FAILED',
+          reason: err instanceof Error ? err.message : String(err),
+        }),
+      );
     }
     return this.getSingleSolanaStatus(txHash, opts);
   }
@@ -1739,6 +1744,33 @@ export function bs58encode(bytes: Uint8Array): string {
     else break;
   }
   return out;
+}
+
+const SOLANA_BATCH_STATUS_CONCURRENCY = 8;
+
+async function runSolanaBatchStatus<T>(
+  items: string[],
+  fetchOne: (item: string) => Promise<T>,
+  failureFallback: (item: string, err: unknown) => T,
+): Promise<T[]> {
+  const results = new Array<T>(items.length);
+  let cursor = 0;
+  const workers: Promise<void>[] = [];
+  const spawn = async (): Promise<void> => {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= items.length) return;
+      try {
+        results[idx] = await fetchOne(items[idx]);
+      } catch (err) {
+        results[idx] = failureFallback(items[idx], err);
+      }
+    }
+  };
+  const workerCount = Math.min(SOLANA_BATCH_STATUS_CONCURRENCY, items.length);
+  for (let i = 0; i < workerCount; i++) workers.push(spawn());
+  await Promise.all(workers);
+  return results;
 }
 
 function combineJitoSignal(consumerSignal: AbortSignal | undefined, timeoutMs: number): AbortSignal {

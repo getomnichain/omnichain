@@ -15,7 +15,7 @@ import {
   Chain,
   CreateTransferRequest,
 } from '../chain.base.ts';
-import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { ChainError, ChainErrorKinds, sanitizeMessage } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
 import { Token } from '../token.ts';
@@ -275,7 +275,29 @@ export class UtxoChain extends Chain {
       );
     }
     if (Array.isArray(txHash)) {
-      return Promise.all(txHash.map((h) => this.getUtxoStatusOnce(h)));
+      const results = new Array<UtxoTransactionStatus>(txHash.length);
+      let cursor = 0;
+      const spawn = async (): Promise<void> => {
+        while (true) {
+          const idx = cursor++;
+          if (idx >= txHash.length) return;
+          try {
+            results[idx] = await this.getUtxoStatusOnce(txHash[idx]);
+          } catch (err) {
+            results[idx] = new UtxoTransactionStatus({
+              chainId: this.chainId,
+              status: TransactionStatusTypes.NotFound,
+              error: {
+                code: 'BATCH_ITEM_FAILED',
+                reason: err instanceof Error ? err.message : String(err),
+              },
+            });
+          }
+        }
+      };
+      const workerCount = Math.min(8, txHash.length);
+      await Promise.all(Array.from({ length: workerCount }, spawn));
+      return results;
     }
     return this.getUtxoStatusOnce(txHash);
   }
@@ -849,20 +871,18 @@ function isProviderNotFoundError(err: unknown): boolean {
  * `sanitizeMessage` intent (errors.ts).
  */
 function sanitizeUtxoErrMessage(msg: string): string {
-  return msg
+  const utxoSpecific = msg
     // Basic-auth credentials in a URL: http://user:pass@host — the
     // canonical Bitcoin Core RPC form, which the -5 branch above
     // specifically expects and could otherwise expose.
     .replace(/(:\/\/)[^:@\s/]+:[^@\s/]+@/g, '$1***:***@')
-    // Query-string API key params.
-    .replace(/([?&][A-Za-z_-]*(?:key|token|apikey|api_key|auth)=)[^&\s]+/gi, '$1***')
-    // Bearer / Authorization headers.
-    .replace(/(Authorization|Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 ***')
-    // Hex/base58-ish 32+-char tokens embedded in URL paths (hosted
-    // Esplora often uses `/v1/<key>/…`).
-    .replace(/\/[A-Fa-f0-9]{32,}\b/g, '/***')
     // Provider-prefixed key markers (Blockstream/Unisat/Ordiscan style).
     .replace(/\b(?:pk|sk|ghp|gho)_[A-Za-z0-9]{20,}\b/g, '***');
+  // Route through the shared sanitizer so signed-tx redaction, apiKey/token
+  // params, Bearer headers, and path-embedded key rules apply uniformly
+  // across families (was: parallel UTXO-only sweep that had no signed-tx
+  // rule at all — a provider echoing the submitted hex would leak it).
+  return sanitizeMessage(utxoSpecific, null);
 }
 
 /**

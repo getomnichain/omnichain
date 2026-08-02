@@ -5,7 +5,16 @@
  */
 export function sanitizeMessage(message: string, rpcUrl: string | null): string {
   let out = message;
-  out = out.replace(/0x[0-9a-fA-F]{200,}/g, (m) => `<signed-tx:${(m.length - 2) / 2}B>`);
+  // Long hex runs (with or without 0x prefix) are signed-tx bytes or opaque
+  // payloads. Threshold 128 hex chars = 64 bytes, above the largest transient
+  // identifier (tx hash / signature = 64 hex / 88 base58) so we don't clobber
+  // hashes but do catch even a minimal signed EVM tx (~110 bytes).
+  out = out.replace(/(?:0x)?[0-9a-fA-F]{128,}/g, (m) => {
+    const hexLen = m.startsWith('0x') || m.startsWith('0X') ? m.length - 2 : m.length;
+    return `<signed-bytes:${hexLen / 2}B>`;
+  });
+  // Long base64 runs (Solana / Jito payloads). base64 signed-tx is ~200 chars.
+  out = out.replace(/[A-Za-z0-9+/]{160,}={0,2}/g, (m) => `<signed-bytes-b64:${m.length}c>`);
   out = out.replace(/([?&])([a-zA-Z_-]*(?:api[-_]?key|key|token|access[-_]?token|secret))=[^\s"&]+/gi, '$1$2=<redacted>');
   out = out.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer <redacted>');
   out = out.replace(/(\/v\d+|\/api)\/[A-Za-z0-9_-]{16,}(?=\/|$|\s|["'])/gi, '$1/<redacted>');
@@ -73,6 +82,8 @@ export interface ChainErrorMeta {
   identifier?: string;
   rpcHost?: string;
   envCandidates?: string[];
+  /** ABI-encoded revert data from an EVM eth_call that reverted. */
+  revertData?: string;
 }
 
 export class ChainError extends Error {
