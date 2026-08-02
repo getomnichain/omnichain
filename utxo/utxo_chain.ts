@@ -10,8 +10,12 @@ import {
   btcParamsForChainId,
   btcParamsShapeMatches,
 } from './btc/network_params.ts';
-import { Chain, CreateTransferRequest } from '../chain.base.ts';
-import { ChainError, ChainErrorKinds } from '../errors.ts';
+import {
+  BroadcastOpts,
+  Chain,
+  CreateTransferRequest,
+} from '../chain.base.ts';
+import { ChainError, ChainErrorKinds, sanitizeMessage } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
 import { Token } from '../token.ts';
@@ -257,7 +261,43 @@ export class UtxoChain extends Chain {
     return this.chainTipProvider.getChainTipHeight();
   }
 
-  async getTransactionStatus(txHash: string): Promise<UtxoTransactionStatus> {
+  async getTransactionStatus(txHash: string, opts?: import('../chain.base.ts').GetTransactionStatusOpts): Promise<UtxoTransactionStatus>;
+  async getTransactionStatus(txHashes: string[], opts?: import('../chain.base.ts').GetTransactionStatusOpts): Promise<UtxoTransactionStatus[]>;
+  async getTransactionStatus(
+    txHash: string | string[],
+    opts?: import('../chain.base.ts').GetTransactionStatusOpts,
+  ): Promise<UtxoTransactionStatus | UtxoTransactionStatus[]> {
+    if (opts?.wait || (opts?.confirmations !== undefined && opts.confirmations > 1)) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `UtxoChain.getTransactionStatus does not honor wait/confirmations opts in 0.3.0 (would silently return immediately). Poll the block-tip provider consumer-side or omit the opts.`,
+        { chainId: this.chainId },
+      );
+    }
+    if (Array.isArray(txHash)) {
+      const results = new Array<UtxoTransactionStatus>(txHash.length);
+      let cursor = 0;
+      let aborted = false;
+      const spawn = async (): Promise<void> => {
+        while (!aborted) {
+          const idx = cursor++;
+          if (idx >= txHash.length) return;
+          try {
+            results[idx] = await this.getUtxoStatusOnce(txHash[idx]);
+          } catch (err) {
+            aborted = true;
+            throw err;
+          }
+        }
+      };
+      const workerCount = Math.min(8, txHash.length);
+      await Promise.all(Array.from({ length: workerCount }, spawn));
+      return results;
+    }
+    return this.getUtxoStatusOnce(txHash);
+  }
+
+  private async getUtxoStatusOnce(txHash: string): Promise<UtxoTransactionStatus> {
     // Narrow the try to the provider call only. Constructor asserts and
     // upsert failures must NOT be silently coerced into NotFound.
     // Classify: (a) provider signalled "no such tx" (Esplora HTTP 404,
@@ -408,6 +448,94 @@ export class UtxoChain extends Chain {
     req: CreateUtxoTransferOptions | CreateTransferRequest
   ): Promise<UnsignedUtxoTransaction> {
     return this.buildTransfer(req as CreateUtxoTransferOptions, undefined);
+  }
+
+  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
+    if (opts && (opts as { signal?: unknown }).signal !== undefined) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `UTXO broadcast: signal is not honored in 0.3.0 (silently ignoring would let a caller conclude 'not sent' while the tx still lands). Cancellation returns in 0.3.1.`,
+        { chainId: this.chainId },
+      );
+    }
+    let hex: string;
+    let txBytes: Buffer;
+    if (typeof signed === 'string') {
+      const stripped = signed.startsWith('0x') ? signed.slice(2) : signed;
+      if (!/^[0-9a-fA-F]+$/.test(stripped) || stripped.length % 2 !== 0 || stripped.length === 0) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `UTXO broadcast: signed transaction must be Uint8Array or hex string (got malformed string of length ${signed.length})`,
+          { chainId: this.chainId },
+        );
+      }
+      hex = stripped;
+      txBytes = Buffer.from(stripped, 'hex');
+    } else {
+      if (signed.length === 0) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `UTXO broadcast: signed transaction bytes are empty`,
+          { chainId: this.chainId },
+        );
+      }
+      hex = Buffer.from(signed).toString('hex');
+      txBytes = Buffer.from(signed);
+    }
+    try {
+      const { txid } = await this.broadcaster.broadcast(hex);
+      return txid;
+    } catch (err) {
+      const resp = (err as { response?: { data?: unknown; status?: number } }).response;
+      const body = resp?.data;
+      const httpStatus = resp?.status;
+      const bodyStr = body === undefined ? '' : ` — node response: ${typeof body === 'string' ? body : JSON.stringify(body)}`;
+      const rawMsg = (err instanceof Error ? err.message : String(err)) + bodyStr;
+      const sanitizedMsg = sanitizeUtxoErrMessage(rawMsg);
+      const lowerMsg = rawMsg.toLowerCase();
+      const safeCause = err instanceof Error ? sanitizedCauseForUtxo(err, sanitizedMsg) : undefined;
+
+      if (/already in block chain|txn-already-known|txn-already-in-mempool|already[- ]?known|already[- ]?in mempool/.test(lowerMsg)) {
+        return this.computeUtxoTxidLE(txBytes);
+      }
+      if (/econnreset|econnrefused|econnaborted|etimedout|enotfound|socket hang up|network request failed|fetch failed|too\s+many\s+requests|rate.?limit/.test(lowerMsg)
+          || (typeof httpStatus === 'number' && (httpStatus === 429 || httpStatus === 502 || httpStatus === 503 || httpStatus === 504))) {
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          `UTXO broadcast RPC transport failure on ${this.name}: ${sanitizedMsg}`,
+          { chainId: this.chainId },
+          safeCause,
+        );
+      }
+      if (/insufficient|-6\b|not enough funds/.test(lowerMsg)) {
+        throw new ChainError(
+          ChainErrorKinds.InsufficientFunds,
+          `UTXO broadcast rejected on ${this.name}: ${sanitizedMsg}`,
+          { chainId: this.chainId },
+          safeCause,
+        );
+      }
+      throw new ChainError(
+        ChainErrorKinds.BroadcastRejected,
+        `UTXO broadcast rejected on ${this.name}: ${sanitizedMsg}`,
+        { chainId: this.chainId },
+        safeCause,
+      );
+    }
+  }
+
+  private computeUtxoTxidLE(txBytes: Buffer): string {
+    try {
+      const first = Transaction.fromBuffer(txBytes).getHash();
+      return Buffer.from(first).reverse().toString('hex');
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.BroadcastRejected,
+        `UTXO already-known path: node reported the tx as already accepted, but the local bytes could not be parsed by bitcoinjs to derive a txid. Do NOT re-sign — poll by the txid the consumer computed pre-broadcast.`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
   }
 
   protected async buildTransfer(
@@ -757,21 +885,20 @@ function isProviderNotFoundError(err: unknown): boolean {
  * error stringifies the full request URL. Matches EVM's
  * `sanitizeMessage` intent (errors.ts).
  */
-function sanitizeUtxoErrMessage(msg: string): string {
-  return msg
+export function sanitizeUtxoErrMessage(msg: string): string {
+  const utxoSpecific = msg
     // Basic-auth credentials in a URL: http://user:pass@host — the
     // canonical Bitcoin Core RPC form, which the -5 branch above
     // specifically expects and could otherwise expose.
     .replace(/(:\/\/)[^:@\s/]+:[^@\s/]+@/g, '$1***:***@')
-    // Query-string API key params.
-    .replace(/([?&][A-Za-z_-]*(?:key|token|apikey|api_key|auth)=)[^&\s]+/gi, '$1***')
-    // Bearer / Authorization headers.
-    .replace(/(Authorization|Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 ***')
-    // Hex/base58-ish 32+-char tokens embedded in URL paths (hosted
-    // Esplora often uses `/v1/<key>/…`).
-    .replace(/\/[A-Fa-f0-9]{32,}\b/g, '/***')
     // Provider-prefixed key markers (Blockstream/Unisat/Ordiscan style).
-    .replace(/\b(?:pk|sk|ghp|gho)_[A-Za-z0-9]{20,}\b/g, '***');
+    .replace(/\b(?:pk|sk|ghp|gho)_[A-Za-z0-9]{20,}\b/g, '***')
+    .replace(/\/[A-Fa-f0-9]{32,}\b/g, '/***');
+  // Route through the shared sanitizer so signed-tx redaction, apiKey/token
+  // params, Bearer headers, and path-embedded key rules apply uniformly
+  // across families (was: parallel UTXO-only sweep that had no signed-tx
+  // rule at all — a provider echoing the submitted hex would leak it).
+  return sanitizeMessage(utxoSpecific, null);
 }
 
 /**

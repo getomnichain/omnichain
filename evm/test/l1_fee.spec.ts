@@ -10,10 +10,10 @@ const L2_GAS_USED = 21000n;
 const L2_GAS_PRICE = 1_000_000_000n;
 
 interface Spies {
-  txSpy: jest.SpyInstance;
-  receiptSpy: jest.SpyInstance;
-  sendSpy: jest.SpyInstance;
-  getBlockSpy: jest.SpyInstance;
+  txSpy: ReturnType<typeof jest.spyOn>;
+  receiptSpy: ReturnType<typeof jest.spyOn>;
+  sendSpy: ReturnType<typeof jest.spyOn>;
+  getBlockSpy: ReturnType<typeof jest.spyOn>;
 }
 
 function setup(opts: {

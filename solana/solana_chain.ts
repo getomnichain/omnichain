@@ -1,4 +1,6 @@
 import {
+  AccountInfo,
+  AddressLookupTableAccount,
   ComputeBudgetProgram,
   Connection,
   MessageV0,
@@ -10,6 +12,8 @@ import {
 import {
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
+  TokenAccountNotFoundError,
+  TokenInvalidAccountOwnerError,
   createAssociatedTokenAccountIdempotentInstruction,
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
@@ -18,7 +22,14 @@ import {
   getMint,
 } from '@solana/spl-token';
 
-import { Chain, CreateTransferRequest, resolveTransferAmount } from '../chain.base.ts';
+import {
+  BroadcastOpts,
+  Chain,
+  CreateTransferRequest,
+  CreateUnsignedTransactionRequest,
+  GetTransactionStatusOpts,
+  resolveTransferAmount,
+} from '../chain.base.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
@@ -33,6 +44,18 @@ import {
 import { SolanaAddress } from './solana_address.ts';
 import { SolanaToken } from './solana_token.ts';
 import { UnsignedSolanaTransaction } from './unsigned_solana_transaction.ts';
+
+export interface SolanaJitoConfig {
+  url: string;
+  auth?: string;
+}
+
+export interface JitoBundleStatus {
+  bundleId: string;
+  state: 'Pending' | 'Landed' | 'Failed';
+  slot?: number;
+  err?: string;
+}
 
 export interface SolanaChainInit {
   chainId: number;
@@ -56,6 +79,8 @@ export interface SolanaChainInit {
    * signed `SOLANA_<chainId>_RPC_URL` → `legacyRpcEnvNames` → `defaultRpcUrl`).
    */
   rpcUrl?: string;
+  rpcUrls?: string[];
+  jito?: SolanaJitoConfig;
   /**
    * Additional env var names to consult during RPC URL resolution, tried
    * *after* the derived name and the `SOLANA_<chainId>_RPC_URL` fallback
@@ -67,6 +92,48 @@ export interface SolanaChainInit {
   legacyRpcEnvNames?: readonly string[];
   /** CAIP-2 genesis hash (first 32 chars). Surfaced for the depositron `chainAgnosticName` column. */
   chainAgnosticGenesisHash: string;
+}
+
+export interface CreateSolanaUnsignedTransactionRequest extends CreateUnsignedTransactionRequest {
+  payer: string;
+  instructions: TransactionInstruction[];
+  addressLookupTables?: AddressLookupTableAccount[];
+}
+
+export interface SolanaAccountInfoResult {
+  owner: string;
+  lamports: bigint;
+  data: Uint8Array;
+  executable: boolean;
+  rentEpoch?: bigint;
+}
+
+/** Card-named alias for {@link SolanaAccountInfoResult}. */
+export type SolanaAccountInfo = SolanaAccountInfoResult;
+
+/**
+ * Opaque re-export of `@solana/web3.js`'s `AddressLookupTableAccount` so
+ * consumers can annotate variables holding an ALT without importing
+ * `@solana/web3.js` directly. Obtain instances via
+ * {@link SolanaChain.fetchAddressLookupTable}.
+ */
+export type AltAccount = AddressLookupTableAccount;
+
+/**
+ * The compiled-but-unsigned Solana transaction handed back by
+ * {@link SolanaChain.createUnsignedTransaction}, exposing
+ * `digestForSigning()` (bytes to sign externally) +
+ * `finalizeAndSerialize(signatures)` (returns wire bytes for
+ * {@link SolanaChain.broadcast}). This is the same shape as
+ * {@link UnsignedSolanaTransaction} and re-exported here under the
+ * card-specified name.
+ */
+export type CompiledMessage = UnsignedSolanaTransaction;
+
+export interface SolanaTokenAccountResult {
+  ata: string;
+  exists: boolean;
+  balanceMr?: bigint;
 }
 
 export interface SolanaTransferOptions extends CreateTransferRequest {
@@ -114,11 +181,14 @@ const SOL_PRIORITY_PERCENTILE: Record<Priority, number> = {
 export class SolanaChain extends Chain {
   readonly defaultRpcUrl: string;
   readonly rpcUrl: string | undefined;
+  readonly rpcUrls: readonly string[];
   readonly legacyRpcEnvNames: readonly string[];
   readonly explorerClusterSuffix: string;
   readonly chainAgnosticGenesisHash: string;
+  readonly jito: SolanaJitoConfig | null;
   private readonly _nativeToken: SolanaToken;
   private _connection: Connection | null = null;
+  private _rpcUrlIndex = 0;
 
   constructor(init: SolanaChainInit) {
     super(
@@ -131,9 +201,18 @@ export class SolanaChain extends Chain {
     );
     this.defaultRpcUrl = init.defaultRpcUrl;
     this.rpcUrl = init.rpcUrl;
+    this.rpcUrls = init.rpcUrls ?? [];
+    if (this.rpcUrls.length > 1) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `SolanaChainInit.rpcUrls accepts only ONE endpoint in 0.3.0 (got ${this.rpcUrls.length}). Automatic failover retry is deferred to a follow-up release; passing >1 endpoint would silently discard entries.`,
+        { chainId: init.chainId },
+      );
+    }
     this.legacyRpcEnvNames = init.legacyRpcEnvNames ?? [];
     this.explorerClusterSuffix = init.explorerClusterSuffix ?? '';
     this.chainAgnosticGenesisHash = init.chainAgnosticGenesisHash;
+    this.jito = init.jito ?? null;
     this._nativeToken = SolanaToken.native(init.chainId, init.nativeSymbol, init.nativeDecimals ?? 9);
     registerNonEvmChain(init.chainId, NetworkType.SOLANA);
   }
@@ -195,8 +274,41 @@ export class SolanaChain extends Chain {
    *      the pre-rename `SOLANA_RPC_URL` here)
    *   5. `defaultRpcUrl`  (never throws — public cluster)
    */
+  private resolvedRpcUrlForRedaction(): string | null {
+    try {
+      return this.readRpcUrl();
+    } catch {
+      return null;
+    }
+  }
+
+  private async rpcWrap<T>(fn: () => Promise<T>, label: string): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof ChainError) throw err;
+      const rpc = this.resolvedRpcUrlForRedaction();
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana ${label} failed on ${this.name}`, rpc),
+        { chainId: this.chainId },
+        sanitizeCause(err, rpc),
+      );
+    }
+  }
+
   private readRpcUrl(): string {
     if (this.rpcUrl && this.rpcUrl.trim().length > 0) return this.rpcUrl.trim();
+    if (this.rpcUrls.length > 0) {
+      for (const candidate of this.rpcUrls) {
+        if (candidate && candidate.trim().length > 0) return candidate.trim();
+      }
+      throw new ChainError(
+        ChainErrorKinds.RpcNotConfigured,
+        `${this.name}: rpcUrls was supplied but every entry is blank; refusing to fall back to env or the public default cluster`,
+        { chainId: this.chainId },
+      );
+    }
     const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
     const candidates = [
       this.name.replace(/ /g, '_').toUpperCase() + '_RPC_URL',
@@ -418,19 +530,54 @@ export class SolanaChain extends Chain {
       );
     }
 
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-    const message = MessageV0.compile({
-      payerKey: feePayerPk,
-      instructions,
-      recentBlockhash: blockhash,
-    });
+    const { blockhash, lastValidBlockHeight } = await this.rpcWrap(
+      () => connection.getLatestBlockhash('finalized'),
+      'getLatestBlockhash',
+    );
+    const alts = validateAltList(req.addressLookupTables, this.chainId);
+    let message;
+    try {
+      message = MessageV0.compile({
+        payerKey: feePayerPk,
+        instructions,
+        recentBlockhash: blockhash,
+        addressLookupTableAccounts: alts,
+      });
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana createTransferUnsignedTransaction: MessageV0.compile failed — instruction or ALT layout invalid`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    const tx = new VersionedTransaction(message);
+    let serializedSize: number;
+    try {
+      serializedSize = tx.serialize().length;
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Compiled Solana tx exceeds the serialize buffer; supply addressLookupTables to compress the account list`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (serializedSize > 1232) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Compiled Solana transfer exceeds 1232-byte wire limit; supply addressLookupTables to compress the account list`,
+        { chainId: this.chainId },
+      );
+    }
     return new UnsignedSolanaTransaction({
       chainId: this.chainId,
-      transaction: new VersionedTransaction(message),
+      transaction: tx,
       feePayer: feePayerAddress,
       recentBlockhash: blockhash,
       lastValidBlockHeight,
       instructions,
+      addressLookupTables: alts,
     });
   }
 
@@ -458,6 +605,7 @@ export class SolanaChain extends Chain {
      * When omitted, `from` is also the fee payer (backward-compatible).
      */
     feePayer?: string;
+    addressLookupTables?: AddressLookupTableAccount[];
   }): Promise<UnsignedSolanaTransaction> {
     if (!req.from || !this.validateAddress(req.from)) {
       throw new ChainError(ChainErrorKinds.InvalidAddress, `Invalid sender: ${req.from}`, {
@@ -497,19 +645,54 @@ export class SolanaChain extends Chain {
     }
     for (const ix of req.instructions) allIxs.push(ix);
     const connection = this.getConnection();
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-    const message = MessageV0.compile({
-      payerKey: feePayerPk,
-      instructions: allIxs,
-      recentBlockhash: blockhash,
-    });
+    const { blockhash, lastValidBlockHeight } = await this.rpcWrap(
+      () => connection.getLatestBlockhash('finalized'),
+      'getLatestBlockhash',
+    );
+    const alts = validateAltList(req.addressLookupTables, this.chainId);
+    let message;
+    try {
+      message = MessageV0.compile({
+        payerKey: feePayerPk,
+        instructions: allIxs,
+        recentBlockhash: blockhash,
+        addressLookupTableAccounts: alts,
+      });
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana createInstructionsUnsignedTransaction: MessageV0.compile failed — instruction or ALT layout invalid`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    const tx = new VersionedTransaction(message);
+    let serializedSize: number;
+    try {
+      serializedSize = tx.serialize().length;
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Compiled Solana tx exceeds the serialize buffer; supply addressLookupTables to compress the account list`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (serializedSize > 1232) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Compiled Solana tx exceeds 1232-byte wire limit; supply addressLookupTables to compress the account list`,
+        { chainId: this.chainId },
+      );
+    }
     return new UnsignedSolanaTransaction({
       chainId: this.chainId,
-      transaction: new VersionedTransaction(message),
+      transaction: tx,
       feePayer: feePayerAddress,
       recentBlockhash: blockhash,
       lastValidBlockHeight,
       instructions: allIxs,
+      addressLookupTables: alts,
     });
   }
 
@@ -522,12 +705,16 @@ export class SolanaChain extends Chain {
    */
   async refreshBlockhash(unsigned: UnsignedSolanaTransaction): Promise<UnsignedSolanaTransaction> {
     const connection = this.getConnection();
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+    const { blockhash, lastValidBlockHeight } = await this.rpcWrap(
+      () => connection.getLatestBlockhash('finalized'),
+      'getLatestBlockhash',
+    );
     if (blockhash === unsigned.recentBlockhash) return unsigned;
     const message = MessageV0.compile({
       payerKey: unsigned.feePayerPubkey,
       instructions: unsigned.instructions,
       recentBlockhash: blockhash,
+      addressLookupTableAccounts: unsigned.addressLookupTables,
     });
     return new UnsignedSolanaTransaction({
       chainId: unsigned.chainId,
@@ -536,6 +723,7 @@ export class SolanaChain extends Chain {
       recentBlockhash: blockhash,
       lastValidBlockHeight,
       instructions: unsigned.instructions,
+      addressLookupTables: unsigned.addressLookupTables,
     });
   }
 
@@ -549,14 +737,17 @@ export class SolanaChain extends Chain {
     unsigned: UnsignedSolanaTransaction,
   ): Promise<UnsignedSolanaTransaction> {
     const connection = this.getConnection();
-    const sim = await connection.simulateTransaction(unsigned.transaction, {
-      sigVerify: false,
-      replaceRecentBlockhash: true,
-      commitment: 'confirmed',
-    });
+    const sim = await this.rpcWrap(
+      () => connection.simulateTransaction(unsigned.transaction, {
+        sigVerify: false,
+        replaceRecentBlockhash: true,
+        commitment: 'confirmed',
+      }),
+      'simulateTransaction',
+    );
     if (sim.value.err) {
       throw new ChainError(
-        ChainErrorKinds.InvalidArgument,
+        ChainErrorKinds.SimulationFailed,
         `Solana simulation rejected the tx: ${JSON.stringify(sim.value.err)}`,
         { chainId: this.chainId },
       );
@@ -582,6 +773,7 @@ export class SolanaChain extends Chain {
       payerKey: unsigned.feePayerPubkey,
       instructions: newInstructions,
       recentBlockhash: unsigned.recentBlockhash,
+      addressLookupTableAccounts: unsigned.addressLookupTables,
     });
     return new UnsignedSolanaTransaction({
       chainId: unsigned.chainId,
@@ -590,12 +782,13 @@ export class SolanaChain extends Chain {
       recentBlockhash: unsigned.recentBlockhash,
       lastValidBlockHeight: unsigned.lastValidBlockHeight,
       instructions: newInstructions,
+      addressLookupTables: unsigned.addressLookupTables,
     });
   }
 
   /** Whether the given error came from a preflight simulation rejection (vs network/transport). */
   static isSimulationError(err: unknown): boolean {
-    if (err instanceof ChainError && err.kind === ChainErrorKinds.InvalidArgument) return true;
+    if (err instanceof ChainError && err.kind === ChainErrorKinds.SimulationFailed) return true;
     const msg = (err as { message?: string })?.message ?? '';
     return /simulation failed|transaction simulation failed/i.test(msg);
   }
@@ -606,7 +799,95 @@ export class SolanaChain extends Chain {
     return /blockhash not found|expired blockhash|blockhash.*expired/i.test(msg);
   }
 
-  async getTransactionStatus(txHash: string): Promise<SolanaTransactionStatus> {
+  async getTransactionStatus(txHash: string, opts?: GetTransactionStatusOpts): Promise<SolanaTransactionStatus>;
+  async getTransactionStatus(txHashes: string[], opts?: GetTransactionStatusOpts): Promise<SolanaTransactionStatus[]>;
+  async getTransactionStatus(
+    txHash: string | string[],
+    opts?: GetTransactionStatusOpts,
+  ): Promise<SolanaTransactionStatus | SolanaTransactionStatus[]> {
+    if (Array.isArray(txHash)) {
+      return runSolanaBatchStatus(txHash, (h, batchSignal) => {
+        const composedSignal = opts?.signal
+          ? anySignal(opts.signal, batchSignal)
+          : batchSignal;
+        return this.getSingleSolanaStatus(h, { ...opts, signal: composedSignal });
+      });
+    }
+    return this.getSingleSolanaStatus(txHash, opts);
+  }
+
+  private async getSingleSolanaStatus(txHash: string, opts?: GetTransactionStatusOpts): Promise<SolanaTransactionStatus> {
+    if (opts?.confirmations !== undefined && opts.confirmations > 1 && !opts.wait) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `getTransactionStatus: confirmations > 1 requires wait: true (a single status read cannot enforce finality)`,
+        { chainId: this.chainId, txHash },
+      );
+    }
+    if (!opts?.wait) return this.getSolanaStatusOnce(txHash);
+    if (opts.signal?.aborted) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus aborted before first poll`, { chainId: this.chainId, txHash });
+    }
+    const c = opts.confirmations ?? 1;
+    if (c !== 1 && c < 32) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana getTransactionStatus.confirmations must be 1 (confirmed) or >=32 (finalized); ${c} would ambiguously map otherwise.`,
+        { chainId: this.chainId, txHash },
+      );
+    }
+    if (opts.timeoutMs === undefined) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `getTransactionStatus: wait: true requires an explicit timeoutMs. Unbounded polling would pin an RPC worker + connection forever if the tx is dropped.`,
+        { chainId: this.chainId, txHash },
+      );
+    }
+    if (opts.timeoutMs < 0) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus: timeoutMs must be >= 0`, { chainId: this.chainId, txHash });
+    }
+    const deadline = Date.now() + opts.timeoutMs;
+    const pollMs = Math.max(400, this.blockTimeSeconds * 1000);
+    const wantFinalized = c >= 32;
+    let last: SolanaTransactionStatus;
+    while (true) {
+      last = await this.getSolanaStatusOnce(txHash);
+      if (last.status === 'Success' || last.status === 'Failed') {
+        if (!wantFinalized) return last;
+        let sigStatus;
+        try {
+          sigStatus = await this.getConnection().getSignatureStatus(txHash, { searchTransactionHistory: true });
+        } catch (err) {
+          throw new ChainError(
+            ChainErrorKinds.RpcError,
+            sanitizeMessage(`Failed to poll signature status for finalization on ${this.name}`, this.resolvedRpcUrlForRedaction()),
+            { chainId: this.chainId, txHash },
+            sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
+          );
+        }
+        if (sigStatus.value?.confirmationStatus === 'finalized') return last;
+        if (Date.now() >= deadline) {
+          throw new ChainError(
+            ChainErrorKinds.RpcError,
+            `getTransactionStatus timed out after ${opts.timeoutMs}ms before reaching finalized; last confirmation status: ${sigStatus.value?.confirmationStatus ?? 'unknown'}. Consumer must NOT credit as final.`,
+            { chainId: this.chainId, txHash },
+          );
+        }
+      } else if (Date.now() >= deadline) {
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          `getTransactionStatus timed out after ${opts.timeoutMs}ms; last observed status was ${last.status}. Consumer must NOT credit as final AND must NOT re-sign — the tx may still land. Re-broadcast the same signed bytes or continue polling with the same txHash.`,
+          { chainId: this.chainId, txHash },
+        );
+      }
+      await solanaInterruptibleSleep(pollMs, opts.signal);
+      if (opts.signal?.aborted) {
+        throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus aborted mid-poll`, { chainId: this.chainId, txHash });
+      }
+    }
+  }
+
+  private async getSolanaStatusOnce(txHash: string): Promise<SolanaTransactionStatus> {
     const connection = this.getConnection();
     // Best-effort read of the current rpc URL for message/cause scrubbing.
     // readRpcUrl throws when nothing is configured; there'd be no
@@ -735,7 +1016,502 @@ export class SolanaChain extends Chain {
   }
 
   async getChainTipHeight(): Promise<number> {
-    return this.getConnection().getSlot('confirmed');
+    return this.rpcWrap(() => this.getConnection().getSlot('confirmed'), 'getSlot');
+  }
+
+  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts & { skipPreflight?: boolean; maxRetries?: number; via?: 'direct' | 'jito' }): Promise<string> {
+    if (opts && (opts as { signal?: unknown }).signal !== undefined) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `Solana broadcast: signal is not honored in 0.3.0 (silently ignoring would let a caller conclude 'not sent' while the tx still lands). Cancellation returns in 0.3.1.`,
+        { chainId: this.chainId },
+      );
+    }
+    let bytes: Uint8Array;
+    if (typeof signed === 'string') {
+      const stripped = signed.startsWith('0x') ? signed.slice(2) : signed;
+      if (!/^[0-9a-fA-F]+$/.test(stripped) || stripped.length % 2 !== 0 || stripped.length === 0) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `Solana broadcast: signed must be Uint8Array or 0x-prefixed hex; got malformed string (len ${signed.length}). Base58/base64 encodings are NOT accepted — decode to bytes first.`,
+          { chainId: this.chainId },
+        );
+      }
+      bytes = new Uint8Array(Buffer.from(stripped, 'hex'));
+    } else {
+      bytes = signed;
+    }
+    if (bytes.length < 65) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana broadcast: signed bytes must be >= 65 bytes (1 sig-count + 64-byte signature), got ${bytes.length}`,
+        { chainId: this.chainId },
+      );
+    }
+    if (bytes.length > 1232) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Solana broadcast: signed tx is ${bytes.length} bytes, exceeds 1232-byte wire limit`,
+        { chainId: this.chainId },
+      );
+    }
+    if (opts?.via === 'jito') {
+      if (!this.jito) {
+        throw new ChainError(
+          ChainErrorKinds.FeatureNotSupported,
+          `Solana broadcast: via: 'jito' requires SolanaChain to be constructed with jito config`,
+          { chainId: this.chainId },
+        );
+      }
+      if (opts.skipPreflight !== undefined || opts.maxRetries !== undefined) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `Solana broadcast: skipPreflight/maxRetries do not apply to the Jito path (block-engine has its own retry semantics)`,
+          { chainId: this.chainId },
+        );
+      }
+      const signature = signatureBase58FromBytes(bytes);
+      await this.submitJitoBundle([bytes]);
+      return signature;
+    }
+    try {
+      const sig = await this.getConnection().sendRawTransaction(bytes, {
+        skipPreflight: opts?.skipPreflight ?? false,
+        maxRetries: opts?.maxRetries,
+      });
+      return sig;
+    } catch (err) {
+      const rawMsg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+      if (rawMsg.includes('already been processed') || rawMsg.includes('already processed')) {
+        return signatureBase58FromBytes(bytes);
+      }
+      throw this.classifyBroadcastError(err);
+    }
+  }
+
+  async submitJitoBundle(signedTxs: Uint8Array[], opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<string> {
+    if (!this.jito) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        'Jito bundle submission requires SolanaChain to be constructed with jito config',
+        { chainId: this.chainId },
+      );
+    }
+    const body = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'sendBundle',
+      params: [
+        signedTxs.map((b) => Buffer.from(b).toString('base64')),
+        { encoding: 'base64' },
+      ],
+    };
+    const jitoUrl = this.jito.url;
+    const signal = combineJitoSignal(opts?.signal, opts?.timeoutMs ?? 15_000);
+    let json: { result?: string; error?: { message?: string } };
+    try {
+      const resp = await fetch(jitoUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.jito.auth ? { Authorization: `Bearer ${this.jito.auth}` } : {}),
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
+      if (!resp.ok) {
+        // 401/403 = jito auth config problem, not a bundle rejection.
+        // Treat as RpcError so consumer doesn't push the tx toward re-sign.
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          sanitizeMessage(`Jito submitBundle HTTP ${resp.status} on ${this.name}`, jitoUrl),
+          { chainId: this.chainId },
+        );
+      }
+      json = (await resp.json()) as { result?: string; error?: { message?: string } };
+    } catch (err) {
+      if (err instanceof ChainError) throw err;
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Jito submitBundle transport failed on ${this.name}`, jitoUrl),
+        { chainId: this.chainId },
+        sanitizeCause(err, jitoUrl),
+      );
+    }
+    if (json.error || !json.result) {
+      throw new ChainError(
+        ChainErrorKinds.BroadcastRejected,
+        sanitizeMessage(`Jito submitBundle rejected on ${this.name}: ${json.error?.message ?? 'no bundle id returned'}`, jitoUrl),
+        { chainId: this.chainId },
+      );
+    }
+    return json.result;
+  }
+
+  async getBundleStatus(bundleId: string, opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<JitoBundleStatus>;
+  async getBundleStatus(bundleIds: string[], opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<JitoBundleStatus[]>;
+  async getBundleStatus(
+    bundleId: string | string[],
+    opts?: { signal?: AbortSignal; timeoutMs?: number },
+  ): Promise<JitoBundleStatus | JitoBundleStatus[]> {
+    if (!this.jito) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        'Jito getBundleStatus requires SolanaChain to be constructed with jito config',
+        { chainId: this.chainId },
+      );
+    }
+    const ids = Array.isArray(bundleId) ? bundleId : [bundleId];
+    const body = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'getBundleStatuses',
+      params: [ids],
+    };
+    type JitoStatusRow = { bundle_id?: string; slot?: number; confirmation_status?: string; err?: { Ok?: null } | { Err?: string } | null };
+    type JitoStatusResp = { result?: { value?: unknown }; error?: { message?: string } };
+    let json: JitoStatusResp;
+    const jitoUrl = this.jito.url;
+    const signal = combineJitoSignal(opts?.signal, opts?.timeoutMs ?? 15_000);
+    try {
+      const resp = await fetch(jitoUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.jito.auth ? { Authorization: `Bearer ${this.jito.auth}` } : {}),
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
+      if (!resp.ok) {
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          sanitizeMessage(`Jito getBundleStatuses HTTP ${resp.status} on ${this.name}`, jitoUrl),
+          { chainId: this.chainId },
+        );
+      }
+      json = (await resp.json()) as JitoStatusResp;
+    } catch (err) {
+      if (err instanceof ChainError) throw err;
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Jito getBundleStatuses transport failed on ${this.name}`, jitoUrl),
+        { chainId: this.chainId },
+        sanitizeCause(err, jitoUrl),
+      );
+    }
+    if (json.error) {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Jito getBundleStatuses error on ${this.name}: ${json.error.message ?? 'unknown'}`, jitoUrl),
+        { chainId: this.chainId },
+      );
+    }
+    const rawValue = json.result?.value;
+    if (rawValue !== undefined && rawValue !== null && !Array.isArray(rawValue)) {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Jito getBundleStatuses returned malformed value (expected array or null)`, jitoUrl),
+        { chainId: this.chainId },
+      );
+    }
+    const rows: (JitoStatusRow | null)[] = Array.isArray(rawValue) ? rawValue : [];
+    const statuses: JitoBundleStatus[] = ids.map((id): JitoBundleStatus => {
+      const row = rows.find((r): r is JitoStatusRow => r != null && r.bundle_id === id);
+      if (!row) return { bundleId: id, state: 'Pending' };
+      // Jito's err field varies: null (success), { Ok: null } (success),
+      // { Err: <anything> } (failed), or a plain string (some proxies).
+      // Anything that's non-null AND not { Ok: null } means failure.
+      const rawErr = row.err;
+      const isOk = rawErr === null || rawErr === undefined
+        || (typeof rawErr === 'object' && 'Ok' in rawErr && rawErr.Ok === null && !('Err' in rawErr));
+      const errStr = isOk
+        ? undefined
+        : typeof rawErr === 'string'
+          ? rawErr
+          : typeof rawErr === 'object' && rawErr !== null && 'Err' in rawErr
+            ? String((rawErr as { Err: unknown }).Err)
+            : JSON.stringify(rawErr);
+      const confStatus = row.confirmation_status;
+      const state: JitoBundleStatus['state'] = errStr !== undefined
+        ? 'Failed'
+        : (confStatus === 'finalized' || confStatus === 'confirmed' ? 'Landed' : 'Pending');
+      return { bundleId: id, state, slot: row.slot, err: errStr };
+    });
+    return Array.isArray(bundleId) ? statuses : statuses[0];
+  }
+
+  async createUnsignedTransaction(
+    req: CreateSolanaUnsignedTransactionRequest,
+  ): Promise<UnsignedSolanaTransaction> {
+    if (req && (req as { signal?: unknown }).signal !== undefined) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `Solana createUnsignedTransaction: signal is not honored in 0.3.0 (silently ignoring would let a caller conclude 'not built' while getLatestBlockhash continues). Cancellation returns in 0.3.1.`,
+        { chainId: this.chainId },
+      );
+    }
+    if (!req.payer) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        'CreateSolanaUnsignedTransactionRequest.payer is required',
+        { chainId: this.chainId },
+      );
+    }
+    let payerKey: PublicKey;
+    try {
+      payerKey = new PublicKey(req.payer);
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidAddress,
+        `Invalid Solana payer pubkey: ${req.payer}`,
+        { chainId: this.chainId, address: req.payer },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (!Array.isArray(req.instructions) || req.instructions.length === 0) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        'CreateSolanaUnsignedTransactionRequest.instructions must be a non-empty array',
+        { chainId: this.chainId },
+      );
+    }
+    const connection = this.getConnection();
+    let blockhash: string;
+    let lastValidBlockHeight: number;
+    try {
+      const bh = await connection.getLatestBlockhash('finalized');
+      blockhash = bh.blockhash;
+      lastValidBlockHeight = bh.lastValidBlockHeight;
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana createUnsignedTransaction: getLatestBlockhash failed on ${this.name}`, this.resolvedRpcUrlForRedaction()),
+        { chainId: this.chainId },
+        sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
+      );
+    }
+    let message;
+    try {
+      message = MessageV0.compile({
+        payerKey,
+        instructions: req.instructions,
+        recentBlockhash: blockhash,
+        addressLookupTableAccounts: req.addressLookupTables ?? [],
+      });
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana createUnsignedTransaction: MessageV0.compile failed — instruction or ALT layout invalid`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    const tx = new VersionedTransaction(message);
+    let serializedSize: number;
+    try {
+      serializedSize = tx.serialize().length;
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Compiled Solana tx exceeds the serialize buffer; supply addressLookupTables to compress the account list`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (serializedSize > 1232) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Compiled Solana tx exceeds 1232-byte wire limit; supply addressLookupTables to reduce size`,
+        { chainId: this.chainId },
+      );
+    }
+    return new UnsignedSolanaTransaction({
+      chainId: this.chainId,
+      transaction: tx,
+      feePayer: req.payer,
+      recentBlockhash: blockhash,
+      lastValidBlockHeight,
+      instructions: req.instructions,
+      addressLookupTables: req.addressLookupTables,
+    });
+  }
+
+  async getAccountInfo(pubkey: string): Promise<SolanaAccountInfoResult | null>;
+  async getAccountInfo(pubkeys: string[]): Promise<(SolanaAccountInfoResult | null)[]>;
+  async getAccountInfo(
+    pubkey: string | string[],
+  ): Promise<SolanaAccountInfoResult | null | (SolanaAccountInfoResult | null)[]> {
+    const connection = this.getConnection();
+    const toPk = (raw: string): PublicKey => {
+      try {
+        return new PublicKey(raw);
+      } catch (err) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidAddress,
+          `Invalid Solana pubkey: ${raw}`,
+          { chainId: this.chainId, address: raw },
+          err instanceof Error ? err : undefined,
+        );
+      }
+    };
+    if (Array.isArray(pubkey)) {
+      const pks = pubkey.map(toPk);
+      try {
+        const infos = await connection.getMultipleAccountsInfo(pks);
+        return infos.map((info) => (info === null ? null : toAccountInfoResult(info)));
+      } catch (err) {
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          sanitizeMessage(`Solana getMultipleAccountsInfo RPC failure on ${this.name}`, this.resolvedRpcUrlForRedaction()),
+          { chainId: this.chainId },
+          sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
+        );
+      }
+    }
+    try {
+      const info = await connection.getAccountInfo(toPk(pubkey));
+      return info === null ? null : toAccountInfoResult(info);
+    } catch (err) {
+      if (err instanceof ChainError) throw err;
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana getAccountInfo RPC failure on ${this.name}`, this.resolvedRpcUrlForRedaction()),
+        { chainId: this.chainId, address: pubkey },
+        sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
+      );
+    }
+  }
+
+  async getTokenAccount(owner: string, mint: string, opts?: { allowOwnerOffCurve?: boolean }): Promise<SolanaTokenAccountResult> {
+    let ownerPk: PublicKey;
+    let mintPk: PublicKey;
+    try {
+      ownerPk = new PublicKey(owner);
+    } catch (err) {
+      throw new ChainError(ChainErrorKinds.InvalidAddress, `Invalid Solana owner pubkey: ${owner}`, { chainId: this.chainId, address: owner }, err instanceof Error ? err : undefined);
+    }
+    try {
+      mintPk = new PublicKey(mint);
+    } catch (err) {
+      throw new ChainError(ChainErrorKinds.InvalidTokenIdentifier, `Invalid Solana mint pubkey: ${mint}`, { chainId: this.chainId, identifier: mint }, err instanceof Error ? err : undefined);
+    }
+    let programId: PublicKey;
+    try {
+      programId = await this.resolveTokenProgramId(mintPk);
+    } catch (err) {
+      if (err instanceof ChainError) throw err;
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana getTokenAccount: mint-program lookup failed on ${this.name}`, this.resolvedRpcUrlForRedaction()),
+        { chainId: this.chainId, identifier: mint },
+        sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
+      );
+    }
+    let ataPk: PublicKey;
+    try {
+      ataPk = getAssociatedTokenAddressSync(mintPk, ownerPk, opts?.allowOwnerOffCurve ?? false, programId);
+    } catch (err) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `ATA derivation failed: ${err instanceof Error ? err.message : String(err)}`, { chainId: this.chainId, address: owner }, err instanceof Error ? err : undefined);
+    }
+    try {
+      const acc = await getAccount(this.getConnection(), ataPk, undefined, programId);
+      return { ata: ataPk.toBase58(), exists: true, balanceMr: acc.amount };
+    } catch (err) {
+      if (err instanceof TokenAccountNotFoundError) {
+        return { ata: ataPk.toBase58(), exists: false, balanceMr: undefined };
+      }
+      if (err instanceof TokenInvalidAccountOwnerError) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `Solana getTokenAccount: account at ${ataPk.toBase58()} exists but is owned by an unexpected program (hostile squat or wrong mint program). Consumer should NOT create-ATA blindly.`,
+          { chainId: this.chainId, address: ataPk.toBase58() },
+          err,
+        );
+      }
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana getTokenAccount RPC failure on ${this.name}`, this.resolvedRpcUrlForRedaction()),
+        { chainId: this.chainId, address: ataPk.toBase58() },
+        sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
+      );
+    }
+  }
+
+  async fetchAddressLookupTable(altAddress: string): Promise<AddressLookupTableAccount> {
+    let pk: PublicKey;
+    try {
+      pk = new PublicKey(altAddress);
+    } catch (err) {
+      throw new ChainError(ChainErrorKinds.InvalidAddress, `Invalid ALT pubkey: ${altAddress}`, { chainId: this.chainId, address: altAddress }, err instanceof Error ? err : undefined);
+    }
+    let res: { value: AddressLookupTableAccount | null };
+    try {
+      res = await this.getConnection().getAddressLookupTable(pk);
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana fetchAddressLookupTable RPC failure on ${this.name}`, this.resolvedRpcUrlForRedaction()),
+        { chainId: this.chainId, address: altAddress },
+        sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
+      );
+    }
+    if (!res.value) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Address lookup table ${altAddress} not found`,
+        { chainId: this.chainId, address: altAddress },
+      );
+    }
+    return res.value;
+  }
+
+  private classifyBroadcastError(err: unknown): ChainError {
+    const rpc = this.resolvedRpcUrlForRedaction();
+    const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+    const safeCause = sanitizeCause(err, rpc);
+    const transportSignals = /econnreset|econnrefused|econnaborted|etimedout|enotfound|network request failed|fetch failed|socket hang up|too\s+many\s+requests|rate.?limit/;
+    if (/blockhash\s+not\s+found|blockhash\s+expired|block\s+height\s+exceeded/.test(msg)) {
+      return new ChainError(
+        ChainErrorKinds.BlockhashExpired,
+        sanitizeMessage(`Solana broadcast rejected: blockhash expired on ${this.name}`, rpc),
+        { chainId: this.chainId },
+        safeCause,
+      );
+    }
+    // Preflight/simulation MUST be checked before the size predicate — Solana
+    // preflight errors routinely embed "exceeds <N>" for CU / account-count
+    // limits, and would otherwise be misclassified as TransactionTooLarge.
+    if (msg.includes('preflight') || msg.includes('simulation failed') || msg.includes('sendtransactionerror')) {
+      return new ChainError(
+        ChainErrorKinds.SimulationFailed,
+        sanitizeMessage(`Solana broadcast rejected: preflight simulation failed on ${this.name}`, rpc),
+        { chainId: this.chainId },
+        safeCause,
+      );
+    }
+    if (/transaction\s+too\s+large|encoded\/raw transaction size exceeds|exceeds\s+the\s+maximum\s+transaction\s+size/.test(msg)) {
+      return new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        sanitizeMessage(`Solana broadcast rejected: transaction exceeds 1232 bytes on ${this.name} (use ALT)`, rpc),
+        { chainId: this.chainId },
+        safeCause,
+      );
+    }
+    if (transportSignals.test(msg)) {
+      return new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana broadcast RPC transport failure on ${this.name}`, rpc),
+        { chainId: this.chainId },
+        safeCause,
+      );
+    }
+    return new ChainError(
+      ChainErrorKinds.BroadcastRejected,
+      sanitizeMessage(`Solana broadcast rejected on ${this.name}`, rpc),
+      { chainId: this.chainId },
+      safeCause,
+    );
   }
 
   /**
@@ -968,4 +1744,141 @@ export class SolanaChain extends Chain {
     }
     return result;
   }
+}
+
+function validateAltList(input: unknown, chainId: number): AddressLookupTableAccount[] {
+  if (input === undefined || input === null) return [];
+  if (!Array.isArray(input)) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `addressLookupTables must be an array of AddressLookupTableAccount, got ${typeof input}`,
+      { chainId },
+    );
+  }
+  for (let i = 0; i < input.length; i++) {
+    const a = input[i];
+    if (a === null || typeof a !== 'object' || !('key' in a) || !('state' in a)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `addressLookupTables[${i}] is not an AddressLookupTableAccount (missing key/state). Use SolanaChain.fetchAddressLookupTable to obtain valid instances.`,
+        { chainId },
+      );
+    }
+  }
+  return input as AddressLookupTableAccount[];
+}
+
+export function signatureBase58FromBytes(txBytes: Uint8Array): string {
+  if (txBytes.length < 65) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `Solana broadcast: signed bytes too short (${txBytes.length}) to extract signature`,
+      {},
+    );
+  }
+  const numSigs = txBytes[0];
+  if (numSigs === 0 || txBytes.length < 1 + 64) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `Solana broadcast: no signatures in serialized transaction`,
+      {},
+    );
+  }
+  const sigBytes = txBytes.subarray(1, 1 + 64);
+  return bs58encode(sigBytes);
+}
+
+const BS58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+export function bs58encode(bytes: Uint8Array): string {
+  let n = 0n;
+  for (const b of bytes) n = (n << 8n) | BigInt(b);
+  let out = '';
+  while (n > 0n) {
+    const rem = Number(n % 58n);
+    out = BS58_ALPHABET[rem] + out;
+    n = n / 58n;
+  }
+  for (const b of bytes) {
+    if (b === 0) out = '1' + out;
+    else break;
+  }
+  return out;
+}
+
+const SOLANA_BATCH_STATUS_CONCURRENCY = 8;
+
+async function runSolanaBatchStatus<T>(
+  items: string[],
+  fetchOne: (item: string, batchSignal: AbortSignal) => Promise<T>,
+): Promise<T[]> {
+  const results = new Array<T>(items.length);
+  const ac = new AbortController();
+  let cursor = 0;
+  const workers: Promise<void>[] = [];
+  const spawn = async (): Promise<void> => {
+    while (!ac.signal.aborted) {
+      const idx = cursor++;
+      if (idx >= items.length) return;
+      try {
+        results[idx] = await fetchOne(items[idx], ac.signal);
+      } catch (err) {
+        ac.abort();
+        throw err;
+      }
+    }
+  };
+  const workerCount = Math.min(SOLANA_BATCH_STATUS_CONCURRENCY, items.length);
+  for (let i = 0; i < workerCount; i++) workers.push(spawn());
+  await Promise.all(workers);
+  return results;
+}
+
+function anySignal(a: AbortSignal, b: AbortSignal): AbortSignal {
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([a, b]);
+  const ac = new AbortController();
+  const onAbort = (): void => ac.abort();
+  if (a.aborted || b.aborted) ac.abort();
+  else {
+    a.addEventListener('abort', onAbort, { once: true });
+    b.addEventListener('abort', onAbort, { once: true });
+  }
+  return ac.signal;
+}
+
+function combineJitoSignal(consumerSignal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  if (!consumerSignal) return timeout;
+  const ac = new AbortController();
+  const onAbort = (): void => ac.abort();
+  if (consumerSignal.aborted || timeout.aborted) ac.abort();
+  else {
+    consumerSignal.addEventListener('abort', onAbort, { once: true });
+    timeout.addEventListener('abort', onAbort, { once: true });
+  }
+  return ac.signal;
+}
+
+async function solanaInterruptibleSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return;
+  await new Promise<void>((resolve) => {
+    const t = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(t);
+      resolve();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function toAccountInfoResult(info: AccountInfo<Buffer>): SolanaAccountInfoResult {
+  return {
+    owner: info.owner.toBase58(),
+    lamports: BigInt(info.lamports),
+    data: Uint8Array.from(info.data),
+    executable: info.executable,
+    rentEpoch: info.rentEpoch === undefined ? undefined : BigInt(info.rentEpoch),
+  };
 }

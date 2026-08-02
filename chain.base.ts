@@ -43,6 +43,52 @@ export interface CreateTransferRequest {
    */
   gasPricing?: GasPricingType;
   memo?: string;
+  /**
+   * Solana-only: Address Lookup Table accounts to compile the MessageV0
+   * against. Ignored on non-Solana chains. Consumers get these via
+   * `SolanaChain.fetchAddressLookupTable(altAddress)`.
+   */
+  addressLookupTables?: unknown[];
+}
+
+/**
+ * EIP-7702 authorization tuple. Field names match ethers v6's
+ * `AuthorizationLike` shape so a consumer can spread an
+ * UnsignedEvmTransaction (or its authorizationList) into
+ * `wallet.signTransaction({ ... })` without a translation step.
+ */
+export interface Eip7702Authorization {
+  chainId: number;
+  /** The delegate contract address. Named `address` to match ethers' TransactionLike. */
+  address: string;
+  nonce: bigint;
+  signature: { r: string; s: string; yParity: 0 | 1 };
+}
+
+export interface CreateUnsignedTransactionRequest {
+  // Typed `never` for the same reason as BroadcastOpts.signal — silently
+  // ignoring cancellation would let a caller conclude "not built" while
+  // Solana's blockhash fetch continues and the transaction gets built
+  // against a blockhash the caller no longer wants. Cancellation returns
+  // when the failover RPC client seam ships in 0.3.1.
+  signal?: never;
+}
+
+export interface BroadcastOpts {
+  // Typed `never` (not merely absent) so passing `{signal}` fails at compile.
+  // An empty interface is TS's top type — excess-property checking is skipped
+  // against `{}`, so consumers could write `broadcast(bytes, {signal})` and
+  // silently ignore the signal → conclude "not sent" while the tx still lands
+  // on chain. `signal?: never` closes the hole. Cancellation returns when the
+  // failover RPC client seam ships in 0.3.1.
+  signal?: never;
+}
+
+export interface GetTransactionStatusOpts {
+  wait?: boolean;
+  timeoutMs?: number;
+  confirmations?: number;
+  signal?: AbortSignal;
 }
 
 export type ResolvedTransferAmount =
@@ -212,7 +258,10 @@ export abstract class Chain {
 
   abstract createTransferUnsignedTransaction(req: CreateTransferRequest): Promise<UnsignedTransaction>;
 
-  abstract getTransactionStatus(txHash: string): Promise<TransactionStatus>;
+  abstract broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string>;
+
+  abstract getTransactionStatus(txHash: string, opts?: GetTransactionStatusOpts): Promise<TransactionStatus>;
+  abstract getTransactionStatus(txHashes: string[], opts?: GetTransactionStatusOpts): Promise<TransactionStatus[]>;
 
   abstract getChainTipHeight(): Promise<number>;
 

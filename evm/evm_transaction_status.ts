@@ -194,11 +194,13 @@ export interface EvmTransactionStatusInit {
   balanceChanges?: NestedBalanceChanges | null;
   logs?: readonly EvmParsedTransactionLog[] | null;
   fees?: EvmTransactionGasFees | null;
+  blockNumber?: number | null;
 }
 
 export class EvmTransactionStatus extends TransactionStatus {
   readonly logs: readonly EvmParsedTransactionLog[] | null;
   readonly fees: EvmTransactionGasFees | null;
+  readonly blockNumber: number | null;
 
   constructor(init: EvmTransactionStatusInit) {
     super({
@@ -210,6 +212,7 @@ export class EvmTransactionStatus extends TransactionStatus {
     });
     this.logs = init.logs ?? null;
     this.fees = init.fees ?? null;
+    this.blockNumber = init.blockNumber ?? null;
   }
 
   static successful(args: {
@@ -218,6 +221,7 @@ export class EvmTransactionStatus extends TransactionStatus {
     balanceChanges: NestedBalanceChanges;
     logs: readonly EvmParsedTransactionLog[];
     fees: EvmTransactionGasFees;
+    blockNumber?: number | null;
   }): EvmTransactionStatus {
     return new EvmTransactionStatus({
       chainId: args.chainId,
@@ -227,6 +231,7 @@ export class EvmTransactionStatus extends TransactionStatus {
       logs: args.logs,
       fees: args.fees,
       error: null,
+      blockNumber: args.blockNumber ?? null,
     });
   }
 
@@ -235,6 +240,7 @@ export class EvmTransactionStatus extends TransactionStatus {
     inclusionAt: Date | null;
     error: TransactionErrorInfo;
     fees: EvmTransactionGasFees;
+    blockNumber?: number | null;
   }): EvmTransactionStatus {
     return new EvmTransactionStatus({
       chainId: args.chainId,
@@ -244,6 +250,7 @@ export class EvmTransactionStatus extends TransactionStatus {
       balanceChanges: null,
       logs: null,
       fees: args.fees,
+      blockNumber: args.blockNumber ?? null,
     });
   }
 
