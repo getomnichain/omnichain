@@ -63,6 +63,36 @@ describe('sanitizeMessage — URL redactor', () => {
     expect(out).toContain('Authorization: <redacted>');
   });
 
+  it('redacts x-api-key: header value (Helius/Alchemy/QuickNode shape)', () => {
+    const out = sanitizeMessage('req headers: x-api-key: SECRETVALUE123abc', null);
+    expect(out).not.toContain('SECRETVALUE123abc');
+    expect(out).toContain('x-api-key: <redacted>');
+  });
+
+  it('redacts api-key / api_key / Api-Key case variants', () => {
+    expect(sanitizeMessage('Api-Key: SECRET123abc', null)).toContain('<redacted>');
+    expect(sanitizeMessage('X-Api-Key: SECRET123abc', null)).toContain('<redacted>');
+    expect(sanitizeMessage('api_key: SECRET123abc', null)).toContain('<redacted>');
+  });
+
+  it('redacts /vN/ key when terminated by comma (axios wrapping)', () => {
+    const out = sanitizeMessage('POST https://rpc.selfhosted.io/v3/AbCdEfGhIjKlMnOpQrSt, retrying', null);
+    expect(out).not.toContain('AbCdEfGhIjKlMnOpQrSt');
+    expect(out).toContain('/v3/<redacted>');
+  });
+
+  it('redacts /vN/ key wrapped in parens (log context wrapping)', () => {
+    const out = sanitizeMessage('failed (url: https://x.example/v3/AbCdEfGhIjKlMnOpQrSt)', null);
+    expect(out).not.toContain('AbCdEfGhIjKlMnOpQrSt');
+    expect(out).toContain('/v3/<redacted>');
+  });
+
+  it('redacts /rpc/ path segment (self-hosted provider convention)', () => {
+    const out = sanitizeMessage('POST https://rpc.selfhosted.io/rpc/AbCdEfGhIjKlMnOpQrSt/tx', null);
+    expect(out).not.toContain('AbCdEfGhIjKlMnOpQrSt');
+    expect(out).toContain('/rpc/<redacted>');
+  });
+
   it('redacts Authorization: Bearer combined form (either rule wins)', () => {
     const msg = 'Authorization: Bearer TOK_ABC';
     const out = sanitizeMessage(msg, null);

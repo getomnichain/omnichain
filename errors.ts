@@ -18,7 +18,8 @@ export function sanitizeMessage(message: string, rpcUrl: string | null): string 
   out = out.replace(/([?&])([a-zA-Z_-]*(?:api[-_]?key|key|token|access[-_]?token|secret|auth))=[^\s"&]+/gi, '$1$2=<redacted>');
   out = out.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer <redacted>');
   out = out.replace(/Authorization:\s*[A-Za-z0-9._~+/=-]+/gi, 'Authorization: <redacted>');
-  out = out.replace(/(\/v\d+|\/api)\/[A-Za-z0-9_-]{16,}(?=\/|$|\s|["'])/gi, '$1/<redacted>');
+  out = out.replace(/((?:x-)?api[-_]?key)\s*:\s*[A-Za-z0-9._~+/=-]+/gi, '$1: <redacted>');
+  out = out.replace(/(\/v\d+|\/api|\/rpc)\/[A-Za-z0-9_-]{16,}(?=[\s/,)\];.'"]|$)/gi, '$1/<redacted>');
   out = out.replace(/https?:\/\/[^\s"'`]*\.(?:alchemy\.com|infura\.io|quiknode\.pro|helius-rpc\.com|ankr\.com|blastapi\.io|drpc\.org)\/[A-Za-z0-9_./=-]{8,}/gi, (m) => {
     try {
       const u = new URL(m);
