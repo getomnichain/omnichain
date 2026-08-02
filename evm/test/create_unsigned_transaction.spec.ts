@@ -47,7 +47,7 @@ describe('EvmChain.createUnsignedTransaction — arbitrary call', () => {
 describe('EvmChain.createUnsignedTransaction — EIP-7702 form', () => {
   const validAuth = {
     chainId: 1,
-    delegate: '0x000000000000000000000000000000000000dEaD',
+    address: '0x000000000000000000000000000000000000dEaD',
     nonce: 0n,
     signature: { r: '0x00', s: '0x00', yParity: 0 as const },
   };

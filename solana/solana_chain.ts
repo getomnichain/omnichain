@@ -1024,6 +1024,10 @@ export class SolanaChain extends Chain {
       });
       return sig;
     } catch (err) {
+      const rawMsg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+      if (rawMsg.includes('already been processed') || rawMsg.includes('already processed')) {
+        return signatureBase58FromBytes(bytes);
+      }
       throw this.classifyBroadcastError(err);
     }
   }

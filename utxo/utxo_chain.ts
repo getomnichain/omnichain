@@ -435,6 +435,7 @@ export class UtxoChain extends Chain {
 
   async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
     let hex: string;
+    let txBytes: Buffer;
     if (typeof signed === 'string') {
       const stripped = signed.startsWith('0x') ? signed.slice(2) : signed;
       if (!/^[0-9a-fA-F]+$/.test(stripped) || stripped.length % 2 !== 0 || stripped.length === 0) {
@@ -445,8 +446,10 @@ export class UtxoChain extends Chain {
         );
       }
       hex = stripped;
+      txBytes = Buffer.from(stripped, 'hex');
     } else {
       hex = Buffer.from(signed).toString('hex');
+      txBytes = Buffer.from(signed);
     }
     if (opts?.signal?.aborted) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, 'UTXO broadcast: signal already aborted', { chainId: this.chainId });
@@ -455,17 +458,47 @@ export class UtxoChain extends Chain {
       const { txid } = await this.broadcaster.broadcast(hex);
       return txid;
     } catch (err) {
-      const body = (err as { response?: { data?: unknown } }).response?.data;
+      const resp = (err as { response?: { data?: unknown; status?: number } }).response;
+      const body = resp?.data;
+      const httpStatus = resp?.status;
       const bodyStr = body === undefined ? '' : ` — node response: ${typeof body === 'string' ? body : JSON.stringify(body)}`;
       const rawMsg = (err instanceof Error ? err.message : String(err)) + bodyStr;
       const sanitizedMsg = sanitizeUtxoErrMessage(rawMsg);
+      const lowerMsg = rawMsg.toLowerCase();
+      const safeCause = err instanceof Error ? sanitizedCauseForUtxo(err, sanitizedMsg) : undefined;
+
+      if (/already in block chain|txn-already-known|txn-already-in-mempool|already[- ]?known|already[- ]?in mempool/.test(lowerMsg)) {
+        return this.computeUtxoTxidLE(txBytes);
+      }
+      if (/econnreset|econnrefused|econnaborted|etimedout|enotfound|socket hang up|network request failed|fetch failed|429|too\s+many\s+requests|rate.?limit/.test(lowerMsg)
+          || (typeof httpStatus === 'number' && (httpStatus === 429 || httpStatus === 502 || httpStatus === 503 || httpStatus === 504))) {
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          `UTXO broadcast RPC transport failure on ${this.name}: ${sanitizedMsg}`,
+          { chainId: this.chainId },
+          safeCause,
+        );
+      }
+      if (/insufficient|-6\b|not enough funds/.test(lowerMsg)) {
+        throw new ChainError(
+          ChainErrorKinds.InsufficientFunds,
+          `UTXO broadcast rejected on ${this.name}: ${sanitizedMsg}`,
+          { chainId: this.chainId },
+          safeCause,
+        );
+      }
       throw new ChainError(
         ChainErrorKinds.BroadcastRejected,
         `UTXO broadcast rejected on ${this.name}: ${sanitizedMsg}`,
         { chainId: this.chainId },
-        err instanceof Error ? sanitizedCauseForUtxo(err, sanitizedMsg) : undefined,
+        safeCause,
       );
     }
+  }
+
+  private computeUtxoTxidLE(txBytes: Buffer): string {
+    const first = Transaction.fromBuffer(txBytes).getHash();
+    return Buffer.from(first).reverse().toString('hex');
   }
 
   protected async buildTransfer(

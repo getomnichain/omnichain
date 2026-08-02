@@ -51,9 +51,16 @@ export interface CreateTransferRequest {
   addressLookupTables?: unknown[];
 }
 
+/**
+ * EIP-7702 authorization tuple. Field names match ethers v6's
+ * `AuthorizationLike` shape so a consumer can spread an
+ * UnsignedEvmTransaction (or its authorizationList) into
+ * `wallet.signTransaction({ ... })` without a translation step.
+ */
 export interface Eip7702Authorization {
   chainId: number;
-  delegate: string;
+  /** The delegate contract address. Named `address` to match ethers' TransactionLike. */
+  address: string;
   nonce: bigint;
   signature: { r: string; s: string; yParity: 0 | 1 };
 }
