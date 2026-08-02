@@ -169,3 +169,36 @@ describe('EvmChain.getDelegation — 0xef0100 parse', () => {
     expect(res).toBeNull();
   });
 });
+
+describe('EvmChain.broadcast — already-known success path across clients', () => {
+  const clients: Array<[string, string]> = [
+    ['geth', 'already known'],
+    ['geth alt', 'known transaction'],
+    ['nethermind', 'AlreadyKnown'],
+    ['besu', 'TRANSACTION_ALREADY_KNOWN'],
+    ['erigon/reth mempool', 'txpool: already known'],
+    ['erigon alt', 'already present'],
+    ['generic mempool phrase', 'transaction already in the mempool'],
+  ];
+  clients.forEach(([label, msg]) => {
+    it(`recognizes ${label}: "${msg}" as success (returns deterministic hash, not BroadcastRejected)`, async () => {
+      const providerErr = new Error(msg);
+      const chain = new EvmChain({
+        chainId: 1,
+        name: 'AlreadyKnownTest',
+        blockTimeSeconds: 12,
+        nativeSymbol: 'ETH',
+        nativeDecimals: 18,
+        explorerBaseUrl: 'https://example.com',
+        rpcUrl: 'http://127.0.0.1:1',
+      });
+      (chain as unknown as { getProvider(): { broadcastTransaction: (h: string) => Promise<unknown> } })
+        .getProvider = () => ({
+          broadcastTransaction: async () => { throw providerErr; },
+        });
+      const hash = await chain.broadcast('0x01020304050607');
+      expect(hash.startsWith('0x')).toBe(true);
+      expect(hash.length).toBe(66);
+    });
+  });
+});

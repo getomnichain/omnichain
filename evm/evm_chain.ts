@@ -591,7 +591,7 @@ export class EvmChain extends Chain {
       return resp.hash;
     } catch (err) {
       const rawMsg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-      if (rawMsg.includes('already known') || rawMsg.includes('known transaction')) {
+      if (/already[-_ ]?known|known\s+transaction|transaction[-_ ]?already[-_ ]?known|already\s+in\s+(?:the\s+)?(?:mempool|pool)|already[-_ ]?present/.test(rawMsg)) {
         // The identical signed bytes were already accepted (mempool/canonical
         // chain hit on a retry-after-timeout or multi-endpoint double-send).
         // The tx hash is deterministic from the signed bytes, so the
