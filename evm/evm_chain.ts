@@ -962,7 +962,12 @@ export class EvmChain extends Chain {
     opts?: GetTransactionStatusOpts,
   ): Promise<EvmTransactionStatus | EvmTransactionStatus[]> {
     if (Array.isArray(txHash)) {
-      return runBatchStatus(txHash, (h) => this.getSingleTransactionStatus(h, opts));
+      return runBatchStatus(txHash, (h, batchSignal) => {
+        const composedSignal = opts?.signal
+          ? anySignal(opts.signal, batchSignal)
+          : batchSignal;
+        return this.getSingleTransactionStatus(h, { ...opts, signal: composedSignal });
+      });
     }
     return this.getSingleTransactionStatus(txHash, opts);
   }
@@ -979,7 +984,10 @@ export class EvmChain extends Chain {
     if (opts.signal?.aborted) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus aborted before first poll`, { chainId: this.chainId, txHash });
     }
-    const deadline = opts.timeoutMs ? Date.now() + opts.timeoutMs : Number.POSITIVE_INFINITY;
+    if (opts.timeoutMs !== undefined && opts.timeoutMs < 0) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus: timeoutMs must be >= 0`, { chainId: this.chainId, txHash });
+    }
+    const deadline = opts.timeoutMs !== undefined ? Date.now() + opts.timeoutMs : Number.POSITIVE_INFINITY;
     const pollMs = Math.max(500, this.blockTimeSeconds * 1000);
     const minConfirmations = Math.max(1, opts.confirmations ?? 1);
     let last: EvmTransactionStatus;
@@ -1367,20 +1375,20 @@ const BATCH_STATUS_CONCURRENCY = 8;
 
 async function runBatchStatus<T>(
   items: string[],
-  fetchOne: (item: string) => Promise<T>,
+  fetchOne: (item: string, batchSignal: AbortSignal) => Promise<T>,
 ): Promise<T[]> {
   const results = new Array<T>(items.length);
+  const ac = new AbortController();
   let cursor = 0;
-  let aborted = false;
   const workers: Promise<void>[] = [];
   const spawn = async (): Promise<void> => {
-    while (!aborted) {
+    while (!ac.signal.aborted) {
       const idx = cursor++;
       if (idx >= items.length) return;
       try {
-        results[idx] = await fetchOne(items[idx]);
+        results[idx] = await fetchOne(items[idx], ac.signal);
       } catch (err) {
-        aborted = true;
+        ac.abort();
         throw err;
       }
     }
@@ -1389,6 +1397,18 @@ async function runBatchStatus<T>(
   for (let i = 0; i < workerCount; i++) workers.push(spawn());
   await Promise.all(workers);
   return results;
+}
+
+function anySignal(a: AbortSignal, b: AbortSignal): AbortSignal {
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([a, b]);
+  const ac = new AbortController();
+  const onAbort = (): void => ac.abort();
+  if (a.aborted || b.aborted) ac.abort();
+  else {
+    a.addEventListener('abort', onAbort, { once: true });
+    b.addEventListener('abort', onAbort, { once: true });
+  }
+  return ac.signal;
 }
 
 async function interruptibleSleep(ms: number, signal?: AbortSignal): Promise<void> {
