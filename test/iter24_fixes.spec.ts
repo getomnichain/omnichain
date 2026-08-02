@@ -26,20 +26,26 @@ describe('EvmChain.getTransactionStatus — timeoutMs falsy-check regression (it
       ChainErrorKinds.InvalidArgument);
   });
 
-  it('treats timeoutMs: 0 as an immediate deadline (not "wait forever")', async () => {
+  it('treats timeoutMs: 0 as an immediate deadline; throws RpcError post-poll (iter-28: no bare NotFound on timeout)', async () => {
     const chain = makeChain();
-    let calls = 0;
     (chain as unknown as { getProvider(): unknown }).getProvider = () => ({
-      getTransaction: async () => { calls++; return null; },
+      getTransaction: async () => null,
       getTransactionReceipt: async () => null,
       getBlockNumber: async () => 100,
     });
     const t0 = Date.now();
-    const result = await chain.getTransactionStatus('0x' + '2'.repeat(64), { wait: true, timeoutMs: 0 });
-    const elapsedMs = Date.now() - t0;
-    expect(elapsedMs).toBeLessThan(500);
-    expect(result.status).toBe('NotFound');
-    expect(calls).toBe(1);
+    await expectKind(
+      chain.getTransactionStatus('0x' + '2'.repeat(64), { wait: true, timeoutMs: 0 }),
+      ChainErrorKinds.RpcError,
+    );
+    expect(Date.now() - t0).toBeLessThan(500);
+  });
+
+  it('rejects wait: true without timeoutMs (iter-28 C2: no unbounded polling)', async () => {
+    await expectKind(
+      makeChain().getTransactionStatus('0x' + '3'.repeat(64), { wait: true }),
+      ChainErrorKinds.InvalidArgument,
+    );
   });
 });
 

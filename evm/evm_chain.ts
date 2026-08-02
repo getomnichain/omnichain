@@ -1005,10 +1005,17 @@ export class EvmChain extends Chain {
     if (opts.signal?.aborted) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus aborted before first poll`, { chainId: this.chainId, txHash });
     }
-    if (opts.timeoutMs !== undefined && opts.timeoutMs < 0) {
+    if (opts.timeoutMs === undefined) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `getTransactionStatus: wait: true requires an explicit timeoutMs. Unbounded polling would pin an RPC worker + connection forever if the tx is dropped.`,
+        { chainId: this.chainId, txHash },
+      );
+    }
+    if (opts.timeoutMs < 0) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus: timeoutMs must be >= 0`, { chainId: this.chainId, txHash });
     }
-    const deadline = opts.timeoutMs !== undefined ? Date.now() + opts.timeoutMs : Number.POSITIVE_INFINITY;
+    const deadline = Date.now() + opts.timeoutMs;
     const pollMs = Math.max(500, this.blockTimeSeconds * 1000);
     const minConfirmations = Math.max(1, opts.confirmations ?? 1);
     let last: EvmTransactionStatus;
@@ -1032,7 +1039,11 @@ export class EvmChain extends Chain {
           );
         }
       } else if (Date.now() >= deadline) {
-        return last;
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          `getTransactionStatus timed out after ${opts.timeoutMs}ms; last observed status was ${last.status}. Consumer must NOT credit as final AND must NOT re-sign — the tx may still land. Re-broadcast the same signed bytes or continue polling with the same txHash.`,
+          { chainId: this.chainId, txHash },
+        );
       }
       await interruptibleSleep(pollMs, opts.signal);
       if (opts.signal?.aborted) {
