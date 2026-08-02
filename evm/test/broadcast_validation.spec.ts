@@ -57,7 +57,7 @@ describe('EvmChain.broadcast input validation', () => {
 });
 
 describe('EvmChain.broadcast — error classification', () => {
-  function chainWithProviderError(err: Error): EvmChain {
+  function chainWithProviderError(err: Error, opts?: { txExists?: boolean }): EvmChain {
     const c = new EvmChain({
       chainId: 1,
       name: 'TestChain',
@@ -69,6 +69,7 @@ describe('EvmChain.broadcast — error classification', () => {
     });
     (c as unknown as { _provider: unknown })._provider = {
       broadcastTransaction: async () => { throw err; },
+      getTransaction: async () => (opts?.txExists === false ? null : { hash: 'placeholder' }),
     };
     return c;
   }
@@ -85,6 +86,13 @@ describe('EvmChain.broadcast — error classification', () => {
     const sig = '0xdeadbeef';
     const hash = await chain.broadcast(sig);
     expect(hash).toBe(keccak256(sig));
+  });
+
+  it("gateway false-positive: 'already present' error but tx not on chain → BroadcastRejected, NOT synthesized success", async () => {
+    const chain = chainWithProviderError(new Error('409 Conflict: request already present'), { txExists: false });
+    let caught: unknown;
+    try { await chain.broadcast('0xdeadbeef'); } catch (e) { caught = e; }
+    expect(isChainError(caught, ChainErrorKinds.BroadcastRejected)).toBe(true);
   });
 
   it('Infura rate-limit code -32005 → RpcError (retryable), NOT BroadcastRejected', async () => {
@@ -192,9 +200,10 @@ describe('EvmChain.broadcast — already-known success path across clients', () 
         explorerBaseUrl: 'https://example.com',
         rpcUrl: 'http://127.0.0.1:1',
       });
-      (chain as unknown as { getProvider(): { broadcastTransaction: (h: string) => Promise<unknown> } })
+      (chain as unknown as { getProvider(): unknown })
         .getProvider = () => ({
           broadcastTransaction: async () => { throw providerErr; },
+          getTransaction: async () => ({ hash: 'placeholder' }),
         });
       const hash = await chain.broadcast('0x01020304050607');
       expect(hash.startsWith('0x')).toBe(true);

@@ -66,7 +66,12 @@ export interface Eip7702Authorization {
 }
 
 export interface CreateUnsignedTransactionRequest {
-  signal?: AbortSignal;
+  // Typed `never` for the same reason as BroadcastOpts.signal — silently
+  // ignoring cancellation would let a caller conclude "not built" while
+  // Solana's blockhash fetch continues and the transaction gets built
+  // against a blockhash the caller no longer wants. Cancellation returns
+  // when the failover RPC client seam ships in 0.3.1.
+  signal?: never;
 }
 
 export interface BroadcastOpts {

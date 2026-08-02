@@ -1233,6 +1233,13 @@ export class SolanaChain extends Chain {
   async createUnsignedTransaction(
     req: CreateSolanaUnsignedTransactionRequest,
   ): Promise<UnsignedSolanaTransaction> {
+    if (req && (req as { signal?: unknown }).signal !== undefined) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `Solana createUnsignedTransaction: signal is not honored in 0.3.0 (silently ignoring would let a caller conclude 'not built' while getLatestBlockhash continues). Cancellation returns in 0.3.1.`,
+        { chainId: this.chainId },
+      );
+    }
     if (!req.payer) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,

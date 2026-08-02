@@ -613,12 +613,22 @@ export class EvmChain extends Chain {
     } catch (err) {
       const rawMsg = (err instanceof Error ? err.message : String(err)).toLowerCase();
       if (/already[-_ ]?known|known\s+transaction|transaction[-_ ]?already[-_ ]?known|already\s+in\s+(?:the\s+)?(?:mempool|pool)|already[-_ ]?present/.test(rawMsg)) {
-        // The identical signed bytes were already accepted (mempool/canonical
-        // chain hit on a retry-after-timeout or multi-endpoint double-send).
-        // The tx hash is deterministic from the signed bytes, so the
-        // transaction WILL land — surface as success to keep the consumer
-        // on the polling path, not the re-sign path (double-spend hazard).
-        return keccak256(hex);
+        // Provider says the identical signed bytes were already accepted, but
+        // "already known"-style phrasing also appears in proxy/gateway errors
+        // that never forwarded the tx (e.g. `409 Conflict: request already
+        // present`). Confirm via a single provider.getTransaction read against
+        // the deterministic hash before surfacing success — else a false
+        // positive would leave the consumer polling forever on a hash that
+        // doesn't exist. If confirmation fails or the tx is absent, fall
+        // through to classifyBroadcastError so the consumer sees the real
+        // rejection kind.
+        const derivedHash = keccak256(hex);
+        try {
+          const confirmed = await this.getProvider().getTransaction(derivedHash);
+          if (confirmed) return derivedHash;
+        } catch {
+          // Confirmation call itself failed — fall through to classifier.
+        }
       }
       throw this.classifyBroadcastError(err);
     }
@@ -778,6 +788,13 @@ export class EvmChain extends Chain {
   async createUnsignedTransaction(
     req: CreateEvmUnsignedTransactionRequest,
   ): Promise<UnsignedEvmTransaction> {
+    if (req && (req as { signal?: unknown }).signal !== undefined) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `EVM createUnsignedTransaction: signal is not honored in 0.3.0 (silently ignoring would let a caller conclude 'not built' while the blockhash fetch/build proceeds against stale state). Cancellation returns in 0.3.1.`,
+        { chainId: this.chainId },
+      );
+    }
     if (!req.from) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
