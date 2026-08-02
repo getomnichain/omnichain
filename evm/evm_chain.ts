@@ -787,12 +787,32 @@ export class EvmChain extends Chain {
         }
         const sig = auth.signature;
         if (!sig || typeof sig !== 'object'
-            || typeof sig.r !== 'string' || !/^0x[0-9a-fA-F]+$/.test(sig.r)
-            || typeof sig.s !== 'string' || !/^0x[0-9a-fA-F]+$/.test(sig.s)
+            || typeof sig.r !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(sig.r)
+            || typeof sig.s !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(sig.s)
             || (sig.yParity !== 0 && sig.yParity !== 1)) {
           throw new ChainError(
             ChainErrorKinds.InvalidArgument,
-            `Authorization[${i}].signature must be { r: 0x-hex, s: 0x-hex, yParity: 0 | 1 }`,
+            `Authorization[${i}].signature must be { r: 0x + 64-hex, s: 0x + 64-hex, yParity: 0 | 1 }`,
+            { chainId: this.chainId },
+          );
+        }
+        const rBig = BigInt(sig.r);
+        const sBig = BigInt(sig.s);
+        if (rBig === 0n || sBig === 0n) {
+          throw new ChainError(
+            ChainErrorKinds.InvalidArgument,
+            `Authorization[${i}].signature: r and s must both be non-zero`,
+            { chainId: this.chainId },
+          );
+        }
+        // EIP-2 low-s canonical form. An authorization with s > secp256k1n/2
+        // is silently rejected by the EVM at execution — tx lands, gas is
+        // spent, no delegation installed. Catch at build time.
+        const SECP256K1_HALF_N = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0n;
+        if (sBig > SECP256K1_HALF_N) {
+          throw new ChainError(
+            ChainErrorKinds.InvalidArgument,
+            `Authorization[${i}].signature.s violates EIP-2 low-s canonical form (s must be <= secp256k1n/2). Non-canonical authorizations are silently skipped by the EVM.`,
             { chainId: this.chainId },
           );
         }
@@ -856,18 +876,20 @@ export class EvmChain extends Chain {
     if (numCode !== undefined && rateLimitCodes.has(numCode)) {
       return this.rpcError(`EVM broadcast rate-limited on ${this.name}`, err);
     }
-    if (msg.includes('too many requests') || msg.includes('rate limit') || msg.includes('rate-limit')) {
-      return this.rpcError(`EVM broadcast rate-limited on ${this.name}`, err);
+    const transportSignals = /econnreset|econnrefused|econnaborted|etimedout|enotfound|network request failed|fetch failed|socket hang up|too\s+many\s+requests|rate.?limit|502|503|504|network error/;
+    if (transportSignals.test(msg) || strCode === 'NETWORK_ERROR' || strCode === 'SERVER_ERROR' || strCode === 'TIMEOUT') {
+      return this.rpcError(`EVM broadcast transport failure on ${this.name}`, err);
     }
-    if (typeof numCode === 'number' && numCode >= -32099 && numCode <= -32000 && !msg.includes('api key')) {
-      return new ChainError(
-        ChainErrorKinds.BroadcastRejected,
-        sanitizeMessage(`EVM broadcast rejected on ${this.name}`, rpc),
-        { chainId: this.chainId, rpcHost: this.rpcHost() },
-        safeCause,
-      );
-    }
-    return this.rpcError(`EVM broadcast failed on ${this.name}`, err);
+    // Default terminal: any unrecognized rejection is a node reject, NOT a
+    // transient transport failure. This matches Solana/UTXO defaults and
+    // prevents a relayer retry-loop from re-broadcasting a permanently-
+    // invalid tx forever.
+    return new ChainError(
+      ChainErrorKinds.BroadcastRejected,
+      sanitizeMessage(`EVM broadcast rejected on ${this.name}`, rpc),
+      { chainId: this.chainId, rpcHost: this.rpcHost() },
+      safeCause,
+    );
   }
 
   async getTransactionStatus(txHash: string, opts?: GetTransactionStatusOpts): Promise<EvmTransactionStatus>;

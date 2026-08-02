@@ -49,7 +49,11 @@ describe('EvmChain.createUnsignedTransaction — EIP-7702 form', () => {
     chainId: 1,
     address: '0x000000000000000000000000000000000000dEaD',
     nonce: 0n,
-    signature: { r: '0x00', s: '0x00', yParity: 0 as const },
+    signature: {
+      r: '0x0000000000000000000000000000000000000000000000000000000000000001',
+      s: '0x0000000000000000000000000000000000000000000000000000000000000001',
+      yParity: 0 as const,
+    },
   };
 
   it('emits type-4 when authorizationList present', async () => {
