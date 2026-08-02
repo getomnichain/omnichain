@@ -564,7 +564,7 @@ export class EvmChain extends Chain {
     }
   }
 
-  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
+  async broadcast(signed: string | Uint8Array, _opts?: BroadcastOpts): Promise<string> {
     let hex: string;
     if (typeof signed === 'string') {
       const stripped = signed.startsWith('0x') ? signed.slice(2) : signed;
@@ -578,9 +578,6 @@ export class EvmChain extends Chain {
       hex = `0x${stripped}`;
     } else {
       hex = hexlify(signed);
-    }
-    if (opts?.signal?.aborted) {
-      throw new ChainError(ChainErrorKinds.InvalidArgument, 'EVM broadcast: signal already aborted', { chainId: this.chainId });
     }
     try {
       const resp = await this.getProvider().broadcastTransaction(hex);

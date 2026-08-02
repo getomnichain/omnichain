@@ -69,7 +69,7 @@ describe('sanitizeMessage — URL redactor', () => {
     expect(out).not.toContain('TOK_ABC');
   });
 
-  it('preserves non-sensitive substrings', () => {
+  it('preserves non-sensitive substrings (UTXO hex-path rule is applied by sanitizeUtxoErrMessage, not the shared sanitizer)', () => {
     const msg = 'balance too low; nonce too low; try again';
     expect(sanitizeMessage(msg, null)).toBe(msg);
   });

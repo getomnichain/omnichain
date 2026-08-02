@@ -450,7 +450,7 @@ export class UtxoChain extends Chain {
     return this.buildTransfer(req as CreateUtxoTransferOptions, undefined);
   }
 
-  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
+  async broadcast(signed: string | Uint8Array, _opts?: BroadcastOpts): Promise<string> {
     let hex: string;
     let txBytes: Buffer;
     if (typeof signed === 'string') {
@@ -467,9 +467,6 @@ export class UtxoChain extends Chain {
     } else {
       hex = Buffer.from(signed).toString('hex');
       txBytes = Buffer.from(signed);
-    }
-    if (opts?.signal?.aborted) {
-      throw new ChainError(ChainErrorKinds.InvalidArgument, 'UTXO broadcast: signal already aborted', { chainId: this.chainId });
     }
     try {
       const { txid } = await this.broadcaster.broadcast(hex);
@@ -865,14 +862,15 @@ function isProviderNotFoundError(err: unknown): boolean {
  * error stringifies the full request URL. Matches EVM's
  * `sanitizeMessage` intent (errors.ts).
  */
-function sanitizeUtxoErrMessage(msg: string): string {
+export function sanitizeUtxoErrMessage(msg: string): string {
   const utxoSpecific = msg
     // Basic-auth credentials in a URL: http://user:pass@host — the
     // canonical Bitcoin Core RPC form, which the -5 branch above
     // specifically expects and could otherwise expose.
     .replace(/(:\/\/)[^:@\s/]+:[^@\s/]+@/g, '$1***:***@')
     // Provider-prefixed key markers (Blockstream/Unisat/Ordiscan style).
-    .replace(/\b(?:pk|sk|ghp|gho)_[A-Za-z0-9]{20,}\b/g, '***');
+    .replace(/\b(?:pk|sk|ghp|gho)_[A-Za-z0-9]{20,}\b/g, '***')
+    .replace(/\/[A-Fa-f0-9]{32,}\b/g, '/***');
   // Route through the shared sanitizer so signed-tx redaction, apiKey/token
   // params, Bearer headers, and path-embedded key rules apply uniformly
   // across families (was: parallel UTXO-only sweep that had no signed-tx

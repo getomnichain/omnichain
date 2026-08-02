@@ -2,6 +2,22 @@
 
 Status: Draft
 
+## 0.3.0 Scope Adjustment (recorded before merge)
+
+**Multi-endpoint RPC failover is descoped from 0.3.0 → 0.3.1.**
+
+What ships in 0.3.0:
+- `EvmChainInit.rpcUrls?: string[]` and `SolanaChainInit.rpcUrls?: string[]` are declared on the constructor.
+- `rpcUrls.length > 1` throws `ChainError(InvalidArgument)` at construction — fails closed, never silently discards entries or "picks the first".
+- URL redaction (`sanitizeMessage` / `sanitizeUtxoErrMessage`) ships in 0.3.0 and is applied at every RPC error path.
+
+What is deferred:
+- `evm/evm_rpc_client.ts` and `solana/solana_rpc_client.ts` — the shared client seam that would own `fetch`, transparent failover on `5xx | 429 | ECONNRESET | ETIMEDOUT`, and WARN-on-failover logging.
+- The four failover unit/integration tests in this card (primary-fail-secondary-serves, deterministic-hash under concurrent double-serve, all-endpoints-fail, no-public-fallback).
+- Wiring an `AbortSignal` through `broadcast` / `getAccountInfo` / `getTokenAccount` / etc. — the RPC-client seam is the only correct place to honor it. Until then, `BroadcastOpts` is intentionally empty (accepting a `signal` we cannot honor is a double-send hazard when a caller aborts, sees a rejection, and re-signs against a fresh nonce/blockhash).
+
+Rationale: the failover seam touches every RPC call site (~20 in EVM, ~10 in Solana) and needs its own review pass. Landing it inside 0.3.0 would double the diff size and delay the consumer-side adoption card (RIN-153). Fail-closed on `rpcUrls.length > 1` preserves the future ability to enable failover without a shape change.
+
 # Summary
 
 Own the complete chain-connection surface in `@getomnichain/omnichain` so that a consumer service (gasless, depositron, rango-intents) can build any protocol flow — including EIP-7702 relayers, Solana Jito bundles, arbitrary contract calls — without importing `ethers`, `@solana/web3.js`, `@solana/spl-token`, or `bitcoinjs-lib` directly. Policy, state, jobs, retries, tip sizing, endpoint-list content, wallet custody stay in the consumer.

@@ -70,7 +70,12 @@ export interface CreateUnsignedTransactionRequest {
 }
 
 export interface BroadcastOpts {
-  signal?: AbortSignal;
+  // Deliberately empty in 0.3.0. `signal` was considered but removed because
+  // the underlying provider RPCs (ethers `broadcastTransaction`, web3.js
+  // `sendRawTransaction`) accept no cancellation token — silently ignoring
+  // `signal` would let a caller conclude "not sent" while the tx still lands
+  // on chain. Cancellation returns when the failover RPC client seam ships
+  // in 0.3.1 (it owns the underlying `fetch` call and can pass `signal`).
 }
 
 export interface GetTransactionStatusOpts {

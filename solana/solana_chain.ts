@@ -988,9 +988,6 @@ export class SolanaChain extends Chain {
     } else {
       bytes = signed;
     }
-    if (opts?.signal?.aborted) {
-      throw new ChainError(ChainErrorKinds.InvalidArgument, 'Solana broadcast: signal already aborted', { chainId: this.chainId });
-    }
     if (opts?.via === 'jito') {
       if (!this.jito) {
         throw new ChainError(
@@ -1014,7 +1011,7 @@ export class SolanaChain extends Chain {
         );
       }
       const signature = signatureBase58FromBytes(bytes);
-      await this.submitJitoBundle([bytes], { signal: opts?.signal });
+      await this.submitJitoBundle([bytes]);
       return signature;
     }
     try {

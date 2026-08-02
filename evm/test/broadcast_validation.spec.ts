@@ -54,16 +54,6 @@ describe('EvmChain.broadcast input validation', () => {
     }
   });
 
-  it('rejects when signal is already aborted', async () => {
-    const ac = new AbortController();
-    ac.abort();
-    try {
-      await chain.broadcast('0xdead', { signal: ac.signal });
-      fail('should reject');
-    } catch (err) {
-      expect(isChainError(err, ChainErrorKinds.InvalidArgument)).toBe(true);
-    }
-  });
 });
 
 describe('EvmChain.broadcast — error classification', () => {
