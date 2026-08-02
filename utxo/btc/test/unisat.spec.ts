@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import axios from 'axios';
 
 import { UnisatIndex } from '../tools/unisat.tool.ts';

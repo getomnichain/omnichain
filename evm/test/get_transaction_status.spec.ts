@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { JsonRpcProvider, TransactionReceipt, TransactionResponse } from 'ethers';
 
 import { ChainErrorKinds, isChainError } from '../../errors.ts';
@@ -7,10 +8,10 @@ import { Arbitrum } from '../evm_chains.ts';
 const TX_HASH = '0xabc';
 
 interface Spies {
-  txSpy: jest.SpyInstance;
-  receiptSpy: jest.SpyInstance;
-  getBlockSpy: jest.SpyInstance;
-  callSpy?: jest.SpyInstance;
+  txSpy: ReturnType<typeof jest.spyOn>;
+  receiptSpy: ReturnType<typeof jest.spyOn>;
+  getBlockSpy: ReturnType<typeof jest.spyOn>;
+  callSpy?: ReturnType<typeof jest.spyOn>;
 }
 
 function setup(args: {
@@ -28,7 +29,7 @@ function setup(args: {
   const getBlockSpy = jest
     .spyOn(JsonRpcProvider.prototype, 'getBlock')
     .mockResolvedValue(null);
-  let callSpy: jest.SpyInstance | undefined;
+  let callSpy: ReturnType<typeof jest.spyOn> | undefined;
   if (args.callError !== undefined) {
     callSpy = jest.spyOn(JsonRpcProvider.prototype, 'call').mockRejectedValue(args.callError);
   }

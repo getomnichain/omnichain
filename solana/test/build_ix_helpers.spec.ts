@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { PublicKey, SystemProgram, SystemInstruction } from '@solana/web3.js';
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -39,11 +40,11 @@ describe('SolanaChain.buildNativeTransferInstruction', () => {
 describe('SolanaChain.buildSplTransferInstructions', () => {
   const chain = SolanaMainnet;
 
-  const mockResolveClassic = (): jest.SpyInstance[] => [
+  const mockResolveClassic = (): ReturnType<typeof jest.spyOn>[] => [
     jest.spyOn(chain, 'resolveTokenProgramId').mockResolvedValue(TOKEN_PROGRAM_ID),
     jest.spyOn(chain, 'resolveMintDecimals').mockResolvedValue(6),
   ];
-  const mockResolveToken2022 = (): jest.SpyInstance[] => [
+  const mockResolveToken2022 = (): ReturnType<typeof jest.spyOn>[] => [
     jest.spyOn(chain, 'resolveTokenProgramId').mockResolvedValue(TOKEN_2022_PROGRAM_ID),
     jest.spyOn(chain, 'resolveMintDecimals').mockResolvedValue(6),
   ];

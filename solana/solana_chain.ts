@@ -785,6 +785,13 @@ export class SolanaChain extends Chain {
   }
 
   private async getSingleSolanaStatus(txHash: string, opts?: GetTransactionStatusOpts): Promise<SolanaTransactionStatus> {
+    if (opts?.confirmations !== undefined && opts.confirmations > 1 && !opts.wait) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `getTransactionStatus: confirmations > 1 requires wait: true (a single status read cannot enforce finality)`,
+        { chainId: this.chainId, txHash },
+      );
+    }
     if (!opts?.wait) return this.getSolanaStatusOnce(txHash);
     if (opts.signal?.aborted) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus aborted before first poll`, { chainId: this.chainId, txHash });
@@ -1295,7 +1302,18 @@ export class SolanaChain extends Chain {
     } catch (err) {
       throw new ChainError(ChainErrorKinds.InvalidTokenIdentifier, `Invalid Solana mint pubkey: ${mint}`, { chainId: this.chainId, identifier: mint }, err instanceof Error ? err : undefined);
     }
-    const programId = await this.resolveTokenProgramId(mintPk);
+    let programId: PublicKey;
+    try {
+      programId = await this.resolveTokenProgramId(mintPk);
+    } catch (err) {
+      if (err instanceof ChainError) throw err;
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana getTokenAccount: mint-program lookup failed on ${this.name}`, this.resolvedRpcUrlForRedaction()),
+        { chainId: this.chainId, identifier: mint },
+        sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
+      );
+    }
     let ataPk: PublicKey;
     try {
       ataPk = getAssociatedTokenAddressSync(mintPk, ownerPk, opts?.allowOwnerOffCurve ?? false, programId);

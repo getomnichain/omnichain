@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import axios from 'axios';
 import { address as bjsAddress } from 'bitcoinjs-lib';
 

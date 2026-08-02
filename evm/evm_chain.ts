@@ -785,6 +785,13 @@ export class EvmChain extends Chain {
   }
 
   private async getSingleTransactionStatus(txHash: string, opts?: GetTransactionStatusOpts): Promise<EvmTransactionStatus> {
+    if (opts?.confirmations !== undefined && opts.confirmations > 1 && !opts.wait) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `getTransactionStatus: confirmations > 1 requires wait: true (a single status read cannot enforce block depth)`,
+        { chainId: this.chainId, txHash },
+      );
+    }
     if (!opts?.wait) return this.getTransactionStatusOnce(txHash);
     if (opts.signal?.aborted) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus aborted before first poll`, { chainId: this.chainId, txHash });
