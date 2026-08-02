@@ -696,6 +696,13 @@ export class EvmChain extends Chain {
       from: req.from === undefined ? undefined : this.normalizeAddressOrThrow(req.from, 'call.from'),
       value: req.value,
     };
+    if (req.estimateGas && req.blockTag !== undefined) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `EvmChain.call: blockTag is not honored when estimateGas: true (ethers v6 eth_estimateGas has no block-tag plumbing). Split the call: use estimateGas without blockTag, or drop estimateGas to run eth_call at the tag.`,
+        { chainId: this.chainId },
+      );
+    }
     try {
       if (req.estimateGas) {
         const g = await provider.estimateGas(tx);

@@ -54,6 +54,25 @@ describe('EvmChain.createUnsignedTransaction — 0X-prefixed address (iter-23 re
   });
 });
 
+describe('EvmChain.call — blockTag + estimateGas fail-closed (iter-25 C1)', () => {
+  it('rejects blockTag + estimateGas: true as InvalidArgument (no silent drop)', async () => {
+    const chain = makeChain();
+    let caught: unknown;
+    try {
+      await chain.call({
+        to: '0x' + '11'.repeat(20),
+        data: '0x',
+        blockTag: 'pending',
+        estimateGas: true,
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(isChainError(caught, ChainErrorKinds.InvalidArgument)).toBe(true);
+    expect((caught as Error).message).toMatch(/blockTag is not honored when estimateGas/);
+  });
+});
+
 describe('EvmChain.broadcast — {signal: undefined} spread is benign (iter-22 regression)', () => {
   it('accepts opts with explicit undefined signal (common spread pattern)', async () => {
     const chain = makeChain();
