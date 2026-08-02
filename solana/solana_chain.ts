@@ -108,6 +108,28 @@ export interface SolanaAccountInfoResult {
   rentEpoch?: bigint;
 }
 
+/** Card-named alias for {@link SolanaAccountInfoResult}. */
+export type SolanaAccountInfo = SolanaAccountInfoResult;
+
+/**
+ * Opaque re-export of `@solana/web3.js`'s `AddressLookupTableAccount` so
+ * consumers can annotate variables holding an ALT without importing
+ * `@solana/web3.js` directly. Obtain instances via
+ * {@link SolanaChain.fetchAddressLookupTable}.
+ */
+export type AltAccount = AddressLookupTableAccount;
+
+/**
+ * The compiled-but-unsigned Solana transaction handed back by
+ * {@link SolanaChain.createUnsignedTransaction}, exposing
+ * `digestForSigning()` (bytes to sign externally) +
+ * `finalizeAndSerialize(signatures)` (returns wire bytes for
+ * {@link SolanaChain.broadcast}). This is the same shape as
+ * {@link UnsignedSolanaTransaction} and re-exported here under the
+ * card-specified name.
+ */
+export type CompiledMessage = UnsignedSolanaTransaction;
+
 export interface SolanaTokenAccountResult {
   ata: string;
   exists: boolean;
@@ -1011,7 +1033,10 @@ export class SolanaChain extends Chain {
       jsonrpc: '2.0',
       id: 1,
       method: 'sendBundle',
-      params: [signedTxs.map((b) => Buffer.from(b).toString('base64'))],
+      params: [
+        signedTxs.map((b) => Buffer.from(b).toString('base64')),
+        { encoding: 'base64' },
+      ],
     };
     const jitoUrl = this.jito.url;
     let json: { result?: string; error?: { message?: string } };
