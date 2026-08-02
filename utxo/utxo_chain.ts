@@ -450,7 +450,14 @@ export class UtxoChain extends Chain {
     return this.buildTransfer(req as CreateUtxoTransferOptions, undefined);
   }
 
-  async broadcast(signed: string | Uint8Array, _opts?: BroadcastOpts): Promise<string> {
+  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
+    if (opts && 'signal' in opts) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `UTXO broadcast: signal is not honored in 0.3.0 (silently ignoring would let a caller conclude 'not sent' while the tx still lands). Cancellation returns in 0.3.1.`,
+        { chainId: this.chainId },
+      );
+    }
     let hex: string;
     let txBytes: Buffer;
     if (typeof signed === 'string') {

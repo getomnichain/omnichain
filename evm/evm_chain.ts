@@ -564,7 +564,14 @@ export class EvmChain extends Chain {
     }
   }
 
-  async broadcast(signed: string | Uint8Array, _opts?: BroadcastOpts): Promise<string> {
+  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
+    if (opts && 'signal' in opts) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `EVM broadcast: signal is not honored in 0.3.0 (silently ignoring would let a caller conclude 'not sent' while the tx still lands). Cancellation returns in 0.3.1.`,
+        { chainId: this.chainId },
+      );
+    }
     let hex: string;
     if (typeof signed === 'string') {
       const stripped = signed.startsWith('0x') ? signed.slice(2) : signed;

@@ -282,6 +282,21 @@ export class SolanaChain extends Chain {
     }
   }
 
+  private async rpcWrap<T>(fn: () => Promise<T>, label: string): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof ChainError) throw err;
+      const rpc = this.resolvedRpcUrlForRedaction();
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana ${label} failed on ${this.name}`, rpc),
+        { chainId: this.chainId },
+        sanitizeCause(err, rpc),
+      );
+    }
+  }
+
   private readRpcUrl(): string {
     if (this.rpcUrl && this.rpcUrl.trim().length > 0) return this.rpcUrl.trim();
     if (this.rpcUrls.length > 0) {
@@ -515,7 +530,10 @@ export class SolanaChain extends Chain {
       );
     }
 
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+    const { blockhash, lastValidBlockHeight } = await this.rpcWrap(
+      () => connection.getLatestBlockhash('finalized'),
+      'getLatestBlockhash',
+    );
     const alts = validateAltList(req.addressLookupTables, this.chainId);
     let message;
     try {
@@ -627,7 +645,10 @@ export class SolanaChain extends Chain {
     }
     for (const ix of req.instructions) allIxs.push(ix);
     const connection = this.getConnection();
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+    const { blockhash, lastValidBlockHeight } = await this.rpcWrap(
+      () => connection.getLatestBlockhash('finalized'),
+      'getLatestBlockhash',
+    );
     const alts = validateAltList(req.addressLookupTables, this.chainId);
     let message;
     try {
@@ -684,7 +705,10 @@ export class SolanaChain extends Chain {
    */
   async refreshBlockhash(unsigned: UnsignedSolanaTransaction): Promise<UnsignedSolanaTransaction> {
     const connection = this.getConnection();
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+    const { blockhash, lastValidBlockHeight } = await this.rpcWrap(
+      () => connection.getLatestBlockhash('finalized'),
+      'getLatestBlockhash',
+    );
     if (blockhash === unsigned.recentBlockhash) return unsigned;
     const message = MessageV0.compile({
       payerKey: unsigned.feePayerPubkey,
@@ -713,11 +737,14 @@ export class SolanaChain extends Chain {
     unsigned: UnsignedSolanaTransaction,
   ): Promise<UnsignedSolanaTransaction> {
     const connection = this.getConnection();
-    const sim = await connection.simulateTransaction(unsigned.transaction, {
-      sigVerify: false,
-      replaceRecentBlockhash: true,
-      commitment: 'confirmed',
-    });
+    const sim = await this.rpcWrap(
+      () => connection.simulateTransaction(unsigned.transaction, {
+        sigVerify: false,
+        replaceRecentBlockhash: true,
+        commitment: 'confirmed',
+      }),
+      'simulateTransaction',
+    );
     if (sim.value.err) {
       throw new ChainError(
         ChainErrorKinds.SimulationFailed,
@@ -970,10 +997,17 @@ export class SolanaChain extends Chain {
   }
 
   async getChainTipHeight(): Promise<number> {
-    return this.getConnection().getSlot('confirmed');
+    return this.rpcWrap(() => this.getConnection().getSlot('confirmed'), 'getSlot');
   }
 
   async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts & { skipPreflight?: boolean; maxRetries?: number; via?: 'direct' | 'jito' }): Promise<string> {
+    if (opts && 'signal' in opts) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `Solana broadcast: signal is not honored in 0.3.0 (silently ignoring would let a caller conclude 'not sent' while the tx still lands). Cancellation returns in 0.3.1.`,
+        { chainId: this.chainId },
+      );
+    }
     let bytes: Uint8Array;
     if (typeof signed === 'string') {
       const stripped = signed.startsWith('0x') ? signed.slice(2) : signed;
