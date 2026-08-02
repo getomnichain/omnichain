@@ -23,4 +23,21 @@ describe('UtxoChain.broadcast — Uint8Array validation', () => {
   });
 });
 
+describe('UtxoChain.broadcast — already-known path with unparseable bytes', () => {
+  it('surfaces ChainError(BroadcastRejected), never a raw bitcoinjs Error', async () => {
+    const alreadyKnownChain = bitcoinMainnetChain({
+      chainId: -50001,
+      utxoProvider: { getUtxos: async () => [] } as never,
+      rawTxProvider: { getTransaction: async () => ({} as never) } as never,
+      feeEstimator: { estimateFeeRate: async () => 5 } as never,
+      broadcaster: {
+        broadcast: async () => { throw new Error('already known in mempool'); },
+      } as never,
+      chainTipProvider: { getBlockCount: async () => 0 } as never,
+    });
+    const bogusButNonEmpty = new Uint8Array([0xff, 0xff, 0xff, 0xff]);
+    await expectKind(alreadyKnownChain.broadcast(bogusButNonEmpty), ChainErrorKinds.BroadcastRejected);
+  });
+});
+
 jest.setTimeout(10_000);

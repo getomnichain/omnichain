@@ -518,8 +518,17 @@ export class UtxoChain extends Chain {
   }
 
   private computeUtxoTxidLE(txBytes: Buffer): string {
-    const first = Transaction.fromBuffer(txBytes).getHash();
-    return Buffer.from(first).reverse().toString('hex');
+    try {
+      const first = Transaction.fromBuffer(txBytes).getHash();
+      return Buffer.from(first).reverse().toString('hex');
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.BroadcastRejected,
+        `UTXO already-known path: node reported the tx as already accepted, but the local bytes could not be parsed by bitcoinjs to derive a txid. Do NOT re-sign — poll by the txid the consumer computed pre-broadcast.`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
   }
 
   protected async buildTransfer(
