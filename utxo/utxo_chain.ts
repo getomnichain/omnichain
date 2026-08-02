@@ -265,8 +265,15 @@ export class UtxoChain extends Chain {
   async getTransactionStatus(txHashes: string[], opts?: import('../chain.base.ts').GetTransactionStatusOpts): Promise<UtxoTransactionStatus[]>;
   async getTransactionStatus(
     txHash: string | string[],
-    _opts?: import('../chain.base.ts').GetTransactionStatusOpts,
+    opts?: import('../chain.base.ts').GetTransactionStatusOpts,
   ): Promise<UtxoTransactionStatus | UtxoTransactionStatus[]> {
+    if (opts?.wait || (opts?.confirmations !== undefined && opts.confirmations > 1)) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `UtxoChain.getTransactionStatus does not honor wait/confirmations opts in 0.3.0 (would silently return immediately). Poll the block-tip provider consumer-side or omit the opts.`,
+        { chainId: this.chainId },
+      );
+    }
     if (Array.isArray(txHash)) {
       return Promise.all(txHash.map((h) => this.getUtxoStatusOnce(h)));
     }

@@ -494,16 +494,34 @@ export class SolanaChain extends Chain {
     }
 
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-    const alts = (req.addressLookupTables as AddressLookupTableAccount[] | undefined) ?? [];
-    const message = MessageV0.compile({
-      payerKey: feePayerPk,
-      instructions,
-      recentBlockhash: blockhash,
-      addressLookupTableAccounts: alts,
-    });
+    const alts = validateAltList(req.addressLookupTables, this.chainId);
+    let message;
+    try {
+      message = MessageV0.compile({
+        payerKey: feePayerPk,
+        instructions,
+        recentBlockhash: blockhash,
+        addressLookupTableAccounts: alts,
+      });
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana createTransferUnsignedTransaction: MessageV0.compile failed — instruction or ALT layout invalid`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    const tx = new VersionedTransaction(message);
+    if (tx.serialize().length > 1232) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Compiled Solana transfer exceeds 1232-byte wire limit; supply addressLookupTables to compress the account list`,
+        { chainId: this.chainId },
+      );
+    }
     return new UnsignedSolanaTransaction({
       chainId: this.chainId,
-      transaction: new VersionedTransaction(message),
+      transaction: tx,
       feePayer: feePayerAddress,
       recentBlockhash: blockhash,
       lastValidBlockHeight,
@@ -577,16 +595,34 @@ export class SolanaChain extends Chain {
     for (const ix of req.instructions) allIxs.push(ix);
     const connection = this.getConnection();
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-    const alts = (req.addressLookupTables as AddressLookupTableAccount[] | undefined) ?? [];
-    const message = MessageV0.compile({
-      payerKey: feePayerPk,
-      instructions: allIxs,
-      recentBlockhash: blockhash,
-      addressLookupTableAccounts: alts,
-    });
+    const alts = validateAltList(req.addressLookupTables, this.chainId);
+    let message;
+    try {
+      message = MessageV0.compile({
+        payerKey: feePayerPk,
+        instructions: allIxs,
+        recentBlockhash: blockhash,
+        addressLookupTableAccounts: alts,
+      });
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana createInstructionsUnsignedTransaction: MessageV0.compile failed — instruction or ALT layout invalid`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    const tx = new VersionedTransaction(message);
+    if (tx.serialize().length > 1232) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Compiled Solana tx exceeds 1232-byte wire limit; supply addressLookupTables to compress the account list`,
+        { chainId: this.chainId },
+      );
+    }
     return new UnsignedSolanaTransaction({
       chainId: this.chainId,
-      transaction: new VersionedTransaction(message),
+      transaction: tx,
       feePayer: feePayerAddress,
       recentBlockhash: blockhash,
       lastValidBlockHeight,
@@ -1520,6 +1556,28 @@ export class SolanaChain extends Chain {
     }
     return result;
   }
+}
+
+function validateAltList(input: unknown, chainId: number): AddressLookupTableAccount[] {
+  if (input === undefined || input === null) return [];
+  if (!Array.isArray(input)) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `addressLookupTables must be an array of AddressLookupTableAccount, got ${typeof input}`,
+      { chainId },
+    );
+  }
+  for (let i = 0; i < input.length; i++) {
+    const a = input[i];
+    if (a === null || typeof a !== 'object' || !('key' in a) || !('state' in a)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `addressLookupTables[${i}] is not an AddressLookupTableAccount (missing key/state). Use SolanaChain.fetchAddressLookupTable to obtain valid instances.`,
+        { chainId },
+      );
+    }
+  }
+  return input as AddressLookupTableAccount[];
 }
 
 function signatureBase58FromBytes(txBytes: Uint8Array): string {

@@ -5,6 +5,7 @@
  */
 export function sanitizeMessage(message: string, rpcUrl: string | null): string {
   let out = message;
+  out = out.replace(/0x[0-9a-fA-F]{200,}/g, (m) => `<signed-tx:${(m.length - 2) / 2}B>`);
   out = out.replace(/([?&])([a-zA-Z_-]*(?:api[-_]?key|key|token|access[-_]?token|secret))=[^\s"&]+/gi, '$1$2=<redacted>');
   out = out.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer <redacted>');
   out = out.replace(/(\/v\d+|\/api)\/[A-Za-z0-9_-]{16,}(?=\/|$|\s|["'])/gi, '$1/<redacted>');
@@ -37,7 +38,9 @@ export function sanitizeMessage(message: string, rpcUrl: string | null): string 
  */
 export function sanitizeCause(cause: unknown, rpcUrl: string | null): Error | undefined {
   if (!(cause instanceof Error)) return undefined;
-  const safe = new Error(sanitizeMessage(cause.message, rpcUrl));
+  const short = (cause as Error & { shortMessage?: string }).shortMessage;
+  const source = typeof short === 'string' && short.length > 0 ? short : cause.message;
+  const safe = new Error(sanitizeMessage(source, rpcUrl));
   safe.name = cause.name;
   if (cause.stack) safe.stack = sanitizeMessage(cause.stack, rpcUrl);
   return safe;
