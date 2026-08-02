@@ -12,6 +12,18 @@ _Nothing yet. Add entries here as PRs merge; on release, rename this section to 
 
 ---
 
+## [0.3.2] — 2026-08-02
+
+Additive minor. Closes the final gasless "only-omnichain" gap: `simulateTransaction` now exposes web3.js's `accounts` passthrough so consumers can read post-simulation account state (the primitive `measureUserPrefundViaSimulation` needs).
+
+### Added
+
+- **`SolanaChain.simulateTransaction(signed, opts)` — `opts.accounts?: { addresses: string[] }`**. When supplied, the return object gains an `accounts?: ({ lamports: number; data: Uint8Array } | null)[]` field in the same order as `opts.accounts.addresses`. Missing addresses in the post-sim state map to `null`. Base64 is used on the wire and decoded to `Uint8Array` for the consumer.
+- Validation: empty `addresses[]` throws `InvalidArgument`; a malformed pubkey throws `InvalidAddress`.
+- Back-compat: when `opts.accounts` is omitted, the return shape is unchanged from 0.3.1 (`accounts` field absent).
+
+---
+
 ## [0.3.1] — 2026-08-02
 
 Additive minor. Two new `SolanaChain` read primitives to unblock the gasless `RIN-153` migration finish — consumers assembling `MessageV0` locally (custom fee ix + Jito tip + ALTs merged with aggregator swap bytes) can now route every chain **read** through the SDK without being pushed into the opinionated full-builder. Local computation (compile + sign) stays consumer-side by design.
