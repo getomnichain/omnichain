@@ -598,6 +598,13 @@ export class EvmChain extends Chain {
   }
 
   async getPendingNonce(address: string): Promise<bigint> {
+    if (!this.validateAddress(address)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidAddress,
+        `Invalid EVM address for getPendingNonce: ${address}`,
+        { chainId: this.chainId, address },
+      );
+    }
     try {
       const n = await this.getProvider().getTransactionCount(address, 'pending');
       return BigInt(n);
@@ -633,6 +640,27 @@ export class EvmChain extends Chain {
   }
 
   async call(req: EvmCallRequest): Promise<EvmCallResult> {
+    if (!this.validateAddress(req.to)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidAddress,
+        `Invalid EVM 'to' address for call: ${req.to}`,
+        { chainId: this.chainId, address: req.to },
+      );
+    }
+    if (req.from !== undefined && !this.validateAddress(req.from)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidAddress,
+        `Invalid EVM 'from' address for call: ${req.from}`,
+        { chainId: this.chainId, address: req.from },
+      );
+    }
+    if (!/^0x([0-9a-fA-F]{2})*$/.test(req.data)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `EvmCallRequest.data must be 0x-prefixed even-length hex`,
+        { chainId: this.chainId },
+      );
+    }
     const provider = this.getProvider();
     const tx = {
       to: req.to,
@@ -734,11 +762,37 @@ export class EvmChain extends Chain {
           { chainId: this.chainId },
         );
       }
-      for (const auth of req.authorizationList) {
+      for (let i = 0; i < req.authorizationList.length; i++) {
+        const auth = req.authorizationList[i];
         if (auth.chainId !== this.chainId) {
           throw new ChainError(
             ChainErrorKinds.InvalidArgument,
-            `Authorization chainId ${auth.chainId} does not match ${this.chainId}. Cross-chain replay guard: chainId=0 wildcards are rejected by default (an authorization signed with chainId=0 is replayable on every EVM chain forever).`,
+            `Authorization[${i}].chainId ${auth.chainId} does not match ${this.chainId}. Cross-chain replay guard: chainId=0 wildcards are rejected by default.`,
+            { chainId: this.chainId },
+          );
+        }
+        if (!this.validateAddress(auth.address)) {
+          throw new ChainError(
+            ChainErrorKinds.InvalidAddress,
+            `Authorization[${i}].address is not a valid EVM address: ${auth.address}`,
+            { chainId: this.chainId, address: auth.address },
+          );
+        }
+        if (typeof auth.nonce !== 'bigint' || auth.nonce < 0n) {
+          throw new ChainError(
+            ChainErrorKinds.InvalidArgument,
+            `Authorization[${i}].nonce must be a non-negative bigint (got ${typeof auth.nonce})`,
+            { chainId: this.chainId },
+          );
+        }
+        const sig = auth.signature;
+        if (!sig || typeof sig !== 'object'
+            || typeof sig.r !== 'string' || !/^0x[0-9a-fA-F]+$/.test(sig.r)
+            || typeof sig.s !== 'string' || !/^0x[0-9a-fA-F]+$/.test(sig.s)
+            || (sig.yParity !== 0 && sig.yParity !== 1)) {
+          throw new ChainError(
+            ChainErrorKinds.InvalidArgument,
+            `Authorization[${i}].signature must be { r: 0x-hex, s: 0x-hex, yParity: 0 | 1 }`,
             { chainId: this.chainId },
           );
         }

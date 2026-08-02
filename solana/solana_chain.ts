@@ -720,7 +720,7 @@ export class SolanaChain extends Chain {
     });
     if (sim.value.err) {
       throw new ChainError(
-        ChainErrorKinds.InvalidArgument,
+        ChainErrorKinds.SimulationFailed,
         `Solana simulation rejected the tx: ${JSON.stringify(sim.value.err)}`,
         { chainId: this.chainId },
       );
@@ -761,7 +761,7 @@ export class SolanaChain extends Chain {
 
   /** Whether the given error came from a preflight simulation rejection (vs network/transport). */
   static isSimulationError(err: unknown): boolean {
-    if (err instanceof ChainError && err.kind === ChainErrorKinds.InvalidArgument) return true;
+    if (err instanceof ChainError && err.kind === ChainErrorKinds.SimulationFailed) return true;
     const msg = (err as { message?: string })?.message ?? '';
     return /simulation failed|transaction simulation failed/i.test(msg);
   }
@@ -1063,8 +1063,10 @@ export class SolanaChain extends Chain {
         signal,
       });
       if (!resp.ok) {
+        // 401/403 = jito auth config problem, not a bundle rejection.
+        // Treat as RpcError so consumer doesn't push the tx toward re-sign.
         throw new ChainError(
-          resp.status === 401 || resp.status === 403 ? ChainErrorKinds.BroadcastRejected : ChainErrorKinds.RpcError,
+          ChainErrorKinds.RpcError,
           sanitizeMessage(`Jito submitBundle HTTP ${resp.status} on ${this.name}`, jitoUrl),
           { chainId: this.chainId },
         );
@@ -1160,7 +1162,19 @@ export class SolanaChain extends Chain {
     const statuses: JitoBundleStatus[] = ids.map((id): JitoBundleStatus => {
       const row = rows.find((r): r is JitoStatusRow => r != null && r.bundle_id === id);
       if (!row) return { bundleId: id, state: 'Pending' };
-      const errStr = row.err && typeof row.err === 'object' && 'Err' in row.err && typeof row.err.Err === 'string' ? row.err.Err : undefined;
+      // Jito's err field varies: null (success), { Ok: null } (success),
+      // { Err: <anything> } (failed), or a plain string (some proxies).
+      // Anything that's non-null AND not { Ok: null } means failure.
+      const rawErr = row.err;
+      const isOk = rawErr === null || rawErr === undefined
+        || (typeof rawErr === 'object' && 'Ok' in rawErr && rawErr.Ok === null && !('Err' in rawErr));
+      const errStr = isOk
+        ? undefined
+        : typeof rawErr === 'string'
+          ? rawErr
+          : typeof rawErr === 'object' && rawErr !== null && 'Err' in rawErr
+            ? String((rawErr as { Err: unknown }).Err)
+            : JSON.stringify(rawErr);
       const confStatus = row.confirmation_status;
       const state: JitoBundleStatus['state'] = errStr !== undefined
         ? 'Failed'
@@ -1393,7 +1407,7 @@ export class SolanaChain extends Chain {
     const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
     const safeCause = sanitizeCause(err, rpc);
     const transportSignals = /econnreset|econnrefused|econnaborted|etimedout|enotfound|network request failed|fetch failed|socket hang up|429|too\s+many\s+requests|rate.?limit|502|503|504/;
-    if (/blockhash\s+not\s+found|blockhash\s+expired/.test(msg)) {
+    if (/blockhash\s+not\s+found|blockhash\s+expired|block\s+height\s+exceeded/.test(msg)) {
       return new ChainError(
         ChainErrorKinds.BlockhashExpired,
         sanitizeMessage(`Solana broadcast rejected: blockhash expired on ${this.name}`, rpc),

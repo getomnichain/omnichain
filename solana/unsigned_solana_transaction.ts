@@ -74,6 +74,7 @@ export class UnsignedSolanaTransaction extends UnsignedTransaction {
         { chainId: this.chainId },
       );
     }
+    const staticKeys = this.transaction.message.staticAccountKeys;
     for (let i = 0; i < signatures.length; i++) {
       if (signatures[i].length !== 64) {
         throw new ChainError(
@@ -82,7 +83,14 @@ export class UnsignedSolanaTransaction extends UnsignedTransaction {
           { chainId: this.chainId },
         );
       }
-      this.transaction.addSignature(this.transaction.message.staticAccountKeys[i], signatures[i]);
+      if (i >= staticKeys.length) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `finalizeAndSerialize: signature index ${i} exceeds staticAccountKeys.length (${staticKeys.length}) — malformed compiled message`,
+          { chainId: this.chainId },
+        );
+      }
+      this.transaction.addSignature(staticKeys[i], signatures[i]);
     }
     return this.transaction.serialize();
   }
