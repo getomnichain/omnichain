@@ -1183,10 +1183,21 @@ async function interruptibleSleep(ms: number, signal?: AbortSignal): Promise<voi
 
 function errCode(err: unknown): number | undefined {
   if (typeof err !== 'object' || err === null) return undefined;
-  const e = err as { code?: number | string; error?: { code?: number | string } };
-  const raw = e.code ?? e.error?.code;
-  if (typeof raw === 'number') return raw;
-  if (typeof raw === 'string' && /^-?\d+$/.test(raw)) return Number(raw);
+  const e = err as {
+    code?: number | string;
+    error?: { code?: number | string };
+    info?: { error?: { code?: number | string } };
+  };
+  const candidates: (number | string | undefined)[] = [
+    typeof e.code === 'number' ? e.code : undefined,
+    e.error?.code,
+    e.info?.error?.code,
+    typeof e.code === 'string' && /^-?\d+$/.test(e.code) ? e.code : undefined,
+  ];
+  for (const raw of candidates) {
+    if (typeof raw === 'number') return raw;
+    if (typeof raw === 'string' && /^-?\d+$/.test(raw)) return Number(raw);
+  }
   return undefined;
 }
 

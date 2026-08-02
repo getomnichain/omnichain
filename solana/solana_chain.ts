@@ -512,7 +512,18 @@ export class SolanaChain extends Chain {
       );
     }
     const tx = new VersionedTransaction(message);
-    if (tx.serialize().length > 1232) {
+    let serializedSize: number;
+    try {
+      serializedSize = tx.serialize().length;
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Compiled Solana tx exceeds the serialize buffer; supply addressLookupTables to compress the account list`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (serializedSize > 1232) {
       throw new ChainError(
         ChainErrorKinds.TransactionTooLarge,
         `Compiled Solana transfer exceeds 1232-byte wire limit; supply addressLookupTables to compress the account list`,
@@ -613,7 +624,18 @@ export class SolanaChain extends Chain {
       );
     }
     const tx = new VersionedTransaction(message);
-    if (tx.serialize().length > 1232) {
+    let serializedSize: number;
+    try {
+      serializedSize = tx.serialize().length;
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Compiled Solana tx exceeds the serialize buffer; supply addressLookupTables to compress the account list`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (serializedSize > 1232) {
       throw new ChainError(
         ChainErrorKinds.TransactionTooLarge,
         `Compiled Solana tx exceeds 1232-byte wire limit; supply addressLookupTables to compress the account list`,
@@ -948,8 +970,16 @@ export class SolanaChain extends Chain {
           { chainId: this.chainId },
         );
       }
+      if (bytes.length > 1232) {
+        throw new ChainError(
+          ChainErrorKinds.TransactionTooLarge,
+          `Solana broadcast (jito): signed tx is ${bytes.length} bytes, exceeds 1232-byte wire limit`,
+          { chainId: this.chainId },
+        );
+      }
+      const signature = signatureBase58FromBytes(bytes);
       await this.submitJitoBundle([bytes]);
-      return signatureBase58FromBytes(bytes);
+      return signature;
     }
     try {
       const sig = await this.getConnection().sendRawTransaction(bytes, {
@@ -1145,7 +1175,18 @@ export class SolanaChain extends Chain {
       );
     }
     const tx = new VersionedTransaction(message);
-    if (tx.serialize().length > 1232) {
+    let serializedSize: number;
+    try {
+      serializedSize = tx.serialize().length;
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Compiled Solana tx exceeds the serialize buffer; supply addressLookupTables to compress the account list`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
+    if (serializedSize > 1232) {
       throw new ChainError(
         ChainErrorKinds.TransactionTooLarge,
         `Compiled Solana tx exceeds 1232-byte wire limit; supply addressLookupTables to reduce size`,
