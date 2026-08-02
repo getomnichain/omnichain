@@ -654,10 +654,10 @@ export class EvmChain extends Chain {
         { chainId: this.chainId },
       );
     }
-    if (input.chainId !== this.chainId && input.chainId !== 0) {
+    if (input.chainId !== this.chainId) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        `Authorization chainId ${input.chainId} does not match ${this.chainId} (0 = any is allowed but replayable on every chain)`,
+        `Authorization chainId ${input.chainId} does not match ${this.chainId}. Cross-chain replay guard: chainId=0 wildcards are rejected by default.`,
         { chainId: this.chainId },
       );
     }
@@ -699,10 +699,10 @@ export class EvmChain extends Chain {
         );
       }
       for (const auth of req.authorizationList) {
-        if (auth.chainId !== this.chainId && auth.chainId !== 0) {
+        if (auth.chainId !== this.chainId) {
           throw new ChainError(
             ChainErrorKinds.InvalidArgument,
-            `Authorization chainId ${auth.chainId} does not match ${this.chainId} (0 = any is allowed)`,
+            `Authorization chainId ${auth.chainId} does not match ${this.chainId}. Cross-chain replay guard: chainId=0 wildcards are rejected by default (an authorization signed with chainId=0 is replayable on every EVM chain forever).`,
             { chainId: this.chainId },
           );
         }
@@ -790,12 +790,20 @@ export class EvmChain extends Chain {
       last = await this.getTransactionStatusOnce(txHash);
       if (last.status === 'Success' || last.status === 'Failed') {
         if (minConfirmations <= 1) return last;
-        if (last.blockNumber === null) {
-          if (Date.now() >= deadline) return last;
-        } else {
-          const tip = await this.getProvider().getBlockNumber();
-          if (tip - last.blockNumber + 1 >= minConfirmations) return last;
-          if (Date.now() >= deadline) return last;
+        let tip: number;
+        try {
+          tip = await this.getProvider().getBlockNumber();
+        } catch (err) {
+          throw this.rpcError(`Failed to read chain tip for confirmations check`, err, { txHash });
+        }
+        const depth = last.blockNumber === null ? 0 : tip - last.blockNumber + 1;
+        if (depth >= minConfirmations) return last;
+        if (Date.now() >= deadline) {
+          throw new ChainError(
+            ChainErrorKinds.RpcError,
+            `getTransactionStatus timed out after ${opts.timeoutMs}ms with only ${depth} confirmation(s); required ${minConfirmations}. Consumer must NOT credit as final.`,
+            { chainId: this.chainId, txHash },
+          );
         }
       } else if (Date.now() >= deadline) {
         return last;

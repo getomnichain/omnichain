@@ -106,13 +106,17 @@ describe('EvmChain.createUnsignedTransaction — EIP-7702 form', () => {
     }
   });
 
-  it('accepts authorization with chainId 0 (EIP-7702 wildcard)', async () => {
+  it('rejects authorization with chainId=0 (wildcard is replayable on every chain — cross-chain replay guard)', async () => {
     const chain = makeChain(1);
-    const unsigned = await chain.createUnsignedTransaction({
-      from: '0x000000000000000000000000000000000000dEaD',
-      to: '0x000000000000000000000000000000000000BeEf',
-      authorizationList: [{ ...validAuth, chainId: 0 }],
-    });
-    expect(unsigned.type).toBe(4);
+    try {
+      await chain.createUnsignedTransaction({
+        from: '0x000000000000000000000000000000000000dEaD',
+        to: '0x000000000000000000000000000000000000BeEf',
+        authorizationList: [{ ...validAuth, chainId: 0 }],
+      });
+      fail('should reject');
+    } catch (err) {
+      expect(isChainError(err, ChainErrorKinds.InvalidArgument)).toBe(true);
+    }
   });
 });

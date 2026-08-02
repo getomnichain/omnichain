@@ -709,17 +709,41 @@ export class SolanaChain extends Chain {
     if (opts.signal?.aborted) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus aborted before first poll`, { chainId: this.chainId, txHash });
     }
+    const c = opts.confirmations ?? 1;
+    if (c !== 1 && c < 32) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana getTransactionStatus.confirmations must be 1 (confirmed) or >=32 (finalized); ${c} would ambiguously map otherwise.`,
+        { chainId: this.chainId, txHash },
+      );
+    }
     const deadline = opts.timeoutMs ? Date.now() + opts.timeoutMs : Number.POSITIVE_INFINITY;
     const pollMs = Math.max(400, this.blockTimeSeconds * 1000);
-    const wantFinalized = (opts.confirmations ?? 1) >= 32;
+    const wantFinalized = c >= 32;
     let last: SolanaTransactionStatus;
     while (true) {
       last = await this.getSolanaStatusOnce(txHash);
       if (last.status === 'Success' || last.status === 'Failed') {
         if (!wantFinalized) return last;
-        const status = await this.getConnection().getSignatureStatus(txHash, { searchTransactionHistory: true });
-        if (status.value?.confirmationStatus === 'finalized') return last;
-        if (Date.now() >= deadline) return last;
+        let sigStatus;
+        try {
+          sigStatus = await this.getConnection().getSignatureStatus(txHash, { searchTransactionHistory: true });
+        } catch (err) {
+          throw new ChainError(
+            ChainErrorKinds.RpcError,
+            sanitizeMessage(`Failed to poll signature status for finalization on ${this.name}`, this.resolvedRpcUrlForRedaction()),
+            { chainId: this.chainId, txHash },
+            sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
+          );
+        }
+        if (sigStatus.value?.confirmationStatus === 'finalized') return last;
+        if (Date.now() >= deadline) {
+          throw new ChainError(
+            ChainErrorKinds.RpcError,
+            `getTransactionStatus timed out after ${opts.timeoutMs}ms before reaching finalized; last confirmation status: ${sigStatus.value?.confirmationStatus ?? 'unknown'}. Consumer must NOT credit as final.`,
+            { chainId: this.chainId, txHash },
+          );
+        }
       } else if (Date.now() >= deadline) {
         return last;
       }
@@ -862,7 +886,7 @@ export class SolanaChain extends Chain {
     return this.getConnection().getSlot('confirmed');
   }
 
-  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts & { skipPreflight?: boolean; maxRetries?: number }): Promise<string> {
+  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts & { skipPreflight?: boolean; maxRetries?: number; via?: 'direct' | 'jito' }): Promise<string> {
     let bytes: Uint8Array;
     if (typeof signed === 'string') {
       const stripped = signed.startsWith('0x') ? signed.slice(2) : signed;
@@ -879,6 +903,17 @@ export class SolanaChain extends Chain {
     }
     if (opts?.signal?.aborted) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, 'Solana broadcast: signal already aborted', { chainId: this.chainId });
+    }
+    if (opts?.via === 'jito') {
+      if (!this.jito) {
+        throw new ChainError(
+          ChainErrorKinds.FeatureNotSupported,
+          `Solana broadcast: via: 'jito' requires SolanaChain to be constructed with jito config`,
+          { chainId: this.chainId },
+        );
+      }
+      await this.submitJitoBundle([bytes]);
+      return signatureBase58FromBytes(bytes);
     }
     try {
       const sig = await this.getConnection().sendRawTransaction(bytes, {
@@ -1024,6 +1059,17 @@ export class SolanaChain extends Chain {
         { chainId: this.chainId },
       );
     }
+    let payerKey: PublicKey;
+    try {
+      payerKey = new PublicKey(req.payer);
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidAddress,
+        `Invalid Solana payer pubkey: ${req.payer}`,
+        { chainId: this.chainId, address: req.payer },
+        err instanceof Error ? err : undefined,
+      );
+    }
     if (!Array.isArray(req.instructions) || req.instructions.length === 0) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
@@ -1032,13 +1078,36 @@ export class SolanaChain extends Chain {
       );
     }
     const connection = this.getConnection();
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-    const message = MessageV0.compile({
-      payerKey: new PublicKey(req.payer),
-      instructions: req.instructions,
-      recentBlockhash: blockhash,
-      addressLookupTableAccounts: req.addressLookupTables ?? [],
-    });
+    let blockhash: string;
+    let lastValidBlockHeight: number;
+    try {
+      const bh = await connection.getLatestBlockhash('finalized');
+      blockhash = bh.blockhash;
+      lastValidBlockHeight = bh.lastValidBlockHeight;
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana createUnsignedTransaction: getLatestBlockhash failed on ${this.name}`, this.resolvedRpcUrlForRedaction()),
+        { chainId: this.chainId },
+        sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
+      );
+    }
+    let message;
+    try {
+      message = MessageV0.compile({
+        payerKey,
+        instructions: req.instructions,
+        recentBlockhash: blockhash,
+        addressLookupTableAccounts: req.addressLookupTables ?? [],
+      });
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana createUnsignedTransaction: MessageV0.compile failed — instruction or ALT layout invalid`,
+        { chainId: this.chainId },
+        err instanceof Error ? err : undefined,
+      );
+    }
     const tx = new VersionedTransaction(message);
     if (tx.serialize().length > 1232) {
       throw new ChainError(
@@ -1451,6 +1520,43 @@ export class SolanaChain extends Chain {
     }
     return result;
   }
+}
+
+function signatureBase58FromBytes(txBytes: Uint8Array): string {
+  if (txBytes.length < 65) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `Solana broadcast: signed bytes too short (${txBytes.length}) to extract signature`,
+      {},
+    );
+  }
+  const numSigs = txBytes[0];
+  if (numSigs === 0 || txBytes.length < 1 + 64) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `Solana broadcast: no signatures in serialized transaction`,
+      {},
+    );
+  }
+  const sigBytes = txBytes.subarray(1, 1 + 64);
+  return bs58encode(sigBytes);
+}
+
+const BS58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function bs58encode(bytes: Uint8Array): string {
+  let n = 0n;
+  for (const b of bytes) n = (n << 8n) | BigInt(b);
+  let out = '';
+  while (n > 0n) {
+    const rem = Number(n % 58n);
+    out = BS58_ALPHABET[rem] + out;
+    n = n / 58n;
+  }
+  for (const b of bytes) {
+    if (b === 0) out = '1' + out;
+    else break;
+  }
+  return out;
 }
 
 async function solanaInterruptibleSleep(ms: number, signal?: AbortSignal): Promise<void> {

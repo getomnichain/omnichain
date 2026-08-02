@@ -12,11 +12,17 @@ const chain = new SolanaChain({
   jito: { url: 'https://mainnet.block-engine.jito.wtf/api/v1/bundles' },
 });
 
-const bundleId = await chain.broadcast(signedBytes, { via: 'jito' });
-const status = await chain.getBundleStatus(bundleId);
+// Broadcast a single signed tx as a 1-tx Jito bundle.
+// Returns the base58-encoded transaction signature (NOT the bundle id).
+const sig = await chain.broadcast(signedBytes, { via: 'jito' });
+const status = await chain.getTransactionStatus(sig, { wait: true });
 ```
 
+`broadcast({ via: 'jito' })` submits the transaction as a 1-tx bundle and returns the tx **signature** (the base58 of the first 64 bytes of the serialized transaction). The signature is the same value `chain.getTransactionStatus` accepts — the two APIs are consistent. The corresponding bundle id is a wire-level detail owned by the SDK and not surfaced through this path.
+
 ## Multi-tx bundle
+
+For a real multi-tx bundle the bundle id is meaningful. Use `submitJitoBundle` explicitly:
 
 ```ts
 const bundleId = await chain.submitJitoBundle([signedTx1, signedTx2, signedTx3]);
