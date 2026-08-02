@@ -470,7 +470,7 @@ export class UtxoChain extends Chain {
       if (/already in block chain|txn-already-known|txn-already-in-mempool|already[- ]?known|already[- ]?in mempool/.test(lowerMsg)) {
         return this.computeUtxoTxidLE(txBytes);
       }
-      if (/econnreset|econnrefused|econnaborted|etimedout|enotfound|socket hang up|network request failed|fetch failed|429|too\s+many\s+requests|rate.?limit/.test(lowerMsg)
+      if (/econnreset|econnrefused|econnaborted|etimedout|enotfound|socket hang up|network request failed|fetch failed|too\s+many\s+requests|rate.?limit/.test(lowerMsg)
           || (typeof httpStatus === 'number' && (httpStatus === 429 || httpStatus === 502 || httpStatus === 503 || httpStatus === 504))) {
         throw new ChainError(
           ChainErrorKinds.RpcError,

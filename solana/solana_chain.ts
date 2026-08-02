@@ -1406,7 +1406,7 @@ export class SolanaChain extends Chain {
     const rpc = this.resolvedRpcUrlForRedaction();
     const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
     const safeCause = sanitizeCause(err, rpc);
-    const transportSignals = /econnreset|econnrefused|econnaborted|etimedout|enotfound|network request failed|fetch failed|socket hang up|429|too\s+many\s+requests|rate.?limit|502|503|504/;
+    const transportSignals = /econnreset|econnrefused|econnaborted|etimedout|enotfound|network request failed|fetch failed|socket hang up|too\s+many\s+requests|rate.?limit/;
     if (/blockhash\s+not\s+found|blockhash\s+expired|block\s+height\s+exceeded/.test(msg)) {
       return new ChainError(
         ChainErrorKinds.BlockhashExpired,
@@ -1415,18 +1415,21 @@ export class SolanaChain extends Chain {
         safeCause,
       );
     }
-    if (/too\s+large|exceeds\s+\d+|transaction\s+size/.test(msg)) {
-      return new ChainError(
-        ChainErrorKinds.TransactionTooLarge,
-        sanitizeMessage(`Solana broadcast rejected: transaction exceeds 1232 bytes on ${this.name} (use ALT)`, rpc),
-        { chainId: this.chainId },
-        safeCause,
-      );
-    }
+    // Preflight/simulation MUST be checked before the size predicate — Solana
+    // preflight errors routinely embed "exceeds <N>" for CU / account-count
+    // limits, and would otherwise be misclassified as TransactionTooLarge.
     if (msg.includes('preflight') || msg.includes('simulation failed') || msg.includes('sendtransactionerror')) {
       return new ChainError(
         ChainErrorKinds.SimulationFailed,
         sanitizeMessage(`Solana broadcast rejected: preflight simulation failed on ${this.name}`, rpc),
+        { chainId: this.chainId },
+        safeCause,
+      );
+    }
+    if (/transaction\s+too\s+large|encoded\/raw transaction size exceeds|exceeds\s+the\s+maximum\s+transaction\s+size/.test(msg)) {
+      return new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        sanitizeMessage(`Solana broadcast rejected: transaction exceeds 1232 bytes on ${this.name} (use ALT)`, rpc),
         { chainId: this.chainId },
         safeCause,
       );
@@ -1701,7 +1704,7 @@ function validateAltList(input: unknown, chainId: number): AddressLookupTableAcc
   return input as AddressLookupTableAccount[];
 }
 
-function signatureBase58FromBytes(txBytes: Uint8Array): string {
+export function signatureBase58FromBytes(txBytes: Uint8Array): string {
   if (txBytes.length < 65) {
     throw new ChainError(
       ChainErrorKinds.InvalidArgument,
@@ -1722,7 +1725,7 @@ function signatureBase58FromBytes(txBytes: Uint8Array): string {
 }
 
 const BS58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-function bs58encode(bytes: Uint8Array): string {
+export function bs58encode(bytes: Uint8Array): string {
   let n = 0n;
   for (const b of bytes) n = (n << 8n) | BigInt(b);
   let out = '';

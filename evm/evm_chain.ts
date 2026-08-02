@@ -876,8 +876,12 @@ export class EvmChain extends Chain {
     if (numCode !== undefined && rateLimitCodes.has(numCode)) {
       return this.rpcError(`EVM broadcast rate-limited on ${this.name}`, err);
     }
-    const transportSignals = /econnreset|econnrefused|econnaborted|etimedout|enotfound|network request failed|fetch failed|socket hang up|too\s+many\s+requests|rate.?limit|502|503|504|network error/;
-    if (transportSignals.test(msg) || strCode === 'NETWORK_ERROR' || strCode === 'SERVER_ERROR' || strCode === 'TIMEOUT') {
+    const transportSignals = /econnreset|econnrefused|econnaborted|etimedout|enotfound|network request failed|fetch failed|socket hang up|too\s+many\s+requests|rate.?limit|network error/;
+    const httpStatus = (err as { info?: { status?: number }; status?: number }).info?.status
+      ?? (err as { status?: number }).status;
+    const isTransportHttp = typeof httpStatus === 'number' && (httpStatus === 429 || httpStatus === 502 || httpStatus === 503 || httpStatus === 504);
+    if (transportSignals.test(msg) || isTransportHttp
+        || strCode === 'NETWORK_ERROR' || strCode === 'SERVER_ERROR' || strCode === 'TIMEOUT') {
       return this.rpcError(`EVM broadcast transport failure on ${this.name}`, err);
     }
     // Default terminal: any unrecognized rejection is a node reject, NOT a
