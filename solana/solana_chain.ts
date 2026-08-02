@@ -1014,7 +1014,7 @@ export class SolanaChain extends Chain {
         );
       }
       const signature = signatureBase58FromBytes(bytes);
-      await this.submitJitoBundle([bytes]);
+      await this.submitJitoBundle([bytes], { signal: opts?.signal });
       return signature;
     }
     try {
@@ -1032,7 +1032,7 @@ export class SolanaChain extends Chain {
     }
   }
 
-  async submitJitoBundle(signedTxs: Uint8Array[]): Promise<string> {
+  async submitJitoBundle(signedTxs: Uint8Array[], opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<string> {
     if (!this.jito) {
       throw new ChainError(
         ChainErrorKinds.FeatureNotSupported,
@@ -1050,6 +1050,7 @@ export class SolanaChain extends Chain {
       ],
     };
     const jitoUrl = this.jito.url;
+    const signal = combineJitoSignal(opts?.signal, opts?.timeoutMs ?? 15_000);
     let json: { result?: string; error?: { message?: string } };
     try {
       const resp = await fetch(jitoUrl, {
@@ -1059,6 +1060,7 @@ export class SolanaChain extends Chain {
           ...(this.jito.auth ? { Authorization: `Bearer ${this.jito.auth}` } : {}),
         },
         body: JSON.stringify(body),
+        signal,
       });
       if (!resp.ok) {
         throw new ChainError(
@@ -1087,10 +1089,11 @@ export class SolanaChain extends Chain {
     return json.result;
   }
 
-  async getBundleStatus(bundleId: string): Promise<JitoBundleStatus>;
-  async getBundleStatus(bundleIds: string[]): Promise<JitoBundleStatus[]>;
+  async getBundleStatus(bundleId: string, opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<JitoBundleStatus>;
+  async getBundleStatus(bundleIds: string[], opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<JitoBundleStatus[]>;
   async getBundleStatus(
     bundleId: string | string[],
+    opts?: { signal?: AbortSignal; timeoutMs?: number },
   ): Promise<JitoBundleStatus | JitoBundleStatus[]> {
     if (!this.jito) {
       throw new ChainError(
@@ -1106,10 +1109,12 @@ export class SolanaChain extends Chain {
       method: 'getBundleStatuses',
       params: [ids],
     };
-    type JitoStatusResp = { result?: { value?: Array<{ bundle_id: string; slot?: number; confirmation_status?: string; err?: { Ok: null } | { Err: string } }> }; error?: { message?: string } };
+    type JitoStatusRow = { bundle_id?: string; slot?: number; confirmation_status?: string; err?: { Ok?: null } | { Err?: string } | null };
+    type JitoStatusResp = { result?: { value?: unknown }; error?: { message?: string } };
     let json: JitoStatusResp;
+    const jitoUrl = this.jito.url;
+    const signal = combineJitoSignal(opts?.signal, opts?.timeoutMs ?? 15_000);
     try {
-      const jitoUrl = this.jito.url;
       const resp = await fetch(jitoUrl, {
         method: 'POST',
         headers: {
@@ -1117,6 +1122,7 @@ export class SolanaChain extends Chain {
           ...(this.jito.auth ? { Authorization: `Bearer ${this.jito.auth}` } : {}),
         },
         body: JSON.stringify(body),
+        signal,
       });
       if (!resp.ok) {
         throw new ChainError(
@@ -1128,7 +1134,6 @@ export class SolanaChain extends Chain {
       json = (await resp.json()) as JitoStatusResp;
     } catch (err) {
       if (err instanceof ChainError) throw err;
-      const jitoUrl = this.jito.url;
       throw new ChainError(
         ChainErrorKinds.RpcError,
         sanitizeMessage(`Jito getBundleStatuses transport failed on ${this.name}`, jitoUrl),
@@ -1139,21 +1144,28 @@ export class SolanaChain extends Chain {
     if (json.error) {
       throw new ChainError(
         ChainErrorKinds.RpcError,
-        sanitizeMessage(`Jito getBundleStatuses error on ${this.name}: ${json.error.message ?? 'unknown'}`, this.jito.url),
+        sanitizeMessage(`Jito getBundleStatuses error on ${this.name}: ${json.error.message ?? 'unknown'}`, jitoUrl),
         { chainId: this.chainId },
       );
     }
-    const rows = json.result?.value ?? [];
-    const statuses: JitoBundleStatus[] = ids.map((id) => {
-      const row = rows.find((r) => r.bundle_id === id);
+    const rawValue = json.result?.value;
+    if (rawValue !== undefined && rawValue !== null && !Array.isArray(rawValue)) {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Jito getBundleStatuses returned malformed value (expected array or null)`, jitoUrl),
+        { chainId: this.chainId },
+      );
+    }
+    const rows: (JitoStatusRow | null)[] = Array.isArray(rawValue) ? rawValue : [];
+    const statuses: JitoBundleStatus[] = ids.map((id): JitoBundleStatus => {
+      const row = rows.find((r): r is JitoStatusRow => r != null && r.bundle_id === id);
       if (!row) return { bundleId: id, state: 'Pending' };
-      const err = row.err && 'Err' in row.err ? row.err.Err : undefined;
-      return {
-        bundleId: id,
-        state: err !== undefined ? 'Failed' : (row.confirmation_status === 'finalized' ? 'Landed' : 'Pending'),
-        slot: row.slot,
-        err,
-      };
+      const errStr = row.err && typeof row.err === 'object' && 'Err' in row.err && typeof row.err.Err === 'string' ? row.err.Err : undefined;
+      const confStatus = row.confirmation_status;
+      const state: JitoBundleStatus['state'] = errStr !== undefined
+        ? 'Failed'
+        : (confStatus === 'finalized' || confStatus === 'confirmed' ? 'Landed' : 'Pending');
+      return { bundleId: id, state, slot: row.slot, err: errStr };
     });
     return Array.isArray(bundleId) ? statuses : statuses[0];
   }
@@ -1710,6 +1722,19 @@ function bs58encode(bytes: Uint8Array): string {
     else break;
   }
   return out;
+}
+
+function combineJitoSignal(consumerSignal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  if (!consumerSignal) return timeout;
+  const ac = new AbortController();
+  const onAbort = (): void => ac.abort();
+  if (consumerSignal.aborted || timeout.aborted) ac.abort();
+  else {
+    consumerSignal.addEventListener('abort', onAbort, { once: true });
+    timeout.addEventListener('abort', onAbort, { once: true });
+  }
+  return ac.signal;
 }
 
 async function solanaInterruptibleSleep(ms: number, signal?: AbortSignal): Promise<void> {

@@ -32,6 +32,5 @@ export default {
     'utxo/btc/test/bitcoin_core_listunspent\\.spec\\.ts$',
     'utxo/btc/test/unisat\\.spec\\.ts$',
     'utxo/btc/test/suggest_fee_rate\\.spec\\.ts$',
-    'evm/test/get_balance\\.spec\\.ts$',
   ],
 };

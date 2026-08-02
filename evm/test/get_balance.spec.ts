@@ -38,7 +38,7 @@ describe('getBalance', () => {
   });
 
   it('ERC20 balance: constructs Contract.balanceOf and returns bigint', async () => {
-    const fn = jest.fn().mockResolvedValue(5_000_000n);
+    const fn = jest.fn<() => Promise<bigint>>().mockResolvedValue(5_000_000n);
     jest.spyOn(Contract.prototype, 'getFunction').mockImplementation((name: unknown) => {
       if (name === 'balanceOf') return fn as unknown as ReturnType<typeof Contract.prototype.getFunction>;
       const fallback = (): never => {
