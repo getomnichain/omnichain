@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import { Contract, JsonRpcProvider } from 'ethers';
 
 import { ChainErrorKinds, isChainError } from '../../errors.ts';

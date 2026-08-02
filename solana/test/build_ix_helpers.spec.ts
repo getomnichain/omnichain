@@ -39,11 +39,11 @@ describe('SolanaChain.buildNativeTransferInstruction', () => {
 describe('SolanaChain.buildSplTransferInstructions', () => {
   const chain = SolanaMainnet;
 
-  const mockResolveClassic = (): jest.Spied<any>[] => [
+  const mockResolveClassic = (): jest.SpyInstance[] => [
     jest.spyOn(chain, 'resolveTokenProgramId').mockResolvedValue(TOKEN_PROGRAM_ID),
     jest.spyOn(chain, 'resolveMintDecimals').mockResolvedValue(6),
   ];
-  const mockResolveToken2022 = (): jest.Spied<any>[] => [
+  const mockResolveToken2022 = (): jest.SpyInstance[] => [
     jest.spyOn(chain, 'resolveTokenProgramId').mockResolvedValue(TOKEN_2022_PROGRAM_ID),
     jest.spyOn(chain, 'resolveMintDecimals').mockResolvedValue(6),
   ];

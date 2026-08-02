@@ -180,6 +180,13 @@ export class SolanaChain extends Chain {
     this.defaultRpcUrl = init.defaultRpcUrl;
     this.rpcUrl = init.rpcUrl;
     this.rpcUrls = init.rpcUrls ?? [];
+    if (this.rpcUrls.length > 1) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `SolanaChainInit.rpcUrls accepts only ONE endpoint in 0.3.0 (got ${this.rpcUrls.length}). Automatic failover retry is deferred to a follow-up release; passing >1 endpoint would silently discard entries.`,
+        { chainId: init.chainId },
+      );
+    }
     this.legacyRpcEnvNames = init.legacyRpcEnvNames ?? [];
     this.explorerClusterSuffix = init.explorerClusterSuffix ?? '';
     this.chainAgnosticGenesisHash = init.chainAgnosticGenesisHash;
@@ -245,6 +252,14 @@ export class SolanaChain extends Chain {
    *      the pre-rename `SOLANA_RPC_URL` here)
    *   5. `defaultRpcUrl`  (never throws — public cluster)
    */
+  private resolvedRpcUrlForRedaction(): string | null {
+    try {
+      return this.readRpcUrl();
+    } catch {
+      return null;
+    }
+  }
+
   private readRpcUrl(): string {
     if (this.rpcUrl && this.rpcUrl.trim().length > 0) return this.rpcUrl.trim();
     if (this.rpcUrls.length > 0) {
@@ -847,7 +862,7 @@ export class SolanaChain extends Chain {
     return this.getConnection().getSlot('confirmed');
   }
 
-  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts & { skipPreflight?: boolean; maxRetries?: number; via?: 'direct' | 'jito' }): Promise<string> {
+  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts & { skipPreflight?: boolean; maxRetries?: number }): Promise<string> {
     let bytes: Uint8Array;
     if (typeof signed === 'string') {
       const stripped = signed.startsWith('0x') ? signed.slice(2) : signed;
@@ -864,17 +879,6 @@ export class SolanaChain extends Chain {
     }
     if (opts?.signal?.aborted) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, 'Solana broadcast: signal already aborted', { chainId: this.chainId });
-    }
-    if (opts?.via === 'jito') {
-      if (!this.jito) {
-        throw new ChainError(
-          ChainErrorKinds.FeatureNotSupported,
-          'Jito broadcast requires SolanaChain to be constructed with jito config',
-          { chainId: this.chainId },
-        );
-      }
-      const bundleId = await this.submitJitoBundle([bytes]);
-      return bundleId;
     }
     try {
       const sig = await this.getConnection().sendRawTransaction(bytes, {
@@ -901,9 +905,10 @@ export class SolanaChain extends Chain {
       method: 'sendBundle',
       params: [signedTxs.map((b) => Buffer.from(b).toString('base64'))],
     };
+    const jitoUrl = this.jito.url;
     let json: { result?: string; error?: { message?: string } };
     try {
-      const resp = await fetch(this.jito.url, {
+      const resp = await fetch(jitoUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -911,19 +916,27 @@ export class SolanaChain extends Chain {
         },
         body: JSON.stringify(body),
       });
+      if (!resp.ok) {
+        throw new ChainError(
+          resp.status === 401 || resp.status === 403 ? ChainErrorKinds.BroadcastRejected : ChainErrorKinds.RpcError,
+          sanitizeMessage(`Jito submitBundle HTTP ${resp.status} on ${this.name}`, jitoUrl),
+          { chainId: this.chainId },
+        );
+      }
       json = (await resp.json()) as { result?: string; error?: { message?: string } };
     } catch (err) {
+      if (err instanceof ChainError) throw err;
       throw new ChainError(
         ChainErrorKinds.RpcError,
-        `Jito submitBundle transport failed: ${err instanceof Error ? err.message : String(err)}`,
+        sanitizeMessage(`Jito submitBundle transport failed on ${this.name}`, jitoUrl),
         { chainId: this.chainId },
-        err instanceof Error ? err : undefined,
+        sanitizeCause(err, jitoUrl),
       );
     }
     if (json.error || !json.result) {
       throw new ChainError(
         ChainErrorKinds.BroadcastRejected,
-        `Jito submitBundle rejected: ${json.error?.message ?? 'no bundle id returned'}`,
+        sanitizeMessage(`Jito submitBundle rejected on ${this.name}: ${json.error?.message ?? 'no bundle id returned'}`, jitoUrl),
         { chainId: this.chainId },
       );
     }
@@ -952,7 +965,8 @@ export class SolanaChain extends Chain {
     type JitoStatusResp = { result?: { value?: Array<{ bundle_id: string; slot?: number; confirmation_status?: string; err?: { Ok: null } | { Err: string } }> }; error?: { message?: string } };
     let json: JitoStatusResp;
     try {
-      const resp = await fetch(this.jito.url, {
+      const jitoUrl = this.jito.url;
+      const resp = await fetch(jitoUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -960,19 +974,28 @@ export class SolanaChain extends Chain {
         },
         body: JSON.stringify(body),
       });
+      if (!resp.ok) {
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          sanitizeMessage(`Jito getBundleStatuses HTTP ${resp.status} on ${this.name}`, jitoUrl),
+          { chainId: this.chainId },
+        );
+      }
       json = (await resp.json()) as JitoStatusResp;
     } catch (err) {
+      if (err instanceof ChainError) throw err;
+      const jitoUrl = this.jito.url;
       throw new ChainError(
         ChainErrorKinds.RpcError,
-        `Jito getBundleStatuses transport failed: ${err instanceof Error ? err.message : String(err)}`,
+        sanitizeMessage(`Jito getBundleStatuses transport failed on ${this.name}`, jitoUrl),
         { chainId: this.chainId },
-        err instanceof Error ? err : undefined,
+        sanitizeCause(err, jitoUrl),
       );
     }
     if (json.error) {
       throw new ChainError(
         ChainErrorKinds.RpcError,
-        `Jito getBundleStatuses error: ${json.error.message ?? 'unknown'}`,
+        sanitizeMessage(`Jito getBundleStatuses error on ${this.name}: ${json.error.message ?? 'unknown'}`, this.jito.url),
         { chainId: this.chainId },
       );
     }
@@ -1041,13 +1064,44 @@ export class SolanaChain extends Chain {
     pubkey: string | string[],
   ): Promise<SolanaAccountInfoResult | null | (SolanaAccountInfoResult | null)[]> {
     const connection = this.getConnection();
+    const toPk = (raw: string): PublicKey => {
+      try {
+        return new PublicKey(raw);
+      } catch (err) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidAddress,
+          `Invalid Solana pubkey: ${raw}`,
+          { chainId: this.chainId, address: raw },
+          err instanceof Error ? err : undefined,
+        );
+      }
+    };
     if (Array.isArray(pubkey)) {
-      const pks = pubkey.map((s) => new PublicKey(s));
-      const infos = await connection.getMultipleAccountsInfo(pks);
-      return infos.map((info) => (info === null ? null : toAccountInfoResult(info)));
+      const pks = pubkey.map(toPk);
+      try {
+        const infos = await connection.getMultipleAccountsInfo(pks);
+        return infos.map((info) => (info === null ? null : toAccountInfoResult(info)));
+      } catch (err) {
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          sanitizeMessage(`Solana getMultipleAccountsInfo RPC failure on ${this.name}`, this.resolvedRpcUrlForRedaction()),
+          { chainId: this.chainId },
+          sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
+        );
+      }
     }
-    const info = await connection.getAccountInfo(new PublicKey(pubkey));
-    return info === null ? null : toAccountInfoResult(info);
+    try {
+      const info = await connection.getAccountInfo(toPk(pubkey));
+      return info === null ? null : toAccountInfoResult(info);
+    } catch (err) {
+      if (err instanceof ChainError) throw err;
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana getAccountInfo RPC failure on ${this.name}`, this.resolvedRpcUrlForRedaction()),
+        { chainId: this.chainId, address: pubkey },
+        sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
+      );
+    }
   }
 
   async getTokenAccount(owner: string, mint: string, opts?: { allowOwnerOffCurve?: boolean }): Promise<SolanaTokenAccountResult> {
@@ -1074,14 +1128,22 @@ export class SolanaChain extends Chain {
       const acc = await getAccount(this.getConnection(), ataPk, undefined, programId);
       return { ata: ataPk.toBase58(), exists: true, balanceMr: acc.amount };
     } catch (err) {
-      if (err instanceof TokenAccountNotFoundError || err instanceof TokenInvalidAccountOwnerError) {
+      if (err instanceof TokenAccountNotFoundError) {
         return { ata: ataPk.toBase58(), exists: false, balanceMr: undefined };
+      }
+      if (err instanceof TokenInvalidAccountOwnerError) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `Solana getTokenAccount: account at ${ataPk.toBase58()} exists but is owned by an unexpected program (hostile squat or wrong mint program). Consumer should NOT create-ATA blindly.`,
+          { chainId: this.chainId, address: ataPk.toBase58() },
+          err,
+        );
       }
       throw new ChainError(
         ChainErrorKinds.RpcError,
-        sanitizeMessage(`Solana getTokenAccount RPC failure on ${this.name}`, this.rpcUrl ?? null),
+        sanitizeMessage(`Solana getTokenAccount RPC failure on ${this.name}`, this.resolvedRpcUrlForRedaction()),
         { chainId: this.chainId, address: ataPk.toBase58() },
-        sanitizeCause(err, this.rpcUrl ?? null),
+        sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
       );
     }
   }
@@ -1099,9 +1161,9 @@ export class SolanaChain extends Chain {
     } catch (err) {
       throw new ChainError(
         ChainErrorKinds.RpcError,
-        sanitizeMessage(`Solana fetchAddressLookupTable RPC failure on ${this.name}`, this.rpcUrl ?? null),
+        sanitizeMessage(`Solana fetchAddressLookupTable RPC failure on ${this.name}`, this.resolvedRpcUrlForRedaction()),
         { chainId: this.chainId, address: altAddress },
-        sanitizeCause(err, this.rpcUrl ?? null),
+        sanitizeCause(err, this.resolvedRpcUrlForRedaction()),
       );
     }
     if (!res.value) {
@@ -1115,7 +1177,7 @@ export class SolanaChain extends Chain {
   }
 
   private classifyBroadcastError(err: unknown): ChainError {
-    const rpc = this.rpcUrl ?? null;
+    const rpc = this.resolvedRpcUrlForRedaction();
     const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
     const safeCause = sanitizeCause(err, rpc);
     const transportSignals = /econnreset|econnrefused|econnaborted|etimedout|enotfound|network request failed|fetch failed|socket hang up|502|503|504/;

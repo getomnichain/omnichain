@@ -1,5 +1,6 @@
 import { AddressLookupTableAccount, PublicKey, TransactionInstruction, VersionedTransaction } from '@solana/web3.js';
 
+import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { NetworkType } from '../network_type.ts';
 import { UnsignedTransaction } from '../unsigned_transaction.ts';
 
@@ -67,14 +68,18 @@ export class UnsignedSolanaTransaction extends UnsignedTransaction {
   finalizeAndSerialize(signatures: Uint8Array[]): Uint8Array {
     const required = this.transaction.message.header.numRequiredSignatures;
     if (signatures.length !== required) {
-      throw new Error(
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
         `finalizeAndSerialize: expected ${required} signatures for this message (numRequiredSignatures), got ${signatures.length}`,
+        { chainId: this.chainId },
       );
     }
     for (let i = 0; i < signatures.length; i++) {
       if (signatures[i].length !== 64) {
-        throw new Error(
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
           `finalizeAndSerialize: signature[${i}] length ${signatures[i].length} !== 64 (ed25519)`,
+          { chainId: this.chainId },
         );
       }
       this.transaction.addSignature(this.transaction.message.staticAccountKeys[i], signatures[i]);

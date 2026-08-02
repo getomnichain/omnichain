@@ -216,6 +216,13 @@ export class EvmChain extends Chain {
     );
     this.rpcUrl = init.rpcUrl;
     this.rpcUrls = init.rpcUrls ?? [];
+    if (this.rpcUrls.length > 1) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `EvmChainInit.rpcUrls accepts only ONE endpoint in 0.3.0 (got ${this.rpcUrls.length}). Automatic failover retry is deferred to a follow-up release; passing >1 endpoint would silently discard entries.`,
+        { chainId: init.chainId },
+      );
+    }
     this.supportsEip1559 = init.supportsEip1559 ?? true;
     this.hasL1Fee = init.hasL1Fee ?? false;
     this.nativeTransferGasLimit = init.nativeTransferGasLimit ?? 21000;

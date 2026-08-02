@@ -5,10 +5,17 @@
  */
 export function sanitizeMessage(message: string, rpcUrl: string | null): string {
   let out = message;
-  out = out.replace(/apiKey=[^\s"&]+/gi, 'apiKey=<redacted>');
-  out = out.replace(/[?&]key=[^\s"&]+/gi, (m) => `${m[0]}key=<redacted>`);
-  out = out.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer <redacted>');
-  out = out.replace(/\/(v\d+|api)\/[A-Fa-f0-9]{16,}\//g, '/$1/<redacted>/');
+  out = out.replace(/([?&])([a-zA-Z_-]*(?:api[-_]?key|key|token|access[-_]?token|secret))=[^\s"&]+/gi, '$1$2=<redacted>');
+  out = out.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer <redacted>');
+  out = out.replace(/(\/v\d+|\/api)\/[A-Za-z0-9_-]{16,}(?=\/|$|\s|["'])/gi, '$1/<redacted>');
+  out = out.replace(/https?:\/\/[^\s"'`]*\.(?:alchemy\.com|infura\.io|quiknode\.pro|helius-rpc\.com|ankr\.com|blastapi\.io|drpc\.org)\/[A-Za-z0-9_./=-]{8,}/gi, (m) => {
+    try {
+      const u = new URL(m);
+      return `${u.protocol}//${u.host}/<redacted>`;
+    } catch {
+      return '<rpc>';
+    }
+  });
   if (!rpcUrl) return out;
   try {
     const u = new URL(rpcUrl);

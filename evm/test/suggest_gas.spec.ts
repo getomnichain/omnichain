@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import { ChainErrorKinds, isChainError } from '../../errors.ts';
 import { Arbitrum } from '../evm_chains.ts';
 import { Priority } from '../../priority.ts';

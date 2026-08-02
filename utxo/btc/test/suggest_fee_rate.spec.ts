@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import { bitcoinTestnetChain } from '../btc_chains.ts';
 import { Priority } from '../../../priority.ts';
 import { UtxoChain } from '../../utxo_chain.ts';

@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import { JsonRpcProvider, TransactionReceipt, TransactionResponse } from 'ethers';
 
 import { isSuccess } from '../../transaction_status.ts';
@@ -10,10 +9,10 @@ const L2_GAS_USED = 21000n;
 const L2_GAS_PRICE = 1_000_000_000n;
 
 interface Spies {
-  txSpy: jest.Spied<any>;
-  receiptSpy: jest.Spied<any>;
-  sendSpy: jest.Spied<any>;
-  getBlockSpy: jest.Spied<any>;
+  txSpy: jest.SpyInstance;
+  receiptSpy: jest.SpyInstance;
+  sendSpy: jest.SpyInstance;
+  getBlockSpy: jest.SpyInstance;
 }
 
 function setup(opts: {

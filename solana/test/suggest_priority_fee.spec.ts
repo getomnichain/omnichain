@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import { SolanaMainnet } from '../solana_chains.ts';
 import { Priority } from '../../priority.ts';
 

@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import { Contract, JsonRpcProvider } from 'ethers';
 
 import { ChainErrorKinds, isChainError } from '../../errors.ts';
@@ -10,7 +9,7 @@ const VALID_ADDR = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
 
 describe('rpcUrl never leaks into error messages (synthetic transport)', () => {
   const originalEnv = process.env.ARBITRUM_RPC_URL;
-  let getBalanceSpy: jest.Spied<any> | undefined;
+  let getBalanceSpy: jest.SpyInstance | undefined;
 
   afterEach(() => {
     if (originalEnv === undefined) delete process.env.ARBITRUM_RPC_URL;

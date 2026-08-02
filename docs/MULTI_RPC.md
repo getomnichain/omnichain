@@ -1,38 +1,28 @@
 # Multi-endpoint RPC config
 
-Both `EvmChain` and `SolanaChain` constructors accept `rpcUrls?: string[]` in addition to the existing `rpcUrl?: string`.
+Both `EvmChain` and `SolanaChain` constructors accept an optional `rpcUrls?: string[]` field alongside `rpcUrl?: string`.
+
+## 0.3.0 status — single-entry only
+
+**`rpcUrls` accepts at most ONE entry in 0.3.0.** Passing a longer list throws `ChainError(InvalidArgument)` at construction time. The field ships as a stable API surface; automatic failover-retry lands in a follow-up release. Consumers pinning `rpcUrls: [primary]` today will benefit as soon as retry-on-transport-error ships.
 
 ```ts
-const chain = new EvmChain({
-  chainId: 42161,
-  name: 'Arbitrum One',
-  blockTimeSeconds: 0.25,
-  nativeSymbol: 'ETH',
-  explorerBaseUrl: 'https://arbiscan.io',
-  rpcUrls: [
-    process.env.ARBITRUM_PRIMARY_RPC_URL!,
-    process.env.ARBITRUM_BACKUP_RPC_URL!,
-    'https://arb1.arbitrum.io/rpc',
-  ],
-});
+new EvmChain({ ..., rpcUrls: [process.env.ARBITRUM_PRIMARY_RPC_URL!] });   // OK
+new EvmChain({ ..., rpcUrls: [primary, backup] });                          // throws — deferred
 ```
 
 ## Precedence
 
-`rpcUrl` (single) → `rpcUrls[0]` (primary of the list) → env-var chain → `defaultRpcUrl` (Solana only).
+`rpcUrl` (single) → `rpcUrls[0]` → env-var chain → `defaultRpcUrl` (Solana only).
 
-Endpoint order is authoritative — the SDK does not silently fall back to a URL that isn't in the configured list or env fallback chain.
-
-## 0.3.0 status
-
-Only the **primary** entry of `rpcUrls` is used at wire time in this release. **Automatic failover retry on 5xx / 429 / ECONNRESET / ETIMEDOUT lands in 0.3.1** — the API surface is stable so consumers pinning `rpcUrls: [primary, backup]` today will benefit as soon as the internal retry client ships. Until then, pass a single healthy endpoint or wrap the SDK with your own retry.
+When `rpcUrls` is non-empty but every entry is blank, resolution throws `ChainError(RpcNotConfigured)`. **The SDK never silently falls back to a URL that isn't in the configured list or env fallback chain.**
 
 ## URL redactor
 
 All error messages / thrown `ChainError.message` / logs pass through a redactor that strips:
-- `?apiKey=<key>` → `?apiKey=<redacted>`
-- `?key=<key>` → `?key=<redacted>`
-- `Authorization: Bearer <token>` → `Authorization: Bearer <redacted>`
-- Path-embedded keys (Infura `/v3/<key>`, Alchemy `/v2/<key>`) → `/v3/<redacted>` / `/v2/<redacted>`
+- Query params ending in `key`, `token`, `secret` (`apiKey`, `api-key`, `api_key`, `key`, `access-token`, `secret`)
+- `Authorization: Bearer <token>` (case-insensitive)
+- Path-embedded keys under `/vN/` or `/api/` (≥16 alphanumeric or `_/-`)
+- Full-URL match on known providers — Alchemy, Infura, QuickNode, Helius, Ankr, Blast, dRPC — collapses to `<scheme>://<host>/<redacted>`
 
-Keyed URLs never appear in logs — safe to pass Alchemy, Infura, QuickNode, Ankr URLs directly.
+Keyed URLs never appear in logs.
