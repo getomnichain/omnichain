@@ -158,7 +158,6 @@ export interface EvmCallRequest {
   from?: string;
   value?: bigint;
   estimateGas?: boolean;
-  signal?: AbortSignal;
 }
 
 export interface EvmCallResult {
@@ -708,13 +707,21 @@ export class EvmChain extends Chain {
         }
       }
     }
+    if (!this.supportsEip1559 && (req.maxFeePerGas !== undefined || req.maxPriorityFeePerGas !== undefined)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `EVM chain ${this.name} is legacy (supportsEip1559=false); maxFeePerGas/maxPriorityFeePerGas are not accepted. Use gasPrice via UnsignedEvmTransaction consumers.`,
+        { chainId: this.chainId },
+      );
+    }
+    const emittedType = req.authorizationList !== undefined ? 4 : this.supportsEip1559 ? 2 : 0;
     return new UnsignedEvmTransaction({
       chainId: this.chainId,
       from: req.from,
       to: req.to,
       value: req.value ?? 0n,
       data: req.data ?? '0x',
-      type: req.authorizationList !== undefined ? 4 : 2,
+      type: emittedType,
       authorizationList: req.authorizationList,
       gasLimit: req.gasLimit,
       nonce: req.nonce,

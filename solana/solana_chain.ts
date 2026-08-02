@@ -970,6 +970,13 @@ export class SolanaChain extends Chain {
           { chainId: this.chainId },
         );
       }
+      if (opts.skipPreflight !== undefined || opts.maxRetries !== undefined) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `Solana broadcast: skipPreflight/maxRetries do not apply to the Jito path (block-engine has its own retry semantics)`,
+          { chainId: this.chainId },
+        );
+      }
       if (bytes.length > 1232) {
         throw new ChainError(
           ChainErrorKinds.TransactionTooLarge,

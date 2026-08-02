@@ -433,13 +433,31 @@ export class UtxoChain extends Chain {
     return this.buildTransfer(req as CreateUtxoTransferOptions, undefined);
   }
 
-  async broadcast(signed: string | Uint8Array, _opts?: BroadcastOpts): Promise<string> {
-    const hex = typeof signed === 'string' ? signed : Buffer.from(signed).toString('hex');
+  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
+    let hex: string;
+    if (typeof signed === 'string') {
+      const stripped = signed.startsWith('0x') ? signed.slice(2) : signed;
+      if (!/^[0-9a-fA-F]+$/.test(stripped) || stripped.length % 2 !== 0 || stripped.length === 0) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `UTXO broadcast: signed transaction must be Uint8Array or hex string (got malformed string of length ${signed.length})`,
+          { chainId: this.chainId },
+        );
+      }
+      hex = stripped;
+    } else {
+      hex = Buffer.from(signed).toString('hex');
+    }
+    if (opts?.signal?.aborted) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, 'UTXO broadcast: signal already aborted', { chainId: this.chainId });
+    }
     try {
       const { txid } = await this.broadcaster.broadcast(hex);
       return txid;
     } catch (err) {
-      const rawMsg = err instanceof Error ? err.message : String(err);
+      const body = (err as { response?: { data?: unknown } }).response?.data;
+      const bodyStr = body === undefined ? '' : ` — node response: ${typeof body === 'string' ? body : JSON.stringify(body)}`;
+      const rawMsg = (err instanceof Error ? err.message : String(err)) + bodyStr;
       const sanitizedMsg = sanitizeUtxoErrMessage(rawMsg);
       throw new ChainError(
         ChainErrorKinds.BroadcastRejected,

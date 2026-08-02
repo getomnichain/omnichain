@@ -17,7 +17,7 @@ export default {
       {
         useESM: true,
         tsconfig: 'tsconfig.jest.json',
-        diagnostics: { ignoreCodes: [151002, 2694, 2345, 2322] },
+        diagnostics: { ignoreCodes: [151002] },
       },
     ],
   },
