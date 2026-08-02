@@ -432,11 +432,13 @@ export class UtxoChain extends Chain {
       const { txid } = await this.broadcaster.broadcast(hex);
       return txid;
     } catch (err) {
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const sanitizedMsg = sanitizeUtxoErrMessage(rawMsg);
       throw new ChainError(
         ChainErrorKinds.BroadcastRejected,
-        `UTXO broadcast rejected on ${this.name}: ${err instanceof Error ? err.message : String(err)}`,
+        `UTXO broadcast rejected on ${this.name}: ${sanitizedMsg}`,
         { chainId: this.chainId },
-        err instanceof Error ? err : undefined,
+        err instanceof Error ? sanitizedCauseForUtxo(err, sanitizedMsg) : undefined,
       );
     }
   }

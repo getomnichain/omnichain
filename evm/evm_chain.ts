@@ -378,8 +378,14 @@ export class EvmChain extends Chain {
   private readRpcUrl(): string {
     if (this.rpcUrl && this.rpcUrl.trim().length > 0) return this.rpcUrl.trim();
     if (this.rpcUrls.length > 0) {
-      const first = this.rpcUrls[0];
-      if (first && first.trim().length > 0) return first.trim();
+      for (const candidate of this.rpcUrls) {
+        if (candidate && candidate.trim().length > 0) return candidate.trim();
+      }
+      throw new ChainError(
+        ChainErrorKinds.RpcNotConfigured,
+        `${this.name}: rpcUrls was supplied but every entry is blank; refusing to fall back to env or public defaults`,
+        { chainId: this.chainId },
+      );
     }
     const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
     const candidates = envCandidatesFor(this.name, this.chainId);
@@ -697,6 +703,7 @@ export class EvmChain extends Chain {
     }
     return new UnsignedEvmTransaction({
       chainId: this.chainId,
+      from: req.from,
       to: req.to,
       value: req.value ?? 0n,
       data: req.data ?? '0x',
@@ -711,11 +718,12 @@ export class EvmChain extends Chain {
 
   private classifyBroadcastError(err: unknown): ChainError {
     const rpc = this._resolvedRpcUrl;
-    const code = errCode(err);
+    const strCode = ethersErrCode(err);
+    const numCode = errCode(err);
     const rawMsg = err instanceof Error ? err.message : String(err);
     const msg = rawMsg.toLowerCase();
     const safeCause = sanitizeCause(err, rpc);
-    if (code === -32000 && (msg.includes('nonce too low') || msg.includes('nonce_too_low'))) {
+    if (strCode === 'NONCE_EXPIRED' || msg.includes('nonce too low') || msg.includes('nonce_too_low') || msg.includes('nonce has already been used')) {
       return new ChainError(
         ChainErrorKinds.NonceTooLow,
         sanitizeMessage(`EVM broadcast rejected: nonce too low on ${this.name}`, rpc),
@@ -723,15 +731,7 @@ export class EvmChain extends Chain {
         safeCause,
       );
     }
-    if (msg.includes('nonce too low') || msg.includes('nonce_too_low')) {
-      return new ChainError(
-        ChainErrorKinds.NonceTooLow,
-        sanitizeMessage(`EVM broadcast rejected: nonce too low on ${this.name}`, rpc),
-        { chainId: this.chainId, rpcHost: this.rpcHost() },
-        safeCause,
-      );
-    }
-    if (msg.includes('insufficient funds')) {
+    if (strCode === 'INSUFFICIENT_FUNDS' || msg.includes('insufficient funds')) {
       return new ChainError(
         ChainErrorKinds.InsufficientFunds,
         sanitizeMessage(`EVM broadcast rejected: insufficient funds on ${this.name}`, rpc),
@@ -739,7 +739,7 @@ export class EvmChain extends Chain {
         safeCause,
       );
     }
-    if (msg.includes('replacement') || msg.includes('already known') || msg.includes('underpriced')) {
+    if (strCode === 'REPLACEMENT_UNDERPRICED' || msg.includes('replacement') || msg.includes('already known') || msg.includes('underpriced')) {
       return new ChainError(
         ChainErrorKinds.BroadcastRejected,
         sanitizeMessage(`EVM broadcast rejected on ${this.name} (replacement/known-nonce)`, rpc),
@@ -747,7 +747,7 @@ export class EvmChain extends Chain {
         safeCause,
       );
     }
-    if (typeof code === 'number' && code >= -32099 && code <= -32000 && !msg.includes('api')) {
+    if (typeof numCode === 'number' && numCode >= -32099 && numCode <= -32000 && !msg.includes('api key')) {
       return new ChainError(
         ChainErrorKinds.BroadcastRejected,
         sanitizeMessage(`EVM broadcast rejected on ${this.name}`, rpc),
@@ -1173,6 +1173,12 @@ function errCode(err: unknown): number | undefined {
   if (typeof raw === 'number') return raw;
   if (typeof raw === 'string' && /^-?\d+$/.test(raw)) return Number(raw);
   return undefined;
+}
+
+function ethersErrCode(err: unknown): string | undefined {
+  if (typeof err !== 'object' || err === null) return undefined;
+  const e = err as { code?: unknown };
+  return typeof e.code === 'string' ? e.code : undefined;
 }
 
 function envCandidatesFor(name: string, chainId: number): string[] {

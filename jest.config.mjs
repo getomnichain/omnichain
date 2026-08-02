@@ -11,10 +11,13 @@ export default {
       'ts-jest',
       {
         useESM: true,
+        tsconfig: 'tsconfig.jest.json',
         diagnostics: { ignoreCodes: [151002] },
       },
     ],
   },
   testMatch: ['**/*.spec.ts'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/'],
+  setupFilesAfterEach: [],
+  globals: {},
 };

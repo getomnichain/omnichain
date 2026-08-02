@@ -248,8 +248,14 @@ export class SolanaChain extends Chain {
   private readRpcUrl(): string {
     if (this.rpcUrl && this.rpcUrl.trim().length > 0) return this.rpcUrl.trim();
     if (this.rpcUrls.length > 0) {
-      const first = this.rpcUrls[0];
-      if (first && first.trim().length > 0) return first.trim();
+      for (const candidate of this.rpcUrls) {
+        if (candidate && candidate.trim().length > 0) return candidate.trim();
+      }
+      throw new ChainError(
+        ChainErrorKinds.RpcNotConfigured,
+        `${this.name}: rpcUrls was supplied but every entry is blank; refusing to fall back to env or the public default cluster`,
+        { chainId: this.chainId },
+      );
     }
     const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
     const candidates = [
@@ -1112,14 +1118,7 @@ export class SolanaChain extends Chain {
     const rpc = this.rpcUrl ?? null;
     const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
     const safeCause = sanitizeCause(err, rpc);
-    if (msg.includes('preflight') || msg.includes('simulation failed') || msg.includes('sendtransactionerror')) {
-      return new ChainError(
-        ChainErrorKinds.SimulationFailed,
-        sanitizeMessage(`Solana broadcast rejected: preflight simulation failed on ${this.name}`, rpc),
-        { chainId: this.chainId },
-        safeCause,
-      );
-    }
+    const transportSignals = /econnreset|econnrefused|econnaborted|etimedout|enotfound|network request failed|fetch failed|socket hang up|502|503|504/;
     if (/blockhash\s+not\s+found|blockhash\s+expired/.test(msg)) {
       return new ChainError(
         ChainErrorKinds.BlockhashExpired,
@@ -1128,10 +1127,26 @@ export class SolanaChain extends Chain {
         safeCause,
       );
     }
-    if (msg.includes('too large') || msg.includes('exceeds')) {
+    if (/too\s+large|exceeds\s+\d+|transaction\s+size/.test(msg)) {
       return new ChainError(
         ChainErrorKinds.TransactionTooLarge,
         sanitizeMessage(`Solana broadcast rejected: transaction exceeds 1232 bytes on ${this.name} (use ALT)`, rpc),
+        { chainId: this.chainId },
+        safeCause,
+      );
+    }
+    if (msg.includes('preflight') || msg.includes('simulation failed') || msg.includes('sendtransactionerror')) {
+      return new ChainError(
+        ChainErrorKinds.SimulationFailed,
+        sanitizeMessage(`Solana broadcast rejected: preflight simulation failed on ${this.name}`, rpc),
+        { chainId: this.chainId },
+        safeCause,
+      );
+    }
+    if (transportSignals.test(msg)) {
+      return new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana broadcast RPC transport failure on ${this.name}`, rpc),
         { chainId: this.chainId },
         safeCause,
       );
