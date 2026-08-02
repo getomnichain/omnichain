@@ -613,22 +613,19 @@ export class EvmChain extends Chain {
     } catch (err) {
       const rawMsg = (err instanceof Error ? err.message : String(err)).toLowerCase();
       if (/already[-_ ]?known|known\s+transaction|transaction[-_ ]?already[-_ ]?known|already\s+in\s+(?:the\s+)?(?:mempool|pool)|already[-_ ]?present/.test(rawMsg)) {
-        // Provider says the identical signed bytes were already accepted, but
-        // "already known"-style phrasing also appears in proxy/gateway errors
-        // that never forwarded the tx (e.g. `409 Conflict: request already
-        // present`). Confirm via a single provider.getTransaction read against
-        // the deterministic hash before surfacing success — else a false
-        // positive would leave the consumer polling forever on a hash that
-        // doesn't exist. If confirmation fails or the tx is absent, fall
-        // through to classifyBroadcastError so the consumer sees the real
-        // rejection kind.
-        const derivedHash = keccak256(hex);
-        try {
-          const confirmed = await this.getProvider().getTransaction(derivedHash);
-          if (confirmed) return derivedHash;
-        } catch {
-          // Confirmation call itself failed — fall through to classifier.
-        }
+        // Node "already known" is authoritative for THAT node's mempool —
+        // the identical signed bytes are pending or landed. Return the
+        // deterministic hash so the consumer stays on the polling path.
+        // Do NOT gate on a follow-up getTransaction read: load-balanced
+        // providers (Alchemy/Infura/QuickNode round-robin) routinely serve
+        // the confirmation read from a different backend that has not yet
+        // seen the pending tx → null → falsely-terminal BroadcastRejected
+        // → consumer re-signs against a fresh nonce → double-send while
+        // the original is live. If the tx really never lands, the
+        // consumer's getTransactionStatus poll will surface NotFound and
+        // the safe-broadcast rule (re-broadcast same bytes, never re-sign)
+        // still applies. Matches SolanaChain/UtxoChain already-known paths.
+        return keccak256(hex);
       }
       throw this.classifyBroadcastError(err);
     }

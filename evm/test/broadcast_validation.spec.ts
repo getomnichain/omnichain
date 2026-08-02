@@ -88,11 +88,15 @@ describe('EvmChain.broadcast — error classification', () => {
     expect(hash).toBe(keccak256(sig));
   });
 
-  it("gateway false-positive: 'already present' error but tx not on chain → BroadcastRejected, NOT synthesized success", async () => {
-    const chain = chainWithProviderError(new Error('409 Conflict: request already present'), { txExists: false });
-    let caught: unknown;
-    try { await chain.broadcast('0xdeadbeef'); } catch (e) { caught = e; }
-    expect(isChainError(caught, ChainErrorKinds.BroadcastRejected)).toBe(true);
+  it("already-known + confirmation-read returns null (load-balanced provider) → STILL returns deterministic hash", async () => {
+    // Reverses the earlier confirmation-gate approach that would return
+    // BroadcastRejected here. That created a worse hazard: consumer sees
+    // "permanent rejection", re-signs against fresh nonce, double-sends
+    // while the original tx is live in the mempool of a different backend.
+    const chain = chainWithProviderError(new Error('txpool: already known'), { txExists: false });
+    const sig = '0xdeadbeef';
+    const hash = await chain.broadcast(sig);
+    expect(hash).toBe(keccak256(sig));
   });
 
   it('Infura rate-limit code -32005 → RpcError (retryable), NOT BroadcastRejected', async () => {
