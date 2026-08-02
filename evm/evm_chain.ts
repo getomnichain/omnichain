@@ -550,10 +550,24 @@ export class EvmChain extends Chain {
     }
   }
 
-  async broadcast(signed: string | Uint8Array, _opts?: BroadcastOpts): Promise<string> {
-    const hex = typeof signed === 'string'
-      ? (signed.startsWith('0x') ? signed : `0x${signed}`)
-      : hexlify(signed);
+  async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
+    let hex: string;
+    if (typeof signed === 'string') {
+      const stripped = signed.startsWith('0x') ? signed.slice(2) : signed;
+      if (!/^[0-9a-fA-F]+$/.test(stripped) || stripped.length % 2 !== 0 || stripped.length === 0) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `EVM broadcast: signed transaction must be 0x-prefixed hex or Uint8Array (got malformed string of length ${signed.length})`,
+          { chainId: this.chainId },
+        );
+      }
+      hex = `0x${stripped}`;
+    } else {
+      hex = hexlify(signed);
+    }
+    if (opts?.signal?.aborted) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, 'EVM broadcast: signal already aborted', { chainId: this.chainId });
+    }
     try {
       const resp = await this.getProvider().broadcastTransaction(hex);
       return resp.hash;
@@ -572,13 +586,26 @@ export class EvmChain extends Chain {
   }
 
   async getDelegation(address: string): Promise<{ delegate: string } | null> {
+    if (!this.supports7702) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `EVM chain ${this.name} was not initialized with supports7702: true`,
+        { chainId: this.chainId },
+      );
+    }
+    try {
+      getAddress(address);
+    } catch (err) {
+      throw new ChainError(ChainErrorKinds.InvalidAddress, `Invalid EVM address: ${address}`, { chainId: this.chainId, address }, err instanceof Error ? err : undefined);
+    }
     let code: string;
     try {
       code = await this.getProvider().getCode(address);
     } catch (err) {
       throw this.rpcError(`Failed to read code for ${address}`, err, { address });
     }
-    const stripped = code.startsWith('0x') ? code.slice(2).toLowerCase() : code.toLowerCase();
+    if (!code.startsWith('0x')) return null;
+    const stripped = code.slice(2).toLowerCase();
     if (stripped.length !== 46) return null;
     if (!stripped.startsWith('ef0100')) return null;
     return { delegate: getAddress(`0x${stripped.slice(6)}`) };
@@ -607,6 +634,23 @@ export class EvmChain extends Chain {
   }
 
   buildAuthorizationDigest(input: { delegate: string; nonce: bigint; chainId: number }): Uint8Array {
+    if (!this.supports7702) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `EVM chain ${this.name} was not initialized with supports7702: true`,
+        { chainId: this.chainId },
+      );
+    }
+    if (input.chainId !== this.chainId && input.chainId !== 0) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Authorization chainId ${input.chainId} does not match ${this.chainId} (0 = any is allowed but replayable on every chain)`,
+        { chainId: this.chainId },
+      );
+    }
+    if (input.nonce < 0n) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `Authorization nonce must be >= 0`, { chainId: this.chainId });
+    }
     const rlp = encodeRlp([
       toBeArray(BigInt(input.chainId)),
       getAddress(input.delegate),
@@ -666,29 +710,49 @@ export class EvmChain extends Chain {
   }
 
   private classifyBroadcastError(err: unknown): ChainError {
-    const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+    const rpc = this._resolvedRpcUrl;
+    const code = errCode(err);
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const msg = rawMsg.toLowerCase();
+    const safeCause = sanitizeCause(err, rpc);
+    if (code === -32000 && (msg.includes('nonce too low') || msg.includes('nonce_too_low'))) {
+      return new ChainError(
+        ChainErrorKinds.NonceTooLow,
+        sanitizeMessage(`EVM broadcast rejected: nonce too low on ${this.name}`, rpc),
+        { chainId: this.chainId, rpcHost: this.rpcHost() },
+        safeCause,
+      );
+    }
     if (msg.includes('nonce too low') || msg.includes('nonce_too_low')) {
       return new ChainError(
         ChainErrorKinds.NonceTooLow,
-        `EVM broadcast rejected: nonce too low on ${this.name}`,
-        { chainId: this.chainId },
-        err instanceof Error ? err : undefined,
+        sanitizeMessage(`EVM broadcast rejected: nonce too low on ${this.name}`, rpc),
+        { chainId: this.chainId, rpcHost: this.rpcHost() },
+        safeCause,
       );
     }
     if (msg.includes('insufficient funds')) {
       return new ChainError(
         ChainErrorKinds.InsufficientFunds,
-        `EVM broadcast rejected: insufficient funds on ${this.name}`,
-        { chainId: this.chainId },
-        err instanceof Error ? err : undefined,
+        sanitizeMessage(`EVM broadcast rejected: insufficient funds on ${this.name}`, rpc),
+        { chainId: this.chainId, rpcHost: this.rpcHost() },
+        safeCause,
       );
     }
-    if (msg.includes('replacement') || msg.includes('reject') || msg.includes('invalid')) {
+    if (msg.includes('replacement') || msg.includes('already known') || msg.includes('underpriced')) {
       return new ChainError(
         ChainErrorKinds.BroadcastRejected,
-        `EVM broadcast rejected on ${this.name}: ${err instanceof Error ? err.message : String(err)}`,
-        { chainId: this.chainId },
-        err instanceof Error ? err : undefined,
+        sanitizeMessage(`EVM broadcast rejected on ${this.name} (replacement/known-nonce)`, rpc),
+        { chainId: this.chainId, rpcHost: this.rpcHost() },
+        safeCause,
+      );
+    }
+    if (typeof code === 'number' && code >= -32099 && code <= -32000 && !msg.includes('api')) {
+      return new ChainError(
+        ChainErrorKinds.BroadcastRejected,
+        sanitizeMessage(`EVM broadcast rejected on ${this.name}`, rpc),
+        { chainId: this.chainId, rpcHost: this.rpcHost() },
+        safeCause,
       );
     }
     return this.rpcError(`EVM broadcast failed on ${this.name}`, err);
@@ -707,19 +771,33 @@ export class EvmChain extends Chain {
   }
 
   private async getSingleTransactionStatus(txHash: string, opts?: GetTransactionStatusOpts): Promise<EvmTransactionStatus> {
-    if (opts?.wait) {
-      const deadline = opts.timeoutMs ? Date.now() + opts.timeoutMs : Number.POSITIVE_INFINITY;
-      const pollMs = Math.max(500, this.blockTimeSeconds * 1000);
-      let last: EvmTransactionStatus;
-      while (true) {
-        last = await this.getTransactionStatusOnce(txHash);
-        if (last.status === 'Success' || last.status === 'Failed') return last;
-        if (opts.signal?.aborted) throw new ChainError(ChainErrorKinds.RpcError, `getTransactionStatus aborted`, { chainId: this.chainId, txHash });
-        if (Date.now() >= deadline) return last;
-        await new Promise((r) => setTimeout(r, pollMs));
+    if (!opts?.wait) return this.getTransactionStatusOnce(txHash);
+    if (opts.signal?.aborted) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus aborted before first poll`, { chainId: this.chainId, txHash });
+    }
+    const deadline = opts.timeoutMs ? Date.now() + opts.timeoutMs : Number.POSITIVE_INFINITY;
+    const pollMs = Math.max(500, this.blockTimeSeconds * 1000);
+    const minConfirmations = Math.max(1, opts.confirmations ?? 1);
+    let last: EvmTransactionStatus;
+    while (true) {
+      last = await this.getTransactionStatusOnce(txHash);
+      if (last.status === 'Success' || last.status === 'Failed') {
+        if (minConfirmations <= 1) return last;
+        if (last.blockNumber === null) {
+          if (Date.now() >= deadline) return last;
+        } else {
+          const tip = await this.getProvider().getBlockNumber();
+          if (tip - last.blockNumber + 1 >= minConfirmations) return last;
+          if (Date.now() >= deadline) return last;
+        }
+      } else if (Date.now() >= deadline) {
+        return last;
+      }
+      await interruptibleSleep(pollMs, opts.signal);
+      if (opts.signal?.aborted) {
+        throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus aborted mid-poll`, { chainId: this.chainId, txHash });
       }
     }
-    return this.getTransactionStatusOnce(txHash);
   }
 
   private async getTransactionStatusOnce(txHash: string): Promise<EvmTransactionStatus> {
@@ -1071,6 +1149,30 @@ async function extractRevertInfo(
 function stringifyErr(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+async function interruptibleSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return;
+  await new Promise<void>((resolve) => {
+    const t = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(t);
+      resolve();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function errCode(err: unknown): number | undefined {
+  if (typeof err !== 'object' || err === null) return undefined;
+  const e = err as { code?: number | string; error?: { code?: number | string } };
+  const raw = e.code ?? e.error?.code;
+  if (typeof raw === 'number') return raw;
+  if (typeof raw === 'string' && /^-?\d+$/.test(raw)) return Number(raw);
+  return undefined;
 }
 
 function envCandidatesFor(name: string, chainId: number): string[] {

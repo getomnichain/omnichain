@@ -25,14 +25,12 @@ describe('EvmChain.buildAuthorizationDigest', () => {
   });
 
   it('digest changes when chainId changes (replay-guard property)', () => {
-    const chain1 = makeChain(1);
-    const chain5 = makeChain(5);
     const shared = {
       delegate: '0x000000000000000000000000000000000000dead',
       nonce: 42n,
     };
-    const d1 = chain1.buildAuthorizationDigest({ ...shared, chainId: 1 });
-    const d5 = chain5.buildAuthorizationDigest({ ...shared, chainId: 5 });
+    const d1 = makeChain(1).buildAuthorizationDigest({ ...shared, chainId: 1 });
+    const d5 = makeChain(5).buildAuthorizationDigest({ ...shared, chainId: 5 });
     expect(Buffer.from(d1).equals(Buffer.from(d5))).toBe(false);
   });
 

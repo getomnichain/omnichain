@@ -261,7 +261,19 @@ export class UtxoChain extends Chain {
     return this.chainTipProvider.getChainTipHeight();
   }
 
-  async getTransactionStatus(txHash: string): Promise<UtxoTransactionStatus> {
+  async getTransactionStatus(txHash: string, opts?: import('../chain.base.ts').GetTransactionStatusOpts): Promise<UtxoTransactionStatus>;
+  async getTransactionStatus(txHashes: string[], opts?: import('../chain.base.ts').GetTransactionStatusOpts): Promise<UtxoTransactionStatus[]>;
+  async getTransactionStatus(
+    txHash: string | string[],
+    _opts?: import('../chain.base.ts').GetTransactionStatusOpts,
+  ): Promise<UtxoTransactionStatus | UtxoTransactionStatus[]> {
+    if (Array.isArray(txHash)) {
+      return Promise.all(txHash.map((h) => this.getUtxoStatusOnce(h)));
+    }
+    return this.getUtxoStatusOnce(txHash);
+  }
+
+  private async getUtxoStatusOnce(txHash: string): Promise<UtxoTransactionStatus> {
     // Narrow the try to the provider call only. Constructor asserts and
     // upsert failures must NOT be silently coerced into NotFound.
     // Classify: (a) provider signalled "no such tx" (Esplora HTTP 404,

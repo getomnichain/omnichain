@@ -34,7 +34,7 @@ describe('EvmChain.createUnsignedTransaction — arbitrary call', () => {
     const chain = makeChain(1);
     try {
       await chain.createUnsignedTransaction({
-        // @ts-expect-error missing from
+        from: '',
         to: '0x000000000000000000000000000000000000BeEf',
       });
       fail('should reject');

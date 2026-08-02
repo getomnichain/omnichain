@@ -43,6 +43,11 @@ export interface CreateTransferRequest {
    */
   gasPricing?: GasPricingType;
   memo?: string;
+  /**
+   * Solana-only: Address Lookup Table accounts to compile the MessageV0
+   * against. Ignored on non-Solana chains. Consumers get these via
+   * `SolanaChain.fetchAddressLookupTable(altAddress)`.
+   */
   addressLookupTables?: unknown[];
 }
 
@@ -237,10 +242,8 @@ export abstract class Chain {
 
   abstract broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string>;
 
-  abstract getTransactionStatus(
-    txHash: string | string[],
-    opts?: GetTransactionStatusOpts,
-  ): Promise<TransactionStatus | TransactionStatus[]>;
+  abstract getTransactionStatus(txHash: string, opts?: GetTransactionStatusOpts): Promise<TransactionStatus>;
+  abstract getTransactionStatus(txHashes: string[], opts?: GetTransactionStatusOpts): Promise<TransactionStatus[]>;
 
   abstract getChainTipHeight(): Promise<number>;
 
