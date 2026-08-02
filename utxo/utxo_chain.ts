@@ -465,6 +465,13 @@ export class UtxoChain extends Chain {
       hex = stripped;
       txBytes = Buffer.from(stripped, 'hex');
     } else {
+      if (signed.length === 0) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `UTXO broadcast: signed transaction bytes are empty`,
+          { chainId: this.chainId },
+        );
+      }
       hex = Buffer.from(signed).toString('hex');
       txBytes = Buffer.from(signed);
     }

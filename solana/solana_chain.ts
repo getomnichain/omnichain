@@ -988,6 +988,20 @@ export class SolanaChain extends Chain {
     } else {
       bytes = signed;
     }
+    if (bytes.length < 65) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana broadcast: signed bytes must be >= 65 bytes (1 sig-count + 64-byte signature), got ${bytes.length}`,
+        { chainId: this.chainId },
+      );
+    }
+    if (bytes.length > 1232) {
+      throw new ChainError(
+        ChainErrorKinds.TransactionTooLarge,
+        `Solana broadcast: signed tx is ${bytes.length} bytes, exceeds 1232-byte wire limit`,
+        { chainId: this.chainId },
+      );
+    }
     if (opts?.via === 'jito') {
       if (!this.jito) {
         throw new ChainError(
@@ -1000,13 +1014,6 @@ export class SolanaChain extends Chain {
         throw new ChainError(
           ChainErrorKinds.InvalidArgument,
           `Solana broadcast: skipPreflight/maxRetries do not apply to the Jito path (block-engine has its own retry semantics)`,
-          { chainId: this.chainId },
-        );
-      }
-      if (bytes.length > 1232) {
-        throw new ChainError(
-          ChainErrorKinds.TransactionTooLarge,
-          `Solana broadcast (jito): signed tx is ${bytes.length} bytes, exceeds 1232-byte wire limit`,
           { chainId: this.chainId },
         );
       }

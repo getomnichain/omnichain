@@ -577,6 +577,13 @@ export class EvmChain extends Chain {
       }
       hex = `0x${stripped}`;
     } else {
+      if (signed.length === 0) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `EVM broadcast: signed transaction bytes are empty`,
+          { chainId: this.chainId },
+        );
+      }
       hex = hexlify(signed);
     }
     try {
@@ -604,11 +611,12 @@ export class EvmChain extends Chain {
         { chainId: this.chainId, address },
       );
     }
+    const normalized = getAddress(address.startsWith('0x') || address.startsWith('0X') ? address : `0x${address}`);
     try {
-      const n = await this.getProvider().getTransactionCount(address, 'pending');
+      const n = await this.getProvider().getTransactionCount(normalized, 'pending');
       return BigInt(n);
     } catch (err) {
-      throw this.rpcError(`Failed to read pending nonce for ${address}`, err, { address });
+      throw this.rpcError(`Failed to read pending nonce for ${normalized}`, err, { address: normalized });
     }
   }
 
@@ -662,9 +670,11 @@ export class EvmChain extends Chain {
     }
     const provider = this.getProvider();
     const tx = {
-      to: req.to,
+      to: getAddress(req.to.startsWith('0x') || req.to.startsWith('0X') ? req.to : `0x${req.to}`),
       data: req.data,
-      from: req.from,
+      from: req.from === undefined
+        ? undefined
+        : getAddress(req.from.startsWith('0x') || req.from.startsWith('0X') ? req.from : `0x${req.from}`),
       value: req.value,
     };
     try {
@@ -719,9 +729,20 @@ export class EvmChain extends Chain {
     if (input.nonce < 0n) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, `Authorization nonce must be >= 0`, { chainId: this.chainId });
     }
+    let normalizedDelegate: string;
+    try {
+      normalizedDelegate = getAddress(input.delegate);
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidAddress,
+        `buildAuthorizationDigest: delegate is not a valid EVM address: ${input.delegate}`,
+        { chainId: this.chainId, address: input.delegate },
+        err instanceof Error ? err : undefined,
+      );
+    }
     const rlp = encodeRlp([
       toBeArray(BigInt(input.chainId)),
-      getAddress(input.delegate),
+      normalizedDelegate,
       toBeArray(input.nonce),
     ]);
     const payload = concat(['0x05', rlp]);
@@ -847,8 +868,8 @@ export class EvmChain extends Chain {
     const emittedType = req.authorizationList !== undefined ? 4 : this.supportsEip1559 ? 2 : 0;
     return new UnsignedEvmTransaction({
       chainId: this.chainId,
-      from: req.from,
-      to: req.to,
+      from: getAddress(req.from.startsWith('0x') || req.from.startsWith('0X') ? req.from : `0x${req.from}`),
+      to: getAddress(req.to.startsWith('0x') || req.to.startsWith('0X') ? req.to : `0x${req.to}`),
       value: req.value ?? 0n,
       data: req.data ?? '0x',
       type: emittedType,
