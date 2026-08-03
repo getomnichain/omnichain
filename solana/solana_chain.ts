@@ -1030,8 +1030,18 @@ export class SolanaChain extends Chain {
 
   async simulateTransaction(
     signed: string | Uint8Array,
-    opts?: { sigVerify?: boolean; replaceRecentBlockhash?: boolean; commitment?: 'processed' | 'confirmed' | 'finalized' },
-  ): Promise<{ unitsConsumed: number | null; err: unknown | null; logs: string[] | null }> {
+    opts?: {
+      sigVerify?: boolean;
+      replaceRecentBlockhash?: boolean;
+      commitment?: 'processed' | 'confirmed' | 'finalized';
+      accounts?: { addresses: string[] };
+    },
+  ): Promise<{
+    unitsConsumed: number | null;
+    err: unknown | null;
+    logs: string[] | null;
+    accounts?: ({ lamports: number; data: Uint8Array } | null)[];
+  }> {
     let bytes: Uint8Array;
     if (typeof signed === 'string') {
       const stripped = signed.startsWith('0x') ? signed.slice(2) : signed;
@@ -1064,17 +1074,47 @@ export class SolanaChain extends Chain {
         err instanceof Error ? err : undefined,
       );
     }
+    let accountAddresses: PublicKey[] | undefined;
+    if (opts?.accounts) {
+      if (!Array.isArray(opts.accounts.addresses) || opts.accounts.addresses.length === 0) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `Solana simulateTransaction: opts.accounts.addresses must be a non-empty array when accounts is set`,
+          { chainId: this.chainId },
+        );
+      }
+      try {
+        accountAddresses = opts.accounts.addresses.map((a) => new PublicKey(a));
+      } catch (err) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidAddress,
+          `Solana simulateTransaction: opts.accounts.addresses contained an invalid Solana public key`,
+          { chainId: this.chainId },
+          err instanceof Error ? err : undefined,
+        );
+      }
+    }
     return this.rpcWrap(async () => {
       const sim = await this.getConnection().simulateTransaction(tx, {
         sigVerify: opts?.sigVerify ?? false,
         replaceRecentBlockhash: opts?.replaceRecentBlockhash ?? false,
         commitment: opts?.commitment,
+        ...(accountAddresses ? { accounts: { encoding: 'base64' as const, addresses: accountAddresses.map((k) => k.toBase58()) } } : {}),
       });
-      return {
+      const base = {
         unitsConsumed: sim.value.unitsConsumed ?? null,
         err: sim.value.err ?? null,
         logs: sim.value.logs ?? null,
       };
+      if (!accountAddresses) return base;
+      const rawAccounts = (sim.value as { accounts?: (({ lamports: number; data: [string, string] }) | null)[] }).accounts ?? [];
+      const decoded = accountAddresses.map((_, i) => {
+        const row = rawAccounts[i];
+        if (!row) return null;
+        const [b64] = row.data;
+        return { lamports: row.lamports, data: new Uint8Array(Buffer.from(b64, 'base64')) };
+      });
+      return { ...base, accounts: decoded };
     }, 'simulateTransaction');
   }
 
