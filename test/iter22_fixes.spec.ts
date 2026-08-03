@@ -57,8 +57,8 @@ describe('SolanaChain: pre-existing RPC call sites now wrap into ChainError (fix
   it('getChainTipHeight wraps transport failure with sanitized ChainError(RpcError), not a raw web3.js Error', async () => {
     const chain = solanaChain();
     const raw = new Error('FetchError: request to https://mainnet.helius-rpc.com/?api-key=SECRETVALUE failed, reason: getaddrinfo');
-    (chain as unknown as { getConnection(): { getSlot: () => Promise<number> } }).getConnection = () => ({
-      getSlot: async () => { throw raw; },
+    (chain as unknown as { getConnection(): { getBlockHeight: () => Promise<number> } }).getConnection = () => ({
+      getBlockHeight: async () => { throw raw; },
     });
     let caught: unknown;
     try { await chain.getChainTipHeight(); } catch (e) { caught = e; }

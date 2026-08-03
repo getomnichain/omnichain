@@ -12,6 +12,16 @@ _Nothing yet. Add entries here as PRs merge; on release, rename this section to 
 
 ---
 
+## [0.3.3] — 2026-08-02
+
+Bugfix.
+
+### Fixed
+
+- **`SolanaChain.getChainTipHeight()`** returned the **slot** (`getSlot('confirmed')`) instead of the **block height** (`getBlockHeight('confirmed')`). The method's cross-family contract is a block-height accessor comparable with `getLatestBlockhash().lastValidBlockHeight`, which is a block height. On Solana `slot > blockHeight` always (currently by ~25M — slots include skipped/empty ones), so any consumer doing the standard blockhash-expiry check `getChainTipHeight() > lastValidBlockHeight` saw `true` immediately and marked every freshly-built Solana tx as expired within ~1s. Now returns `getBlockHeight('confirmed')`; the value is the same units as `lastValidBlockHeight` and the expiry math works correctly. `EvmChain.getChainTipHeight()` was already correct (returns block number).
+
+---
+
 ## [0.3.2] — 2026-08-02
 
 Additive minor. Closes the final gasless "only-omnichain" gap: `simulateTransaction` now exposes web3.js's `accounts` passthrough so consumers can read post-simulation account state (the primitive `measureUserPrefundViaSimulation` needs).
