@@ -12,6 +12,7 @@ import {
   hexlify,
   keccak256,
   toBeArray,
+  verifyMessage as ethersVerifyMessage,
 } from 'ethers';
 
 import { NetworkType, tryNetworkTypeOf } from '../network_type.ts';
@@ -23,6 +24,7 @@ import {
   CreateUnsignedTransactionRequest,
   Eip7702Authorization,
   GetTransactionStatusOpts,
+  VerifyMessageSignatureRequest,
   resolveTransferAmount,
 } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
@@ -576,6 +578,22 @@ export class EvmChain extends Chain {
     } catch (err) {
       throw this.rpcError('Failed to read chain tip', err);
     }
+  }
+
+  async verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean> {
+    let recovered: string;
+    try {
+      recovered = ethersVerifyMessage(req.message, req.signature);
+    } catch {
+      return false;
+    }
+    let expected: string;
+    try {
+      expected = getAddress(req.signer);
+    } catch {
+      return false;
+    }
+    return recovered === expected;
   }
 
   async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
