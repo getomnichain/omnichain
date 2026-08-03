@@ -1016,7 +1016,7 @@ export class SolanaChain extends Chain {
   }
 
   async getChainTipHeight(): Promise<number> {
-    return this.rpcWrap(() => this.getConnection().getSlot('confirmed'), 'getSlot');
+    return this.rpcWrap(() => this.getConnection().getBlockHeight('confirmed'), 'getBlockHeight');
   }
 
   async getLatestBlockhash(
