@@ -1,6 +1,6 @@
 {
   "name": "@getomnichain/omnichain",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Multi-chain SDK for EVM, Solana, UTXO (BTC/LTC/DOGE/DASH/ZEC/BCH), TON, and Tron. TypeScript parity port of omnichain-py.",
   "keywords": [
     "omnichain",
@@ -77,6 +77,8 @@
     "@solana/web3.js": "^1.98.0",
     "axios": "^1.7.0",
     "bitcoinjs-lib": "^7.0.1",
+    "bitcoinjs-message": "^2.2.0",
+    "bs58": "^6.0.0",
     "coininfo": "^5.2.1",
     "decimal.js": "^10.4.3",
     "ethers": "^6.13.0",
@@ -88,8 +90,12 @@
     "class-validator": "^0.14.0 || ^0.15.0 || ^0.16.0"
   },
   "peerDependenciesMeta": {
-    "class-transformer": { "optional": false },
-    "class-validator": { "optional": false }
+    "class-transformer": {
+      "optional": false
+    },
+    "class-validator": {
+      "optional": false
+    }
   },
   "devDependencies": {
     "@jest/globals": "^29.7.0",

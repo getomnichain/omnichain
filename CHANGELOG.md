@@ -12,6 +12,26 @@ _Nothing yet. Add entries here as PRs merge; on release, rename this section to 
 
 ---
 
+## [0.3.5] — 2026-08-03
+
+Restore functionality that was incorrectly removed pre-0.2.0.
+
+### Added
+
+- **`Chain.verifyMessageSignature(req: VerifyMessageSignatureRequest)`** restored on the base class (abstract) with per-family implementations:
+  - **EVM**: `ethers.verifyMessage(message, signature) === getAddress(signer)` (EIP-191 `personal_sign` envelope). Accepts checksummed, lowercase, or unprefixed-40-hex signer forms.
+  - **Solana**: ed25519 verify of raw message bytes against the signer pubkey. Signature accepted as base58 (native) or hex (128 chars). Signer must be a 32-byte base58 pubkey.
+  - **UTXO**: `bitcoinjs-message.verify` with the family's `messagePrefix` and segwit-tolerant checking (`checkSegwitAlways = true`).
+  - Never throws for "signature doesn't match" — returns `false`. Malformed inputs also return `false` (not thrown).
+- **`VerifyMessageSignatureRequest { message, signer, signature }`** type re-exported from `chain.base.ts`.
+- New direct dependencies: **`bs58@^6`** (Solana signature/signer decode) and **`bitcoinjs-message@^2`** (UTXO verify). Both were transitive before; making them explicit fixes hoisting fragility.
+
+### Note
+
+- This capability was originally added at `3ad092c` and removed at `327598c` (before the 0.2.0 npm release) on a "Python parity" argument. The removal was wrong — the method has active consumer usage (rango-intents wallet-connect login, affiliate revenue claim, proof ownership check) that has no non-family-coupled substitute. Restoring it here matches the 0.2.x-era API shape exactly so consumers can consume it without changes to call sites written against the older abstract.
+
+---
+
 ## [0.3.4] — 2026-08-03
 
 Bugfix.

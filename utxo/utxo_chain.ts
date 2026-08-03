@@ -1,4 +1,5 @@
 import { Psbt, Transaction } from 'bitcoinjs-lib';
+import bitcoinMessage from 'bitcoinjs-message';
 
 import {
   CHAIN_ID_BITCOIN_MAINNET,
@@ -14,6 +15,7 @@ import {
   BroadcastOpts,
   Chain,
   CreateTransferRequest,
+  VerifyMessageSignatureRequest,
 } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds, sanitizeMessage } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
@@ -255,6 +257,21 @@ export class UtxoChain extends Chain {
     }
     const balance = await this.utxoProvider.getAddressBalance(owner);
     return BigInt(balance.confirmedSats);
+  }
+
+  async verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean> {
+    if (!this.validateAddress(req.signer)) return false;
+    try {
+      return bitcoinMessage.verify(
+        req.message,
+        req.signer,
+        req.signature,
+        this.params.networkInfo.messagePrefix,
+        true,
+      );
+    } catch {
+      return false;
+    }
   }
 
   async getChainTipHeight(): Promise<number> {

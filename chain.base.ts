@@ -65,6 +65,15 @@ export interface Eip7702Authorization {
   signature: { r: string; s: string; yParity: 0 | 1 };
 }
 
+export interface VerifyMessageSignatureRequest {
+  /** Plain-text message the signer signed. Per-family personal-sign wrapping is applied by the impl. */
+  message: string;
+  /** Canonical signer address for the family (EIP-55 checksum EVM / base58 Solana / bech32 or legacy UTXO). */
+  signer: string;
+  /** Signature — hex (with or without `0x`) for EVM, base58 or hex (128 chars) for Solana, base64 for UTXO (bitcoinjs-message format). */
+  signature: string;
+}
+
 export interface CreateUnsignedTransactionRequest {
   // Typed `never` for the same reason as BroadcastOpts.signal — silently
   // ignoring cancellation would let a caller conclude "not built" while
@@ -264,6 +273,8 @@ export abstract class Chain {
   abstract getTransactionStatus(txHashes: string[], opts?: GetTransactionStatusOpts): Promise<TransactionStatus[]>;
 
   abstract getChainTipHeight(): Promise<number>;
+
+  abstract verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean>;
 
   toString(): string {
     return `Chain[chainId=${this.chainId}, name=${this.name}, networkType=${this.networkType}]`;
