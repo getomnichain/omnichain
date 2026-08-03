@@ -8,7 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-_Nothing yet. Add entries here as PRs merge; on release, rename this section to `[X.Y.Z] — YYYY-MM-DD` and open a fresh empty `[Unreleased]` above it._
+### Fixed
+
+- **Jito bundle auth header** — `SolanaChain.submitJitoBundle` and `SolanaChain.getBundleStatus` were sending the UUID under `Authorization: Bearer <uuid>`; the block engine's authenticated tier expects **`x-jito-auth: <uuid>`**. With the wrong header the block engine accepted the submit (returned a bundle id) but treated the request as unauthenticated — bundles never landed and every bundled tx timed out at the ~70s blockhash window. Regression noted in 0.3.0 Known Limitations as "verify against endpoint"; verified against production by the gasless team on 0.3.3. Now sends `x-jito-auth` at both call sites; unauthenticated (no `jito.auth` configured) still sends no auth header at all.
 
 ---
 

@@ -1213,7 +1213,7 @@ export class SolanaChain extends Chain {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(this.jito.auth ? { Authorization: `Bearer ${this.jito.auth}` } : {}),
+          ...(this.jito.auth ? { 'x-jito-auth': this.jito.auth } : {}),
         },
         body: JSON.stringify(body),
         signal,
@@ -1277,7 +1277,7 @@ export class SolanaChain extends Chain {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(this.jito.auth ? { Authorization: `Bearer ${this.jito.auth}` } : {}),
+          ...(this.jito.auth ? { 'x-jito-auth': this.jito.auth } : {}),
         },
         body: JSON.stringify(body),
         signal,
