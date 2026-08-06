@@ -98,6 +98,16 @@ export interface GetTransactionStatusOpts {
   timeoutMs?: number;
   confirmations?: number;
   signal?: AbortSignal;
+  /**
+   * EVM-only. When `true`, the returned status's `balanceChanges` folds in
+   * internal ETH movements (router-forwarded value, `WETH.withdraw` + a
+   * router's forwarding call, contract-to-EOA fan-outs) via
+   * `debug_traceTransaction`. Adds one RPC round-trip per hash; throws
+   * `FeatureNotSupported` on providers without trace support. Off by default
+   * so the receipt-only path (matches Python reference) remains the default.
+   * Ignored on non-EVM families.
+   */
+  includeInternalTransfers?: boolean;
 }
 
 export type ResolvedTransferAmount =
