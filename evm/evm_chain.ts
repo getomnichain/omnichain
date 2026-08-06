@@ -169,6 +169,27 @@ export interface EvmCallResult {
   revertData?: string;
 }
 
+/**
+ * A single ETH-value movement extracted from a transaction's call tree — the
+ * top-level `value` transfer plus every internal `CALL` (or `CALLCODE`) that
+ * moved non-zero ETH. Reverted branches are skipped. `DELEGATECALL` and
+ * `STATICCALL` never move ETH and are not surfaced.
+ *
+ * The receipt-based `decodeBalanceChanges` only credits `tx.value` → `tx.to`
+ * for native ETH; router-mediated flows (e.g. `WETH9.withdraw` + a router
+ * forwarding via `msg.sender.call{value: wad}`) are internal transfers with
+ * no log. Sum this method's transfers to a given address to compute the
+ * true ETH credit that address received from the transaction.
+ */
+export interface InternalEthTransfer {
+  /** Address that called with value (lowercased 0x). */
+  from: string;
+  /** Address that received the value (lowercased 0x). */
+  to: string;
+  /** Wei transferred. Always > 0. */
+  value: bigint;
+}
+
 export class EvmChain extends Chain {
   readonly rpcUrl: string | undefined;
   readonly rpcUrls: readonly string[];
@@ -596,6 +617,73 @@ export class EvmChain extends Chain {
     return recovered === expected;
   }
 
+  /**
+   * Return every ETH-value movement inside a mined transaction, including
+   * internal `CALL`s the receipt doesn't show. Uses `debug_traceTransaction`
+   * with the `callTracer`; throws `FeatureNotSupported` if the provider does
+   * not expose it (public RPCs, Alchemy free tier). Self-hosted geth/erigon/reth
+   * and paid Alchemy / QuickNode / Infura-archive tiers support it.
+   *
+   * The receipt-based `decodeBalanceChanges` only credits `tx.value` → `tx.to`
+   * for native ETH; router-mediated flows (WETH.withdraw + forwarding call) are
+   * invisible to it. Sum the transfers this method returns to a given address
+   * to compute the true ETH delta from the transaction. `decodeBalanceChanges`
+   * itself accepts `includeInternalTransfers: true` to fold this data in
+   * automatically (adds one RPC round-trip).
+   *
+   * Reverted branches are skipped. `DELEGATECALL` / `STATICCALL` cannot move
+   * ETH and are excluded. `CALLCODE` (deprecated) is included for completeness.
+   */
+  async getInternalTransfers(txHash: string): Promise<InternalEthTransfer[]> {
+    if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `getInternalTransfers: txHash must be 0x-prefixed 64-hex, got ${txHash}`,
+        { chainId: this.chainId, txHash },
+      );
+    }
+    const rpc = this._resolvedRpcUrl;
+    let raw: unknown;
+    try {
+      raw = await this.getProvider().send('debug_traceTransaction', [
+        txHash,
+        { tracer: 'callTracer' },
+      ]);
+    } catch (err) {
+      const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+      if (
+        msg.includes('method not found') ||
+        msg.includes('method not supported') ||
+        msg.includes('does not exist') ||
+        msg.includes('not available') ||
+        msg.includes('debug_tracetransaction')
+      ) {
+        throw new ChainError(
+          ChainErrorKinds.FeatureNotSupported,
+          sanitizeMessage(`getInternalTransfers: provider does not expose debug_traceTransaction on ${this.name}. Requires a self-hosted node, Alchemy paid tier, QuickNode, or Infura archive add-on.`, rpc),
+          { chainId: this.chainId, txHash, rpcHost: this.rpcHost() },
+          sanitizeCause(err, rpc),
+        );
+      }
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`getInternalTransfers: debug_traceTransaction failed on ${this.name}`, rpc),
+        { chainId: this.chainId, txHash, rpcHost: this.rpcHost() },
+        sanitizeCause(err, rpc),
+      );
+    }
+    if (!raw || typeof raw !== 'object') {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        `getInternalTransfers: debug_traceTransaction returned no trace for ${txHash}`,
+        { chainId: this.chainId, txHash },
+      );
+    }
+    const transfers: InternalEthTransfer[] = [];
+    walkTraceForEthTransfers(raw as TraceCallNode, transfers);
+    return transfers;
+  }
+
   async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
     if (opts && (opts as { signal?: unknown }).signal !== undefined) {
       throw new ChainError(
@@ -1019,7 +1107,7 @@ export class EvmChain extends Chain {
         { chainId: this.chainId, txHash },
       );
     }
-    if (!opts?.wait) return this.getTransactionStatusOnce(txHash);
+    if (!opts?.wait) return this.getTransactionStatusOnce(txHash, opts?.includeInternalTransfers === true);
     if (opts.signal?.aborted) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, `getTransactionStatus aborted before first poll`, { chainId: this.chainId, txHash });
     }
@@ -1038,7 +1126,7 @@ export class EvmChain extends Chain {
     const minConfirmations = Math.max(1, opts.confirmations ?? 1);
     let last: EvmTransactionStatus;
     while (true) {
-      last = await this.getTransactionStatusOnce(txHash);
+      last = await this.getTransactionStatusOnce(txHash, opts?.includeInternalTransfers === true);
       if (last.status === 'Success' || last.status === 'Failed') {
         if (minConfirmations <= 1) return last;
         let tip: number;
@@ -1070,7 +1158,7 @@ export class EvmChain extends Chain {
     }
   }
 
-  private async getTransactionStatusOnce(txHash: string): Promise<EvmTransactionStatus> {
+  private async getTransactionStatusOnce(txHash: string, includeInternalTransfers = false): Promise<EvmTransactionStatus> {
     const provider = this.getProvider();
     let tx: TransactionResponse | null = null;
     let receipt: TransactionReceipt | null = null;
@@ -1180,6 +1268,7 @@ export class EvmChain extends Chain {
         value: nativeValue,
         gasCost: fees.totalNativeDebitWei,
         receipt,
+        includeInternalTransfers,
       });
     } catch (err) {
       if (err instanceof ChainError) throw err;
@@ -1207,6 +1296,20 @@ export class EvmChain extends Chain {
     value: bigint;
     gasCost: bigint;
     receipt: TransactionReceipt;
+    /**
+     * When `true`, fold internal ETH movements (router-forwarded value,
+     * `WETH.withdraw` + `msg.sender.call{value: wad}` patterns, contract-to-EOA
+     * fan-outs) into the returned native credits by walking
+     * `debug_traceTransaction`'s call tree. Off by default — receipt-only
+     * behavior matches the Python reference. Costs one extra RPC call
+     * (`debug_traceTransaction` with `{tracer: 'callTracer'}`) and throws
+     * `FeatureNotSupported` on providers without trace support.
+     *
+     * When on, the credit at the top-level `to` for the top-level `tx.value`
+     * is dropped in favor of the walker output (which includes the top-level
+     * transfer already) so callers don't see the top-level ETH counted twice.
+     */
+    includeInternalTransfers?: boolean;
   }): Promise<NestedBalanceChanges> {
     const { from, to, value, gasCost, receipt } = args;
     if (!receipt || !Array.isArray(receipt.logs)) {
@@ -1226,11 +1329,25 @@ export class EvmChain extends Chain {
     // Credit toAddr whenever value>0 — for self-transfers (from===to) the
     // per-(wallet,token) netting in upsert cancels the +value against the
     // -value component of the debit, leaving the -gasCost we actually want.
+    //
+    // When `includeInternalTransfers`, we debit ONLY gasCost here; the
+    // walker below emits both legs of every CALL (including the top-level
+    // CALL with the tx's value), so folding in `-value` again would
+    // double-count the sender's outgoing.
     if (fromAddr) {
-      addRaw(rawChanges, fromAddr, '', -(value + gasCost));
+      const senderDebit = args.includeInternalTransfers ? -gasCost : -(value + gasCost);
+      addRaw(rawChanges, fromAddr, '', senderDebit);
     }
-    if (value > 0n && toAddr) {
+    if (!args.includeInternalTransfers && value > 0n && toAddr) {
       addRaw(rawChanges, toAddr, '', value);
+    }
+
+    if (args.includeInternalTransfers) {
+      const internals = await this.getInternalTransfers(receipt.hash);
+      for (const t of internals) {
+        addRaw(rawChanges, t.from, '', -t.value);
+        addRaw(rawChanges, t.to, '', t.value);
+      }
     }
 
     const tokenContracts = new Set<string>();
@@ -1347,6 +1464,33 @@ export class EvmChain extends Chain {
       { chainId: this.chainId, rpcHost: this.rpcHost(), ...extra },
       sanitizeCause(cause, this._resolvedRpcUrl)
     );
+  }
+}
+
+interface TraceCallNode {
+  type?: string;
+  from?: string;
+  to?: string;
+  value?: string;
+  error?: string;
+  calls?: TraceCallNode[];
+}
+
+function walkTraceForEthTransfers(node: TraceCallNode, out: InternalEthTransfer[]): void {
+  if (node.error !== undefined) return;
+  const type = (node.type ?? '').toUpperCase();
+  if (type === 'CALL' || type === 'CALLCODE' || type === '') {
+    const rawVal = node.value;
+    if (typeof rawVal === 'string' && rawVal.length > 0 && rawVal !== '0x' && rawVal !== '0x0') {
+      let v: bigint;
+      try { v = BigInt(rawVal); } catch { v = 0n; }
+      if (v > 0n && typeof node.from === 'string' && typeof node.to === 'string') {
+        out.push({ from: node.from.toLowerCase(), to: node.to.toLowerCase(), value: v });
+      }
+    }
+  }
+  if (Array.isArray(node.calls)) {
+    for (const child of node.calls) walkTraceForEthTransfers(child, out);
   }
 }
 

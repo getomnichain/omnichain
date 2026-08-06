@@ -12,6 +12,27 @@ _Nothing yet. Add entries here as PRs merge; on release, rename this section to 
 
 ---
 
+## [0.3.6] — 2026-08-03
+
+Adds per-transaction visibility into internal ETH movements. The receipt-only `decodeBalanceChanges` cannot see router-mediated ETH (e.g. `WETH9.withdraw` + a router forwarding via `msg.sender.call{value: wad}`); this release exposes the underlying trace primitive and adds an opt-in flag on `decodeBalanceChanges` that folds it in.
+
+### Added
+
+- **`EvmChain.getInternalTransfers(txHash): Promise<InternalEthTransfer[]>`** — wraps `debug_traceTransaction` with `{tracer: 'callTracer'}` and walks the returned call tree, emitting one `{ from, to, value }` per non-zero `CALL` / `CALLCODE`. `DELEGATECALL` and `STATICCALL` (which cannot move ETH) are excluded. Reverted subtrees (nodes with `error` set) are skipped. Addresses lowercased.
+- **`InternalEthTransfer`** type re-exported from `evm/evm_chain.ts`: `{ from: string; to: string; value: bigint }`.
+- **`decodeBalanceChanges({ …, includeInternalTransfers: true })`** — new optional flag. When set, folds internal ETH movements into the returned native credits/debits by calling `getInternalTransfers` internally. Costs one extra RPC call (the trace); throws `FeatureNotSupported` on providers without trace support. Off by default — receipt-only behavior is unchanged (matches the Python reference).
+- **`GetTransactionStatusOpts.includeInternalTransfers?: boolean`** — plumbs the same flag through the top-level `chain.getTransactionStatus(hash, opts)` and its array/batch overload, so consumers using the high-level status API get the fold path without dropping to `decodeBalanceChanges` directly. EVM-only; ignored on other families.
+- New failure modes on `getInternalTransfers`: malformed `txHash` → `InvalidArgument`; provider doesn't expose `debug_traceTransaction` (public RPCs, Alchemy free tier) → `FeatureNotSupported` with a provider-tier note; other transport failures → `RpcError` with URL-redacted message + cause.
+
+### Notes
+
+- **No double-counting on direct-value txs.** When `includeInternalTransfers: true`, the sender's native debit is `-gasCost` (not `-(value + gasCost)`) and the top-level `to`'s `+value` credit is omitted — the trace walker emits both legs of the top-level CALL, so folding in `value` a second time would inflate the sender's outgoing.
+- **Two RPCs are the minimum** when `includeInternalTransfers: true`: the caller still needs `eth_getTransactionReceipt` for `gasUsed` / `status` / `blockNumber` and ERC-20 `Transfer` logs; `debug_traceTransaction` supplies internal ETH. Neither call on its own carries the union of what's needed.
+- Alternative single-tx approaches (`eth_getBalance` at `blockNumber - 1` vs `blockNumber`) miscount when the block contains multiple transactions touching the same address; the tracer is the only accurate per-tx path.
+- Receipt-only `decodeBalanceChanges` (default) still matches the Python reference. The trace-fold path is a TS-side extension pending upstream Python parity.
+
+---
+
 ## [0.3.5] — 2026-08-03
 
 Restore functionality that was incorrectly removed pre-0.2.0.
@@ -28,7 +49,7 @@ Restore functionality that was incorrectly removed pre-0.2.0.
 
 ### Note
 
-- This capability was originally added at `3ad092c` and removed at `327598c` (before the 0.2.0 npm release) on a "Python parity" argument. The removal was wrong — the method has active consumer usage (rango-intents wallet-connect login, affiliate revenue claim, proof ownership check) that has no non-family-coupled substitute. Restoring it here matches the 0.2.x-era API shape exactly so consumers can consume it without changes to call sites written against the older abstract.
+- This capability was originally added at `3ad092c` and removed at `327598c` (before the 0.2.0 npm release) on a "Python parity" argument. The removal was wrong — the method has active consumer usage (wallet-connect login, off-chain attestations, wallet-ownership proofs) that has no non-family-coupled substitute. Restoring it here matches the 0.2.x-era API shape exactly so consumers can consume it without changes to call sites written against the older abstract.
 
 ---
 
@@ -83,7 +104,7 @@ Both methods reuse the internal `rpcWrap` sanitizer path so no keyed URL can lea
 
 ## [0.3.0] — 2026-08-02
 
-Complete chain-connection surface. Consumers (gasless, depositron, rango-intents, …) can now build any protocol flow — including EIP-7702 relayers, Solana Jito bundles, arbitrary contract calls — without importing `ethers`, `@solana/web3.js`, `@solana/spl-token`, or `bitcoinjs-lib` directly.
+Complete chain-connection surface. Consumers can now build any protocol flow — including EIP-7702 relayers, Solana Jito bundles, arbitrary contract calls — without importing `ethers`, `@solana/web3.js`, `@solana/spl-token`, or `bitcoinjs-lib` directly.
 
 Design principle: minimum new API surface. 10 new methods total; optional-field extensions where existing shapes already covered the use case. Policy, orchestration, state, jobs, retries, tip sizing, endpoint-list content, wallet custody stay in the consumer.
 
@@ -286,7 +307,7 @@ Hotfix release. Zero API changes; hygiene only. Native-token sentinel handling d
 
 ## [0.2.0] — 2026-07-27
 
-Initial npm release of `@getomnichain/omnichain`. Replaces the vendored `pluton-bridge/omnichain` git submodule for consumer repos (`depositron`, `gasless`).
+Initial npm release of `@getomnichain/omnichain`. Replaces prior vendored-submodule consumption of the SDK.
 
 ### Added
 
@@ -299,7 +320,7 @@ Initial npm release of `@getomnichain/omnichain`. Replaces the vendored `pluton-
 
 - Consumers that previously imported from `../../chain/*` (relative to `src/modules/`) now import from `@getomnichain/omnichain` (root barrel) or `@getomnichain/omnichain/evm` / `/utxo` / `/solana` for subpath-scoped imports.
 - Solana chainId numbering renumbered (breaking; per-consumer SQL data migration required for any persisted Solana chainId).
-- `pluton-bridge/omnichain` git submodule deprecated — do not consume.
+- Prior vendored git submodule deprecated — do not consume.
 
 ---
 
