@@ -90,12 +90,14 @@ export interface UtxoTransactionStatusInit {
  * a self-send or a hot-wallet withdrawal shows its net delta directly. Same
  * shape as `EvmTransactionStatus` and `SolanaTransactionStatus`.
  *
- * `inputs` is populated when the provider tool's `getTransactionWithInputs`
- * could hydrate every non-coinbase input's prevout; `null` (with
- * `inputsUnresolvedReason` set) when hydration was incomplete
- * (`provider_error` | `parent_missing` | `pending`). When `inputs` is
- * `null`, `balanceChanges` is also `null` — the SDK does not present a
- * partial or gross map as though it were the net one.
+ * `inputs` is populated on `Success` (the provider tool's
+ * `getTransactionWithInputs` hydrated every non-coinbase input's prevout;
+ * failure on a confirmed tx throws `ChainError(RpcError)` rather than
+ * returning a `Success` with a partial map, since the base
+ * `TransactionStatus(Success)` invariant requires `balanceChanges` to be
+ * present). On `Pending`, `inputs` is either populated (mempool provider
+ * exposed the prevouts) or `null` with `inputsUnresolvedReason: 'pending'`
+ * — `'pending'` is the only reachable value on the status side.
  *
  * Deposit detectors that only need who was credited (gross output credits
  * per address) should iterate `outputs[]` directly; there is no

@@ -408,7 +408,7 @@ export class UtxoChain extends Chain {
       const isPending = tx.confirmations === 0;
       const inputs = hydrated ? hydrated.inputs : null;
       const inputsUnresolvedReason: import('./utxo.ts').UtxoInputsUnresolvedReason | null =
-        hydrated ? null : (isPending ? 'pending' : 'provider_error');
+        hydrated ? null : (isPending ? 'pending' : null);
 
       if (isPending) {
         return new UtxoTransactionStatus({

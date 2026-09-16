@@ -33,10 +33,7 @@ export interface UtxoTransaction {
   confirmationDatetime: Date | null;
 }
 
-export type UtxoInputsUnresolvedReason =
-  | 'provider_error'
-  | 'parent_missing'
-  | 'pending';
+export type UtxoInputsUnresolvedReason = 'pending';
 
 export interface TransactionInputRef {
   txid: string;
