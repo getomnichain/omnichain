@@ -315,13 +315,9 @@ export class UtxoChain extends Chain {
   }
 
   private async getUtxoStatusOnce(txHash: string): Promise<UtxoTransactionStatus> {
-    // Narrow the try to the provider call only. Constructor asserts and
-    // upsert failures must NOT be silently coerced into NotFound.
-    // Classify: (a) provider signalled "no such tx" (Esplora HTTP 404,
-    // Bitcoin Core RPC code -5) → NotFound; (b) any other throw →
-    // RpcError so consumers can retry rather than treating a 429/timeout
-    // as a definitive miss.
     let tx;
+    let hydrated: import('./utxo.ts').UtxoTransaction | null = null;
+    let hydrationError: unknown | null = null;
     try {
       tx = await this.rawTxProvider.getTransaction(txHash);
     } catch (err) {
@@ -403,7 +399,17 @@ export class UtxoChain extends Chain {
           ? new UtxoTransactionFees({ absoluteSats: BigInt(tx.fees.absoluteSats), vsize })
           : null;
 
+      try {
+        hydrated = await this.rawTxProvider.getTransactionWithInputs(txHash);
+      } catch (err) {
+        hydrationError = err;
+      }
+
       const isPending = tx.confirmations === 0;
+      const inputs = hydrated ? hydrated.inputs : null;
+      const inputsUnresolvedReason: import('./utxo.ts').UtxoInputsUnresolvedReason | null =
+        hydrated ? null : (isPending ? 'pending' : 'provider_error');
+
       if (isPending) {
         return new UtxoTransactionStatus({
           chainId: this.chainId,
@@ -414,29 +420,33 @@ export class UtxoChain extends Chain {
           outputs,
           vsize,
           fees,
+          inputs,
+          inputsUnresolvedReason,
         });
       }
 
-      // Outputs-only per-address native deltas. Full input-side accounting
-      // to compute net native change (Python's `_native_balance_changes`
-      // parity) is deferred — the raw-tx provider currently returns only
-      // vin.txid+vout, no address/value/scriptPubKeyHex. Noted in
-      // SINAN_OPEN_QUESTIONS.md.
-      const balanceChanges: NestedBalanceChanges = new Map();
-      const perAddressSats = new Map<string, bigint>();
-      for (const out of tx.vout) {
-        if (!out.address) continue;
-        perAddressSats.set(
-          out.address,
-          (perAddressSats.get(out.address) ?? 0n) + BigInt(out.valueSats),
+      if (!hydrated) {
+        const rawMsg = hydrationError instanceof Error ? hydrationError.message : String(hydrationError);
+        const sanitizedMsg = sanitizeUtxoErrMessage(rawMsg);
+        const safeCause = hydrationError instanceof Error
+          ? sanitizedCauseForUtxo(hydrationError, sanitizedMsg)
+          : undefined;
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          `Failed to hydrate inputs for confirmed UTXO tx ${txHash}: ${sanitizedMsg}`,
+          { chainId: this.chainId, txHash },
+          safeCause,
         );
       }
-      for (const [address, sats] of perAddressSats) {
+
+      const balanceChanges: NestedBalanceChanges = new Map();
+      for (const [address, delta] of Object.entries(hydrated.netChangesHr)) {
+        if (delta.isZero()) continue;
         AssetBalanceChange.upsert(
           balanceChanges,
           address,
           this._nativeToken,
-          AssetBalanceChange.fromMr(sats, this._nativeToken.decimals),
+          AssetBalanceChange.fromHr(delta, this._nativeToken.decimals),
         );
       }
 
@@ -449,6 +459,8 @@ export class UtxoChain extends Chain {
         outputs,
         vsize,
         fees,
+        inputs,
+        inputsUnresolvedReason,
       });
     } catch (err) {
       if (err instanceof ChainError) throw err;

@@ -1,3 +1,5 @@
+import { Decimal } from 'decimal.js';
+
 import { UtxoScriptType } from './script.ts';
 
 export interface UnspentTransactionOutput {
@@ -9,6 +11,32 @@ export interface UnspentTransactionOutput {
   confirmations: number;
   ownerAddress: string;
 }
+
+export interface UtxoTransactionInput {
+  txid: string;
+  vout: number;
+  scriptPubkeyHex: string;
+  address: string | null;
+  /** @deprecated Migrate to `valueBtcHr` before the next major release. */
+  valueSats: bigint;
+  valueBtcHr: Decimal;
+  coinbase?: true;
+}
+
+export interface UtxoTransaction {
+  inputs: readonly UtxoTransactionInput[];
+  outputs: readonly TransactionOutputView[];
+  netChangesHr: Readonly<Record<string, Decimal>>;
+  size: number;
+  vsize: number;
+  confirmations: number;
+  confirmationDatetime: Date | null;
+}
+
+export type UtxoInputsUnresolvedReason =
+  | 'provider_error'
+  | 'parent_missing'
+  | 'pending';
 
 export interface TransactionInputRef {
   txid: string;

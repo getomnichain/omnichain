@@ -5,6 +5,7 @@ import {
   TransactionStatus,
   TransactionStatusType,
 } from '../transaction_status.ts';
+import { UtxoInputsUnresolvedReason, UtxoTransactionInput } from './utxo.ts';
 
 export interface UtxoTransactionFeesInit {
   absoluteSats: bigint;
@@ -78,33 +79,35 @@ export interface UtxoTransactionStatusInit {
   vsize?: number | null;
   confirmations?: number | null;
   fees?: UtxoTransactionFees | null;
+  inputs?: readonly UtxoTransactionInput[] | null;
+  inputsUnresolvedReason?: UtxoInputsUnresolvedReason | null;
 }
 
 /**
- * UTXO tx status. Python parity: no static factory methods; consumers build
- * via the constructor directly (impl/utxo/base.py:677-728). Adds `fees` for
- * parity with EVM/Solana subclass surfaces — Python's UTXO base omits it,
- * but the consumer's deposit-detector needs the fee to reconcile net-of-fee
- * balances. Documented deviation in SINAN_OPEN_QUESTIONS.md.
+ * UTXO tx status. Python parity: `balanceChanges` are **net per-address
+ * deltas** derived from `UtxoTransaction.netChangesHr` in the provider tool
+ * (impl/utxo/base.py:1874-1890) — inputs are debited, outputs credited, so
+ * a self-send or a hot-wallet withdrawal shows its net delta directly. Same
+ * shape as `EvmTransactionStatus` and `SolanaTransactionStatus`.
  *
- * **Important semantic caveat vs EVM/Solana**: `balanceChanges` on
- * `UtxoTransactionStatus` are **gross output credits** per receiving
- * address, NOT net per-wallet deltas. UTXO tools currently return only
- * `vin.txid` + `vout` from providers — no per-input address/value — so the
- * SDK can't debit inputs. A hot-wallet withdrawal will therefore record
- * that wallet's own **change output** as a positive `AssetBalanceChange`,
- * NOT a net debit. Consumers doing uniform cross-chain balance
- * reconciliation must special-case UTXO. Input-side accounting is deferred
- * to a later phase.
+ * `inputs` is populated when the provider tool's `getTransactionWithInputs`
+ * could hydrate every non-coinbase input's prevout; `null` (with
+ * `inputsUnresolvedReason` set) when hydration was incomplete
+ * (`provider_error` | `parent_missing` | `pending`). When `inputs` is
+ * `null`, `balanceChanges` is also `null` — the SDK does not present a
+ * partial or gross map as though it were the net one.
  *
- * `inputs` is not yet surfaced (the raw-tx provider returns only txid+vout,
- * insufficient for a meaningful shape). Comes back in the 2C UTXO port.
+ * Deposit detectors that only need who was credited (gross output credits
+ * per address) should iterate `outputs[]` directly; there is no
+ * `outputCreditsByAddress()` helper and no legacy gross-credits field.
  */
 export class UtxoTransactionStatus extends TransactionStatus {
   readonly outputs: readonly UtxoTransactionOutput[] | null;
   readonly vsize: number | null;
   readonly confirmations: number | null;
   readonly fees: UtxoTransactionFees | null;
+  readonly inputs: readonly UtxoTransactionInput[] | null;
+  readonly inputsUnresolvedReason: UtxoInputsUnresolvedReason | null;
 
   constructor(init: UtxoTransactionStatusInit) {
     super({
@@ -130,6 +133,8 @@ export class UtxoTransactionStatus extends TransactionStatus {
     this.vsize = init.vsize ?? null;
     this.confirmations = init.confirmations ?? null;
     this.fees = init.fees ?? null;
+    this.inputs = init.inputs ?? null;
+    this.inputsUnresolvedReason = init.inputsUnresolvedReason ?? null;
   }
 
   /**

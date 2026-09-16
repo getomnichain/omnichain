@@ -38,10 +38,14 @@ const REAL_TX_HEX: string = (() => {
 
 function makeProvider(overrides: {
   getTransaction?: () => Promise<RawTransactionView>;
+  getTransactionWithInputs?: () => Promise<import('../utxo.ts').UtxoTransaction>;
   getAddressBalance?: () => Promise<{ confirmedSats: number; unconfirmedSats: number }>;
 } = {}): {
   utxoProvider: unknown;
-  rawTxProvider: { getTransaction: () => Promise<RawTransactionView> };
+  rawTxProvider: {
+    getTransaction: () => Promise<RawTransactionView>;
+    getTransactionWithInputs: () => Promise<import('../utxo.ts').UtxoTransaction>;
+  };
   feeEstimator: unknown;
   broadcaster: unknown;
   chainTipProvider: { getChainTipHeight: () => Promise<number> };
@@ -59,6 +63,11 @@ function makeProvider(overrides: {
         (async () => {
           throw new Error('unstubbed');
         }),
+      getTransactionWithInputs:
+        overrides.getTransactionWithInputs ??
+        (async () => {
+          throw new Error('unstubbed getTransactionWithInputs');
+        }),
     },
     feeEstimator: { estimateFeeRate: async () => ({ satsPerVByte: 5 }) },
     broadcaster: { broadcast: async (): Promise<{ txid: string }> => ({ txid: 'nope' }) },
@@ -66,8 +75,31 @@ function makeProvider(overrides: {
   };
 }
 
+async function hydratedFromRaw(raw: RawTransactionView): Promise<import('../utxo.ts').UtxoTransaction> {
+  const { Decimal } = await import('decimal.js');
+  const SATS_PER_BTC = 100_000_000;
+  const netChangesHr: Record<string, InstanceType<typeof Decimal>> = {};
+  for (const o of raw.vout) {
+    if (o.address === null) continue;
+    const prev = netChangesHr[o.address] ?? new Decimal(0);
+    netChangesHr[o.address] = prev.plus(new Decimal(o.valueSats).div(SATS_PER_BTC));
+  }
+  return {
+    inputs: [],
+    outputs: raw.vout,
+    netChangesHr,
+    size: raw.hex.length / 2,
+    vsize: raw.hex.length / 2,
+    confirmations: raw.confirmations,
+    confirmationDatetime: raw.blockTime,
+  };
+}
+
 function stubChain(txStub: () => Promise<RawTransactionView>): UtxoChain {
-  const p = makeProvider({ getTransaction: txStub });
+  const p = makeProvider({
+    getTransaction: txStub,
+    getTransactionWithInputs: async () => hydratedFromRaw(await txStub()),
+  });
   return bitcoinMainnetChain({
     chainId: CHAIN_ID_BITCOIN_MAINNET,
     utxoProvider: p.utxoProvider as never,

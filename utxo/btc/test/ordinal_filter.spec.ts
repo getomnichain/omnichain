@@ -82,6 +82,9 @@ class FakeTool
   async getTransaction(_txid: string): Promise<RawTransactionView> {
     throw new Error('unused');
   }
+  async getTransactionWithInputs(_txid: string): Promise<import('../../utxo.ts').UtxoTransaction> {
+    throw new Error('unused');
+  }
   async getFeeEstimate(_: number): Promise<FeeEstimate> {
     return { satsPerVByte: 10 };
   }
