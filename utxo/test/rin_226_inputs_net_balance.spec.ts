@@ -222,4 +222,56 @@ describe('RIN-226 — UtxoTransactionStatus surfaces inputs and net per-address 
   });
 });
 
+describe('RIN-226 — BitcoinCoreTool hybrid hydration (verbose=2 mempool tx falls back to walk)', () => {
+  it('verbose=2 vin without prevout triggers a batched verbose=1 walk, not a throw', async () => {
+    const { BitcoinCoreTool } = await import('../btc/tools/bitcoin_core.tool.ts');
+    const { BITCOIN_MAINNET_PARAMS } = await import('../btc/network_params.ts');
+    const rpcCalls: { method: string; params: unknown[] }[] = [];
+    const batchCalls: { method: string; params: unknown[] }[][] = [];
+    const parentTx = {
+      txid: 'pparent',
+      hex: '',
+      vin: [],
+      vout: [{ value: 0.0005, n: 0, scriptPubKey: { hex: '76a914aa88ac', address: 'A' } }],
+      confirmations: 100,
+    };
+    const mempoolTx = {
+      txid: 'mempool',
+      hex: REAL_TX_HEX,
+      vin: [{ txid: 'pparent', vout: 0 }],
+      vout: [{ value: 0.0004, n: 0, scriptPubKey: { hex: '76a914bb88ac', address: 'B' } }],
+      confirmations: 0,
+    };
+    const tool = new BitcoinCoreTool({
+      baseUrl: 'http://x', user: 'u', password: 'p',
+      params: BITCOIN_MAINNET_PARAMS as never,
+      bitcoinCoreVerbose: 2,
+    });
+    const stubClient: { post: (path: string, body: string) => Promise<unknown> } = {
+      post: async (_path: string, body: string) => {
+        const parsed = JSON.parse(body);
+        if (Array.isArray(parsed)) {
+          batchCalls.push(parsed);
+          return { data: parsed.map((c: { method: string; params: unknown[]; id: string }) => ({
+            result: c.params[0] === 'pparent' ? parentTx : mempoolTx,
+            error: null,
+            id: c.id,
+          })) };
+        }
+        rpcCalls.push(parsed);
+        return { data: { result: mempoolTx, error: null } };
+      },
+    };
+    (tool as unknown as { client: unknown }).client = stubClient;
+
+    const out = await tool.getTransactionWithInputs('mempool');
+    expect(out.confirmations).toBe(0);
+    expect(out.inputs.length).toBe(1);
+    expect(out.inputs[0].address).toBe('A');
+    expect(out.inputs[0].valueSats).toBe(50_000n);
+    expect(batchCalls.length).toBe(1);
+    expect(batchCalls[0][0].method).toBe('getrawtransaction');
+  });
+});
+
 jest.setTimeout(10_000);

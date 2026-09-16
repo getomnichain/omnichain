@@ -241,38 +241,35 @@ export class BitcoinCoreTool
   async getTransactionWithInputs(txid: string): Promise<UtxoTransaction> {
     const main = await this.rpc<CoreTx>('getrawtransaction', [txid, this.bitcoinCoreVerbose]);
 
-    let hydratedPrevouts: Map<string, { valueSats: number; scriptPubkeyHex: string; address: string | null }>;
-    if (this.bitcoinCoreVerbose === 2) {
-      hydratedPrevouts = new Map();
-      for (const v of main.vin) {
-        if (v.coinbase !== undefined) continue;
-        if (v.txid === undefined || v.vout === undefined) continue;
-        if (!v.prevout) {
-          throw new Error(
-            `BitcoinCoreTool.getTransactionWithInputs: verbose=2 vin missing prevout for ${txid} (node may be <25.0; pass bitcoinCoreVerbose: 1)`,
-          );
-        }
+    const hydratedPrevouts = new Map<string, { valueSats: number; scriptPubkeyHex: string; address: string | null }>();
+    const needsWalk: { txid: string; vout: number }[] = [];
+    for (const v of main.vin) {
+      if (v.coinbase !== undefined) continue;
+      if (v.txid === undefined || v.vout === undefined) continue;
+      if (v.prevout) {
         hydratedPrevouts.set(`${v.txid}:${v.vout}`, {
           valueSats: Math.round(v.prevout.value * SATS_PER_BTC),
           scriptPubkeyHex: v.prevout.scriptPubKey.hex,
           address: v.prevout.scriptPubKey.address ?? null,
         });
+      } else {
+        needsWalk.push({ txid: v.txid, vout: v.vout });
       }
-    } else {
-      const nonCoinbaseVins = main.vin.filter((v) => v.coinbase === undefined && v.txid !== undefined);
-      const parentTxids = Array.from(new Set(nonCoinbaseVins.map((v) => v.txid!)));
+    }
+
+    if (needsWalk.length > 0) {
+      const parentTxids = Array.from(new Set(needsWalk.map((v) => v.txid)));
       const parents = await this.batchRpc<CoreTx>(
         parentTxids.map((pTxid) => ({ method: 'getrawtransaction', params: [pTxid, 1] })),
       );
       const parentByTxid = new Map<string, CoreTx>();
       for (let i = 0; i < parentTxids.length; i++) parentByTxid.set(parentTxids[i], parents[i]);
-      hydratedPrevouts = new Map();
-      for (const v of nonCoinbaseVins) {
-        const parent = parentByTxid.get(v.txid!);
+      for (const v of needsWalk) {
+        const parent = parentByTxid.get(v.txid);
         if (!parent) {
           throw new Error(`BitcoinCoreTool.getTransactionWithInputs: parent tx ${v.txid} not returned`);
         }
-        const out = parent.vout[v.vout!];
+        const out = parent.vout[v.vout];
         if (!out) {
           throw new Error(`BitcoinCoreTool.getTransactionWithInputs: parent tx ${v.txid} has no vout[${v.vout}]`);
         }
