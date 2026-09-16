@@ -77,6 +77,7 @@ function makeProvider(overrides: {
 
 async function hydratedFromRaw(raw: RawTransactionView): Promise<import('../utxo.ts').UtxoTransaction> {
   const { Decimal } = await import('decimal.js');
+  const { Transaction } = await import('bitcoinjs-lib');
   const SATS_PER_BTC = 100_000_000;
   const netChangesHr: Record<string, InstanceType<typeof Decimal>> = {};
   for (const o of raw.vout) {
@@ -84,14 +85,28 @@ async function hydratedFromRaw(raw: RawTransactionView): Promise<import('../utxo
     const prev = netChangesHr[o.address] ?? new Decimal(0);
     netChangesHr[o.address] = prev.plus(new Decimal(o.valueSats).div(SATS_PER_BTC));
   }
+  let size = 0;
+  let vsize = 0;
+  try {
+    const buf = Buffer.from(raw.hex, 'hex');
+    size = buf.byteLength;
+    vsize = Transaction.fromBuffer(buf).virtualSize();
+  } catch {
+    size = 0;
+    vsize = 0;
+  }
   return {
+    txid: raw.txid,
+    hex: raw.hex,
     inputs: [],
     outputs: raw.vout,
     netChangesHr,
-    size: raw.hex.length / 2,
-    vsize: raw.hex.length / 2,
+    size,
+    vsize,
     confirmations: raw.confirmations,
     confirmationDatetime: raw.blockTime,
+    blockHeight: raw.blockHeight,
+    fees: raw.fees,
   };
 }
 

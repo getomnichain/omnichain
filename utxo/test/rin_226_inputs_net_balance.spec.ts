@@ -62,6 +62,7 @@ describe('RIN-226 — UtxoTransactionStatus surfaces inputs and net per-address 
       vsize: 150,
       confirmations: 3,
       confirmationDatetime: new Date(1_700_000_000_000),
+      txid: 'x', hex: REAL_TX_HEX, blockHeight: 800_000, fees: { absoluteSats: 1_000 },
     });
     const raw: () => Promise<RawTransactionView> = async () => ({
       txid: 'x', hex: REAL_TX_HEX,
@@ -96,6 +97,7 @@ describe('RIN-226 — UtxoTransactionStatus surfaces inputs and net per-address 
         B: new Decimal(70_000).div(1e8),
       },
       size: 200, vsize: 150, confirmations: 3, confirmationDatetime: new Date(),
+      txid: 'x', hex: REAL_TX_HEX, blockHeight: 800_000, fees: { absoluteSats: 1_000 },
     });
     const raw: () => Promise<RawTransactionView> = async () => ({
       txid: 'x', hex: REAL_TX_HEX, vin: [], vout: [
@@ -122,6 +124,7 @@ describe('RIN-226 — UtxoTransactionStatus surfaces inputs and net per-address 
         A: new Decimal(-500).div(1e8),
       },
       size: 100, vsize: 90, confirmations: 3, confirmationDatetime: new Date(),
+      txid: 'x', hex: REAL_TX_HEX, blockHeight: 800_000, fees: { absoluteSats: 500 },
     });
     const raw: () => Promise<RawTransactionView> = async () => ({
       txid: 'x', hex: REAL_TX_HEX, vin: [], vout: [
@@ -138,7 +141,7 @@ describe('RIN-226 — UtxoTransactionStatus surfaces inputs and net per-address 
 
   it('AC4 — no outputCreditsByAddress method and no gross-legacy field on the status', async () => {
     const chain = chainWith(
-      async () => ({ inputs: [], outputs: [], netChangesHr: {}, size: 0, vsize: 0, confirmations: 3, confirmationDatetime: new Date() }),
+      async () => ({ inputs: [], outputs: [], netChangesHr: {}, size: 0, vsize: 0, confirmations: 3, confirmationDatetime: new Date() , txid: 'x', hex: REAL_TX_HEX, blockHeight: 800_000, fees: null }),
       async () => ({ txid: 'x', hex: REAL_TX_HEX, vin: [], vout: [], confirmations: 3, blockHeight: 800_000, blockTime: new Date(), fees: null }),
     );
     const s = await chain.getTransactionStatus('x');
@@ -146,10 +149,10 @@ describe('RIN-226 — UtxoTransactionStatus surfaces inputs and net per-address 
     expect((s as unknown as { grossOutputCreditsLegacy?: unknown }).grossOutputCreditsLegacy).toBeUndefined();
   });
 
-  it('AC8 — hydration failure on confirmed → thrown RpcError (not a partial Success)', async () => {
+  it('AC8 — provider read failure on confirmed → thrown RpcError (not a partial Success)', async () => {
     const chain = chainWith(
       async () => { throw new Error('provider borked'); },
-      async () => ({ txid: 'x', hex: REAL_TX_HEX, vin: [], vout: [], confirmations: 3, blockHeight: 800_000, blockTime: new Date(), fees: null }),
+      async () => { throw new Error('unused after consolidation'); },
     );
     let caught: unknown;
     try { await chain.getTransactionStatus('x'); } catch (e) { caught = e; }
@@ -172,6 +175,7 @@ describe('RIN-226 — UtxoTransactionStatus surfaces inputs and net per-address 
         outputs: [{ valueSats: 3_125_000_000, scriptPubKeyHex: '76a914cc88ac', scriptType: 'p2pkh' as never, address: 'MINER' }],
         netChangesHr: { MINER: new Decimal(3_125_000_000).div(1e8) },
         size: 100, vsize: 100, confirmations: 100, confirmationDatetime: new Date(),
+        txid: 'x', hex: REAL_TX_HEX, blockHeight: 800_000, fees: null,
       }),
       async () => ({ txid: 'x', hex: REAL_TX_HEX, vin: [], vout: [{ valueSats: 3_125_000_000, scriptPubKeyHex: '76a914cc88ac', scriptType: 'p2pkh' as never, address: 'MINER' }], confirmations: 100, blockHeight: 800_000, blockTime: new Date(), fees: null }),
     );
@@ -183,9 +187,13 @@ describe('RIN-226 — UtxoTransactionStatus surfaces inputs and net per-address 
     expect(s.balanceChanges!.has('MINER')).toBe(true);
   });
 
-  it('AC11 — pending has balanceChanges: null and inputsUnresolvedReason: pending when hydration also unavailable', async () => {
+  it('AC11 — pending + tool returns inputs: [] (mempool provider skipped hydration) → inputs null, reason pending', async () => {
     const chain = chainWith(
-      async () => { throw new Error('mempool tools skip hydration'); },
+      async () => ({
+        inputs: [], outputs: [], netChangesHr: {}, size: 0, vsize: 0,
+        confirmations: 0, confirmationDatetime: null,
+        txid: 'x', hex: REAL_TX_HEX, blockHeight: null, fees: null,
+      }),
       async () => ({ txid: 'x', hex: REAL_TX_HEX, vin: [], vout: [], confirmations: 0, blockHeight: null, blockTime: null, fees: null }),
     );
     const s = await chain.getTransactionStatus('x');
@@ -202,6 +210,7 @@ describe('RIN-226 — UtxoTransactionStatus surfaces inputs and net per-address 
         outputs: [{ valueSats: 12_340_000, scriptPubKeyHex: '76a914aa88ac', scriptType: 'p2pkh' as never, address: 'A' }],
         netChangesHr: { A: new Decimal(-5_678).div(1e8) },
         size: 100, vsize: 100, confirmations: 3, confirmationDatetime: new Date(),
+        txid: 'x', hex: REAL_TX_HEX, blockHeight: 800_000, fees: { absoluteSats: 5_678 },
       }),
       async () => ({ txid: 'x', hex: REAL_TX_HEX, vin: [], vout: [{ valueSats: 12_340_000, scriptPubKeyHex: '76a914aa88ac', scriptType: 'p2pkh' as never, address: 'A' }], confirmations: 3, blockHeight: 800_000, blockTime: new Date(), fees: { absoluteSats: 5_678 } }),
     );

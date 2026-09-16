@@ -232,6 +232,8 @@ export class EsploraTool
     }
 
     return {
+      txid: meta.txid,
+      hex,
       inputs,
       outputs,
       netChangesHr,
@@ -239,6 +241,8 @@ export class EsploraTool
       vsize,
       confirmations: blockHeight ? Math.max(0, tipHeight - blockHeight + 1) : 0,
       confirmationDatetime: blockTime,
+      blockHeight,
+      fees: meta.fee !== undefined ? { absoluteSats: meta.fee } : null,
     };
   }
 

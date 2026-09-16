@@ -24,6 +24,8 @@ export interface UtxoTransactionInput {
 }
 
 export interface UtxoTransaction {
+  txid: string;
+  hex: string;
   inputs: readonly UtxoTransactionInput[];
   outputs: readonly TransactionOutputView[];
   netChangesHr: Readonly<Record<string, Decimal>>;
@@ -31,6 +33,8 @@ export interface UtxoTransaction {
   vsize: number;
   confirmations: number;
   confirmationDatetime: Date | null;
+  blockHeight: number | null;
+  fees: { absoluteSats: number } | null;
 }
 
 export type UtxoInputsUnresolvedReason = 'pending';

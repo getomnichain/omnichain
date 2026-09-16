@@ -345,6 +345,8 @@ export class BitcoinCoreTool
       vsize = size;
     }
     return {
+      txid: main.txid,
+      hex: main.hex,
       inputs,
       outputs,
       netChangesHr,
@@ -352,6 +354,8 @@ export class BitcoinCoreTool
       vsize,
       confirmations: main.confirmations ?? 0,
       confirmationDatetime: typeof main.blocktime === 'number' ? new Date(main.blocktime * 1000) : null,
+      blockHeight: main.blockheight ?? null,
+      fees: main.fee !== undefined ? { absoluteSats: Math.round(main.fee * SATS_PER_BTC) } : null,
     };
   }
 

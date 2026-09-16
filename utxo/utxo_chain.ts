@@ -315,11 +315,9 @@ export class UtxoChain extends Chain {
   }
 
   private async getUtxoStatusOnce(txHash: string): Promise<UtxoTransactionStatus> {
-    let tx;
-    let hydrated: import('./utxo.ts').UtxoTransaction | null = null;
-    let hydrationError: unknown | null = null;
+    let tx: import('./utxo.ts').UtxoTransaction;
     try {
-      tx = await this.rawTxProvider.getTransaction(txHash);
+      tx = await this.rawTxProvider.getTransactionWithInputs(txHash);
     } catch (err) {
       if (err instanceof ChainError) throw err;
       if (isProviderNotFoundError(err)) {
@@ -332,11 +330,6 @@ export class UtxoChain extends Chain {
       }
       const rawMsg = err instanceof Error ? err.message : String(err);
       const sanitizedMsg = sanitizeUtxoErrMessage(rawMsg);
-      // Build a scrubbed cause: sanitizeCause strips axios `.config`/
-      // `.request`/`.response` object trees (which carry Authorization
-      // headers + query-string keys) by rebuilding a plain Error with
-      // only sanitized message+stack. Consumers walking `.cause` in a
-      // structured logger no longer leak API keys.
       const safeCause = err instanceof Error
         ? sanitizedCauseForUtxo(err, sanitizedMsg)
         : undefined;
@@ -348,10 +341,6 @@ export class UtxoChain extends Chain {
       );
     }
 
-    // Bitcoin Core reports `confirmations: -1` for a conflicted/RBF-
-    // replaced tx (a reorged-out deposit). Do not run the shape asserts
-    // that would throw InvalidArgument on the way out — surface as
-    // NotFound so the status poll doesn't crash.
     if (tx.confirmations < 0) {
       return new UtxoTransactionStatus({
         chainId: this.chainId,
@@ -365,17 +354,8 @@ export class UtxoChain extends Chain {
       });
     }
 
-    // Wrap the decode block so a non-integer valueSats/absoluteSats from a
-    // consumer's provider tool (BTC-float→sats overflow) or a
-    // Transaction.fromHex failure surfaces as a typed
-    // ChainError(TransactionDecodeFailed) rather than a raw RangeError.
-    // Mirrors evm_chain.ts:decodeBalanceChanges catch.
     try {
-      // Populate outputs on both pending AND confirmed paths — a 0-conf
-      // mempool tx still has visible outputs, and BTC/LTC/DOGE deposit
-      // detectors need them. balanceChanges stays null on Pending per the
-      // TransactionStatus base invariant.
-      const outputs: UtxoTransactionOutput[] = tx.vout.map(
+      const outputs: UtxoTransactionOutput[] = tx.outputs.map(
         (o) =>
           new UtxoTransactionOutput({
             scriptPubkeyHex: o.scriptPubKeyHex,
@@ -383,34 +363,23 @@ export class UtxoChain extends Chain {
             valueSats: BigInt(o.valueSats),
           }),
       );
-      // Derive vsize from the raw hex — bitcoinjs-lib is already a dep
-      // and both Esplora + Bitcoin Core populate tx.hex. Falls back to
-      // null on malformed hex so the status still returns.
-      let vsize: number | null = null;
-      try {
-        if (tx.hex && tx.hex.length > 0) {
+      let vsize: number | null = tx.vsize > 0 ? tx.vsize : null;
+      if (vsize === null && tx.hex && tx.hex.length > 0) {
+        try {
           vsize = Transaction.fromHex(tx.hex).virtualSize();
+        } catch {
+          vsize = null;
         }
-      } catch {
-        vsize = null;
       }
       const fees =
         tx.fees !== null
           ? new UtxoTransactionFees({ absoluteSats: BigInt(tx.fees.absoluteSats), vsize })
           : null;
 
-      try {
-        hydrated = await this.rawTxProvider.getTransactionWithInputs(txHash);
-      } catch (err) {
-        hydrationError = err;
-      }
-
       const isPending = tx.confirmations === 0;
-      const inputs = hydrated ? hydrated.inputs : null;
-      const inputsUnresolvedReason: import('./utxo.ts').UtxoInputsUnresolvedReason | null =
-        hydrated ? null : (isPending ? 'pending' : null);
 
       if (isPending) {
+        const pendingInputs = tx.inputs.length === 0 ? null : tx.inputs;
         return new UtxoTransactionStatus({
           chainId: this.chainId,
           status: TransactionStatusTypes.Pending,
@@ -420,27 +389,13 @@ export class UtxoChain extends Chain {
           outputs,
           vsize,
           fees,
-          inputs,
-          inputsUnresolvedReason,
+          inputs: pendingInputs,
+          inputsUnresolvedReason: pendingInputs === null ? 'pending' : null,
         });
       }
 
-      if (!hydrated) {
-        const rawMsg = hydrationError instanceof Error ? hydrationError.message : String(hydrationError);
-        const sanitizedMsg = sanitizeUtxoErrMessage(rawMsg);
-        const safeCause = hydrationError instanceof Error
-          ? sanitizedCauseForUtxo(hydrationError, sanitizedMsg)
-          : undefined;
-        throw new ChainError(
-          ChainErrorKinds.RpcError,
-          `Failed to hydrate inputs for confirmed UTXO tx ${txHash}: ${sanitizedMsg}`,
-          { chainId: this.chainId, txHash },
-          safeCause,
-        );
-      }
-
       const balanceChanges: NestedBalanceChanges = new Map();
-      for (const [address, delta] of Object.entries(hydrated.netChangesHr)) {
+      for (const [address, delta] of Object.entries(tx.netChangesHr)) {
         if (delta.isZero()) continue;
         AssetBalanceChange.upsert(
           balanceChanges,
@@ -453,14 +408,14 @@ export class UtxoChain extends Chain {
       return new UtxoTransactionStatus({
         chainId: this.chainId,
         status: TransactionStatusTypes.Success,
-        confirmationAt: tx.blockTime,
+        confirmationAt: tx.confirmationDatetime,
         balanceChanges,
         confirmations: tx.confirmations,
         outputs,
         vsize,
         fees,
-        inputs,
-        inputsUnresolvedReason,
+        inputs: tx.inputs,
+        inputsUnresolvedReason: null,
       });
     } catch (err) {
       if (err instanceof ChainError) throw err;
