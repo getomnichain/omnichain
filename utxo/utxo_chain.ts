@@ -315,15 +315,9 @@ export class UtxoChain extends Chain {
   }
 
   private async getUtxoStatusOnce(txHash: string): Promise<UtxoTransactionStatus> {
-    // Narrow the try to the provider call only. Constructor asserts and
-    // upsert failures must NOT be silently coerced into NotFound.
-    // Classify: (a) provider signalled "no such tx" (Esplora HTTP 404,
-    // Bitcoin Core RPC code -5) → NotFound; (b) any other throw →
-    // RpcError so consumers can retry rather than treating a 429/timeout
-    // as a definitive miss.
-    let tx;
+    let tx: import('./utxo.ts').UtxoTransaction;
     try {
-      tx = await this.rawTxProvider.getTransaction(txHash);
+      tx = await this.rawTxProvider.getTransactionWithInputs(txHash);
     } catch (err) {
       if (err instanceof ChainError) throw err;
       if (isProviderNotFoundError(err)) {
@@ -336,11 +330,6 @@ export class UtxoChain extends Chain {
       }
       const rawMsg = err instanceof Error ? err.message : String(err);
       const sanitizedMsg = sanitizeUtxoErrMessage(rawMsg);
-      // Build a scrubbed cause: sanitizeCause strips axios `.config`/
-      // `.request`/`.response` object trees (which carry Authorization
-      // headers + query-string keys) by rebuilding a plain Error with
-      // only sanitized message+stack. Consumers walking `.cause` in a
-      // structured logger no longer leak API keys.
       const safeCause = err instanceof Error
         ? sanitizedCauseForUtxo(err, sanitizedMsg)
         : undefined;
@@ -352,10 +341,6 @@ export class UtxoChain extends Chain {
       );
     }
 
-    // Bitcoin Core reports `confirmations: -1` for a conflicted/RBF-
-    // replaced tx (a reorged-out deposit). Do not run the shape asserts
-    // that would throw InvalidArgument on the way out — surface as
-    // NotFound so the status poll doesn't crash.
     if (tx.confirmations < 0) {
       return new UtxoTransactionStatus({
         chainId: this.chainId,
@@ -369,17 +354,8 @@ export class UtxoChain extends Chain {
       });
     }
 
-    // Wrap the decode block so a non-integer valueSats/absoluteSats from a
-    // consumer's provider tool (BTC-float→sats overflow) or a
-    // Transaction.fromHex failure surfaces as a typed
-    // ChainError(TransactionDecodeFailed) rather than a raw RangeError.
-    // Mirrors evm_chain.ts:decodeBalanceChanges catch.
     try {
-      // Populate outputs on both pending AND confirmed paths — a 0-conf
-      // mempool tx still has visible outputs, and BTC/LTC/DOGE deposit
-      // detectors need them. balanceChanges stays null on Pending per the
-      // TransactionStatus base invariant.
-      const outputs: UtxoTransactionOutput[] = tx.vout.map(
+      const outputs: UtxoTransactionOutput[] = tx.outputs.map(
         (o) =>
           new UtxoTransactionOutput({
             scriptPubkeyHex: o.scriptPubKeyHex,
@@ -387,16 +363,13 @@ export class UtxoChain extends Chain {
             valueSats: BigInt(o.valueSats),
           }),
       );
-      // Derive vsize from the raw hex — bitcoinjs-lib is already a dep
-      // and both Esplora + Bitcoin Core populate tx.hex. Falls back to
-      // null on malformed hex so the status still returns.
-      let vsize: number | null = null;
-      try {
-        if (tx.hex && tx.hex.length > 0) {
+      let vsize: number | null = tx.vsize > 0 ? tx.vsize : null;
+      if (vsize === null && tx.hex && tx.hex.length > 0) {
+        try {
           vsize = Transaction.fromHex(tx.hex).virtualSize();
+        } catch {
+          vsize = null;
         }
-      } catch {
-        vsize = null;
       }
       const fees =
         tx.fees !== null
@@ -404,7 +377,9 @@ export class UtxoChain extends Chain {
           : null;
 
       const isPending = tx.confirmations === 0;
+
       if (isPending) {
+        const pendingInputs = tx.inputs.length === 0 ? null : tx.inputs;
         return new UtxoTransactionStatus({
           chainId: this.chainId,
           status: TransactionStatusTypes.Pending,
@@ -414,41 +389,33 @@ export class UtxoChain extends Chain {
           outputs,
           vsize,
           fees,
+          inputs: pendingInputs,
+          inputsUnresolvedReason: pendingInputs === null ? 'pending' : null,
         });
       }
 
-      // Outputs-only per-address native deltas. Full input-side accounting
-      // to compute net native change (Python's `_native_balance_changes`
-      // parity) is deferred — the raw-tx provider currently returns only
-      // vin.txid+vout, no address/value/scriptPubKeyHex. Noted in
-      // SINAN_OPEN_QUESTIONS.md.
       const balanceChanges: NestedBalanceChanges = new Map();
-      const perAddressSats = new Map<string, bigint>();
-      for (const out of tx.vout) {
-        if (!out.address) continue;
-        perAddressSats.set(
-          out.address,
-          (perAddressSats.get(out.address) ?? 0n) + BigInt(out.valueSats),
-        );
-      }
-      for (const [address, sats] of perAddressSats) {
+      for (const [address, delta] of Object.entries(tx.netChangesHr)) {
+        if (delta.isZero()) continue;
         AssetBalanceChange.upsert(
           balanceChanges,
           address,
           this._nativeToken,
-          AssetBalanceChange.fromMr(sats, this._nativeToken.decimals),
+          AssetBalanceChange.fromHr(delta, this._nativeToken.decimals),
         );
       }
 
       return new UtxoTransactionStatus({
         chainId: this.chainId,
         status: TransactionStatusTypes.Success,
-        confirmationAt: tx.blockTime,
+        confirmationAt: tx.confirmationDatetime,
         balanceChanges,
         confirmations: tx.confirmations,
         outputs,
         vsize,
         fees,
+        inputs: tx.inputs,
+        inputsUnresolvedReason: null,
       });
     } catch (err) {
       if (err instanceof ChainError) throw err;
@@ -878,7 +845,7 @@ function isProviderNotFoundError(err: unknown): boolean {
   const status = anyErr.response?.status;
   if (typeof status === 'number' && status === 404) return true;
   const message = typeof anyErr.message === 'string' ? anyErr.message : '';
-  if (/getrawtransaction:\s*-5\b/.test(message)) {
+  if (/^bitcoin-core getrawtransaction:\s*-5\b/.test(message)) {
     // Bitcoin Core RPC code -5 has TWO meanings:
     //   - "No such mempool or blockchain transaction" → genuinely unknown
     //     (node has -txindex enabled, or the tx is unknown even in mempool)

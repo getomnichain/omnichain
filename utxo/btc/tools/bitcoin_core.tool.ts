@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { Transaction } from 'bitcoinjs-lib';
 
 import { addressToScriptPubKey, detectScriptType } from '../../script.ts';
 import { UtxoBroadcaster } from '../../tools/broadcaster.ts';
@@ -7,6 +8,8 @@ import { UtxoFeeEstimator } from '../../tools/fee_estimator.ts';
 import { UtxoRawTransactionProvider } from '../../tools/raw_transaction_provider.ts';
 import { UtxoProvider } from '../../tools/utxo_provider.ts';
 import { UtxoNetworkParams } from '../../utxo_network_params.ts';
+import { Decimal } from 'decimal.js';
+
 import {
   AddressBalance,
   BroadcastResult,
@@ -15,6 +18,8 @@ import {
   TransactionInputRef,
   TransactionOutputView,
   UnspentTransactionOutput,
+  UtxoTransaction,
+  UtxoTransactionInput,
 } from '../../utxo.ts';
 
 export interface BitcoinCoreToolOptions {
@@ -27,12 +32,17 @@ export interface BitcoinCoreToolOptions {
   feeEstimateMode?: 'CONSERVATIVE' | 'ECONOMICAL';
   importTimestamp?: 'now' | number;
   watchOnlyLabel?: string;
+  bitcoinCoreVerbose?: 1 | 2;
 }
 
 interface CoreVin {
   txid?: string;
   vout?: number;
   coinbase?: string;
+  prevout?: {
+    value: number;
+    scriptPubKey: { hex: string; address?: string };
+  };
 }
 
 interface CoreVout {
@@ -107,6 +117,7 @@ export class BitcoinCoreTool
   private readonly importTimestamp: 'now' | number;
   private readonly watchOnlyLabel: string;
   private readonly watchedAddresses = new Set<string>();
+  private readonly bitcoinCoreVerbose: 1 | 2;
 
   constructor(options: BitcoinCoreToolOptions) {
     if (!options.baseUrl || options.baseUrl.trim().length === 0) {
@@ -117,6 +128,7 @@ export class BitcoinCoreTool
     this.feeEstimateMode = options.feeEstimateMode ?? 'CONSERVATIVE';
     this.importTimestamp = options.importTimestamp ?? 'now';
     this.watchOnlyLabel = options.watchOnlyLabel ?? 'utxo-watch';
+    this.bitcoinCoreVerbose = options.bitcoinCoreVerbose ?? 1;
     const auth = Buffer.from(`${options.user}:${options.password}`).toString('base64');
     this.client = axios.create({
       baseURL: options.baseUrl.replace(/\/$/, ''),
@@ -223,6 +235,133 @@ export class BitcoinCoreTool
       blockHeight: verbose.blockheight ?? null,
       blockTime: typeof verbose.blocktime === 'number' ? new Date(verbose.blocktime * 1000) : null,
       fees: verbose.fee !== undefined ? { absoluteSats: Math.round(verbose.fee * SATS_PER_BTC) } : null,
+    };
+  }
+
+  async getTransactionWithInputs(txid: string): Promise<UtxoTransaction> {
+    const main = await this.rpc<CoreTx>('getrawtransaction', [txid, this.bitcoinCoreVerbose]);
+
+    const hydratedPrevouts = new Map<string, { valueSats: number; scriptPubkeyHex: string; address: string | null }>();
+    const needsWalk: { txid: string; vout: number }[] = [];
+    for (const v of main.vin) {
+      if (v.coinbase !== undefined) continue;
+      if (v.txid === undefined || v.vout === undefined) continue;
+      if (v.prevout) {
+        hydratedPrevouts.set(`${v.txid}:${v.vout}`, {
+          valueSats: Math.round(v.prevout.value * SATS_PER_BTC),
+          scriptPubkeyHex: v.prevout.scriptPubKey.hex,
+          address: v.prevout.scriptPubKey.address ?? null,
+        });
+      } else {
+        needsWalk.push({ txid: v.txid, vout: v.vout });
+      }
+    }
+
+    if (needsWalk.length > 0) {
+      const parentTxids = Array.from(new Set(needsWalk.map((v) => v.txid)));
+      let parents: CoreTx[];
+      try {
+        parents = await this.batchRpc<CoreTx>(
+          parentTxids.map((pTxid) => ({ method: 'getrawtransaction', params: [pTxid, 1] })),
+        );
+      } catch (err) {
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        const scrubbed = rawMsg.replace(/getrawtransaction:/g, 'parent-prevout-fetch:');
+        throw new Error(
+          `BitcoinCoreTool.getTransactionWithInputs: prevout hydration failed for one of parents [${parentTxids.join(', ')}] on ${txid}: ${scrubbed}`,
+        );
+      }
+      const parentByTxid = new Map<string, CoreTx>();
+      for (let i = 0; i < parentTxids.length; i++) parentByTxid.set(parentTxids[i], parents[i]);
+      for (const v of needsWalk) {
+        const parent = parentByTxid.get(v.txid);
+        if (!parent) {
+          throw new Error(`BitcoinCoreTool.getTransactionWithInputs: parent tx ${v.txid} not returned`);
+        }
+        const out = parent.vout[v.vout];
+        if (!out) {
+          throw new Error(`BitcoinCoreTool.getTransactionWithInputs: parent tx ${v.txid} has no vout[${v.vout}]`);
+        }
+        hydratedPrevouts.set(`${v.txid}:${v.vout}`, {
+          valueSats: Math.round(out.value * SATS_PER_BTC),
+          scriptPubkeyHex: out.scriptPubKey.hex,
+          address: out.scriptPubKey.address ?? null,
+        });
+      }
+    }
+
+    const inputs: UtxoTransactionInput[] = main.vin.map((v) => {
+      if (v.coinbase !== undefined) {
+        return {
+          txid: '0'.repeat(64),
+          vout: 0xffffffff,
+          scriptPubkeyHex: '',
+          address: null,
+          valueSats: 0n,
+          valueBtcHr: new Decimal(0),
+          coinbase: true,
+        };
+      }
+      const hydrated = hydratedPrevouts.get(`${v.txid}:${v.vout}`);
+      if (!hydrated) {
+        throw new Error(`BitcoinCoreTool.getTransactionWithInputs: missing hydrated prevout for ${v.txid}:${v.vout}`);
+      }
+      return {
+        txid: v.txid!,
+        vout: v.vout!,
+        scriptPubkeyHex: hydrated.scriptPubkeyHex,
+        address: hydrated.address,
+        valueSats: BigInt(hydrated.valueSats),
+        valueBtcHr: new Decimal(hydrated.valueSats).div(SATS_PER_BTC),
+      };
+    });
+
+    const outputs: TransactionOutputView[] = main.vout.map((o) => {
+      const hex = o.scriptPubKey.hex;
+      const buf = Buffer.from(hex, 'hex');
+      return {
+        valueSats: Math.round(o.value * SATS_PER_BTC),
+        scriptPubKeyHex: hex,
+        scriptType: detectScriptType(buf),
+        address: o.scriptPubKey.address ?? null,
+      };
+    });
+
+    const netChangesHr: Record<string, Decimal> = {};
+    for (const i of inputs) {
+      if (i.address === null) continue;
+      const prev = netChangesHr[i.address] ?? new Decimal(0);
+      netChangesHr[i.address] = prev.minus(i.valueBtcHr);
+    }
+    for (const o of outputs) {
+      if (o.address === null) continue;
+      const prev = netChangesHr[o.address] ?? new Decimal(0);
+      netChangesHr[o.address] = prev.plus(new Decimal(o.valueSats).div(SATS_PER_BTC));
+    }
+    for (const addr of Object.keys(netChangesHr)) {
+      if (netChangesHr[addr].isZero()) delete netChangesHr[addr];
+    }
+
+    const rawBuf = Buffer.from(main.hex, 'hex');
+    const size = rawBuf.byteLength;
+    let vsize = size;
+    try {
+      vsize = Transaction.fromBuffer(rawBuf).virtualSize();
+    } catch {
+      vsize = size;
+    }
+    return {
+      txid: main.txid,
+      hex: main.hex,
+      inputs,
+      outputs,
+      netChangesHr,
+      size,
+      vsize,
+      confirmations: main.confirmations ?? 0,
+      confirmationDatetime: typeof main.blocktime === 'number' ? new Date(main.blocktime * 1000) : null,
+      blockHeight: main.blockheight ?? null,
+      fees: main.fee !== undefined ? { absoluteSats: Math.round(main.fee * SATS_PER_BTC) } : null,
     };
   }
 

@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { Transaction } from 'bitcoinjs-lib';
 
 import { addressToScriptPubKey, detectScriptType } from '../../script.ts';
 import { UtxoBroadcaster } from '../../tools/broadcaster.ts';
@@ -7,6 +8,8 @@ import { UtxoFeeEstimator } from '../../tools/fee_estimator.ts';
 import { UtxoRawTransactionProvider } from '../../tools/raw_transaction_provider.ts';
 import { UtxoProvider } from '../../tools/utxo_provider.ts';
 import { UtxoNetworkParams } from '../../utxo_network_params.ts';
+import { Decimal } from 'decimal.js';
+
 import {
   AddressBalance,
   BroadcastResult,
@@ -15,6 +18,8 @@ import {
   TransactionInputRef,
   TransactionOutputView,
   UnspentTransactionOutput,
+  UtxoTransaction,
+  UtxoTransactionInput,
 } from '../../utxo.ts';
 
 export interface EsploraToolOptions {
@@ -33,6 +38,12 @@ interface EsploraUtxo {
 interface EsploraVin {
   txid: string;
   vout: number;
+  is_coinbase?: boolean;
+  prevout?: {
+    scriptpubkey: string;
+    scriptpubkey_address?: string;
+    value: number;
+  } | null;
 }
 
 interface EsploraVout {
@@ -144,6 +155,93 @@ export class EsploraTool
       confirmations: blockHeight ? Math.max(0, tipHeight - blockHeight + 1) : 0,
       blockHeight,
       blockTime,
+      fees: meta.fee !== undefined ? { absoluteSats: meta.fee } : null,
+    };
+  }
+
+  async getTransactionWithInputs(txid: string): Promise<UtxoTransaction> {
+    const tipHeight = await this.getChainTipHeight();
+    const { data: meta } = await this.client.get<EsploraTx>(`/tx/${txid}`);
+
+    const inputs: UtxoTransactionInput[] = meta.vin.map((v) => {
+      if (v.is_coinbase) {
+        return {
+          txid: v.txid,
+          vout: v.vout,
+          scriptPubkeyHex: '',
+          address: null,
+          valueSats: 0n,
+          valueBtcHr: new Decimal(0),
+          coinbase: true,
+        };
+      }
+      if (!v.prevout) {
+        throw new Error(
+          `EsploraTool.getTransactionWithInputs: non-coinbase vin missing prevout in Esplora response for ${txid}`,
+        );
+      }
+      const value = v.prevout.value;
+      return {
+        txid: v.txid,
+        vout: v.vout,
+        scriptPubkeyHex: v.prevout.scriptpubkey,
+        address: v.prevout.scriptpubkey_address ?? null,
+        valueSats: BigInt(value),
+        valueBtcHr: new Decimal(value).div(1e8),
+      };
+    });
+
+    const outputs: TransactionOutputView[] = meta.vout.map((o) => {
+      const script = Buffer.from(o.scriptpubkey, 'hex');
+      return {
+        valueSats: o.value,
+        scriptPubKeyHex: o.scriptpubkey,
+        scriptType: detectScriptType(script),
+        address: o.scriptpubkey_address ?? null,
+      };
+    });
+
+    const netChangesHr: Record<string, Decimal> = {};
+    for (const i of inputs) {
+      if (i.address === null) continue;
+      const prev = netChangesHr[i.address] ?? new Decimal(0);
+      netChangesHr[i.address] = prev.minus(i.valueBtcHr);
+    }
+    for (const o of outputs) {
+      if (o.address === null) continue;
+      const prev = netChangesHr[o.address] ?? new Decimal(0);
+      netChangesHr[o.address] = prev.plus(new Decimal(o.valueSats).div(1e8));
+    }
+    for (const addr of Object.keys(netChangesHr)) {
+      if (netChangesHr[addr].isZero()) delete netChangesHr[addr];
+    }
+
+    const blockHeight = meta.status.confirmed && meta.status.block_height ? meta.status.block_height : null;
+    const blockTime =
+      meta.status.confirmed && typeof meta.status.block_time === 'number'
+        ? new Date(meta.status.block_time * 1000)
+        : null;
+    const hex = await this.getRawTransactionHex(txid);
+    const rawBuf = Buffer.from(hex, 'hex');
+    const size = rawBuf.byteLength;
+    let vsize = size;
+    try {
+      vsize = Transaction.fromBuffer(rawBuf).virtualSize();
+    } catch {
+      vsize = size;
+    }
+
+    return {
+      txid: meta.txid,
+      hex,
+      inputs,
+      outputs,
+      netChangesHr,
+      size,
+      vsize,
+      confirmations: blockHeight ? Math.max(0, tipHeight - blockHeight + 1) : 0,
+      confirmationDatetime: blockTime,
+      blockHeight,
       fees: meta.fee !== undefined ? { absoluteSats: meta.fee } : null,
     };
   }

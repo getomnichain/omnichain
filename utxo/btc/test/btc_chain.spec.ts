@@ -91,6 +91,9 @@ class FakeBtcTool
   async getTransaction(_txid: string): Promise<RawTransactionView> {
     throw new Error('not used');
   }
+  async getTransactionWithInputs(_txid: string): Promise<import('../../utxo.ts').UtxoTransaction> {
+    throw new Error('not used');
+  }
   async getFeeEstimate(_targetBlocks: number): Promise<FeeEstimate> {
     return { satsPerVByte: this.feeRateSatsPerVByte };
   }

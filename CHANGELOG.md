@@ -8,7 +8,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-_Nothing yet. Add entries here as PRs merge; on release, rename this section to `[X.Y.Z] — YYYY-MM-DD` and open a fresh empty `[Unreleased]` above it._
+Brings TS `UtxoTransactionStatus` in line with the Python SDK's already-shipped UTXO shape: per-input `{address, value}` surfaced, and `balanceChanges` becomes net per-address (matching EVM/Solana). Every hydration detail lives in the per-tool provider, mirroring Python's `AbstractUtxoTool.get_tx`.
+
+### Added
+
+- **`UtxoTransaction` interface** on `utxo/utxo.ts` — the intermediate type returned by the tool layer, mirroring Python's `class UtxoTransaction`: `{ inputs, outputs, netChangesHr: Record<string, Decimal>, size, vsize, confirmations, confirmationDatetime }`.
+- **`UtxoTransactionInput` type** — `{ txid, vout, scriptPubkeyHex, address, valueSats, valueBtcHr, coinbase? }`. Both `valueSats` (bigint, `@deprecated`) and `valueBtcHr` (Decimal) are populated this release; the deprecated `valueSats` is scheduled for removal in a future major, with `valueBtcHr` renamed → `value` at that point to align with Python. Mirrors the `AssetBalanceChange.balanceChangeMr`/`Hr` idiom.
+- **`UtxoRawTransactionProvider.getTransactionWithInputs(txid)`** — new provider method returning a fully-hydrated `UtxoTransaction`. Every adapter is responsible for hydration per its API, matching Python's per-tool approach.
+- **`EsploraTool.getTransactionWithInputs`** — parses inline `vin[*].prevout` from Esplora's `/tx/{txid}` response; zero extra RPCs.
+- **`BitcoinCoreTool.getTransactionWithInputs`** — hydrates via a hybrid path that works on every Core version: whichever verbosity the caller requests (`bitcoinCoreVerbose?: 1 | 2`, default `1`), the adapter uses any `vin[*].prevout` the response inlines and runs a batched `getrawtransaction verbose=1` walk for the vins that do not carry a prevout (older Core, mempool txs, pruned-block txs, Core < 25). Zero extra RPCs when block undo data is available; N extra otherwise. Matches Python's `impl/utxo/tools/bitcoin_core.py:453` cost profile on the fallback path. Setting `bitcoinCoreVerbose: 2` on Core ≥ 25 is the recommended production configuration for confirmed-heavy status polling.
+- **`UtxoTransactionStatus.inputs`** — `readonly UtxoTransactionInput[] | null`. Populated when the provider tool hydrated every non-coinbase input; `null` (with `inputsUnresolvedReason: 'pending'`) on `Pending` statuses whose provider skips hydration.
+- **`UtxoTransactionStatus.inputsUnresolvedReason`** — `'provider_error' | 'parent_missing' | 'pending' | null`.
+- **`UtxoInputsUnresolvedReason`** type on `utxo/utxo.ts`.
+- **8 new RIN-226 unit tests** covering: inputs order + dual units, net semantics on a mixed-owner tx, self-send fee-only debit, no legacy accessor, hydration failure → thrown `RpcError`, coinbase input shape, `Pending` + hydration unavailable, `valueSats`/`valueBtcHr` agreement.
+
+### Changed (breaking on the UTXO surface)
+
+- **`UtxoTransactionStatus.balanceChanges`** is now **net per-address** (from `UtxoTransaction.netChangesHr`) on `Success` statuses — inputs debited, outputs credited. Previously gross output credits per receiving address. Matches `EvmTransactionStatus`, `SolanaTransactionStatus`, Python's UTXO status, and Clydner's BlockCypher parser.
+- On confirmed + hydration failure, `UtxoChain.getTransactionStatus` **throws `ChainError(RpcError)`** rather than returning a `Success` with `null` balance changes (preserves the base `TransactionStatus(Success)` invariant that requires `balanceChanges` present).
+- Rewrote the `UtxoTransactionStatus` class docstring — the "gross output credits" caveat and the "`inputs` … comes back in the 2C UTXO port" TODO are removed.
+- No `outputCreditsByAddress()` accessor and no `grossOutputCreditsLegacy` field: deposit detectors that only need who-got-credited iterate `status.outputs[]` directly (Python has neither).
+
+### Note
+
+- Migration: consumers that summed positive UTXO credits from `balanceChanges` need to switch to iterating `status.outputs[]` per address. A hot-wallet withdrawal that previously read as a large positive credit (from the change output) now reads as a net debit for the fee — the correct sign.
+- Companion cards to file: rango-intents BTC-8 workaround deletion (drop `enrichInputTxFromChain` and the parent-tx resolver; consume `status.inputs` + iterate `status.outputs[]` for deposit detection) and Clydner BlockCypher-parser netting (drop the parser's own netting or document why it stays because it ingests BlockCypher payloads directly, not SDK statuses).
 
 ---
 
