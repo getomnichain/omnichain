@@ -331,12 +331,14 @@ returns from `getTransactionWithInputs`; amounts in sats.
   always-on for parity, with the escape hatch that Esplora and Bitcoin-Core
   `verbose=2` pay zero extra RPCs anyway.
 
-- **Q2.** Bitcoin-Core adapter: default to `verbose=2` (needs Core ≥ 25.0)
-  and fall back to `verbose=1`-loop on a `-32601 method not found` from an
-  older node, or make it an explicit adapter constructor option
-  (`bitcoinCoreVerbose: 2 | 1`) with no runtime probe? Runtime probe is
-  friendlier; explicit option is one fewer moving part. Recommend explicit
-  option and document `2` as the recommended value.
+- **Q2.** Resolved during round-2 review: default `bitcoinCoreVerbose: 1`
+  and let callers on Core ≥ 25.0 opt in to `2`. Original recommendation
+  was to default to `2`, but that bakes in a silent Core-version dependency:
+  Core < 25 accepts `2` as truthy, returns the `verbose=1` shape without
+  `vin[].prevout`, and the adapter's prevout-required check surfaces a
+  `ChainError(RpcError)` — the retryable kind — so consumer retry loops
+  would spin forever on any Core < 25 node. Default `1` matches Python's
+  cost (N extra RPCs for prevout hydration) and works everywhere.
 
 <!-- ========================= PART B - PLAN ========================= -->
 
@@ -400,6 +402,19 @@ the tests that cover each acceptance criterion.
     still recover the outputs-side view by falling back to
     `rawTxProvider.getTransaction` directly. That is a consumer-side
     decision, not an SDK code path.
+
+- **Bitcoin-Core `bitcoinCoreVerbose` default flipped from `2` to `1`
+  after round-2 review.** Original proposal (Q2) recommended `2` for the
+  zero-extra-RPC path on Core ≥ 25.0. Defaulting to `2` bakes in a
+  silent version dependency: Core < 25 accepts `2` as truthy but
+  returns the `verbose=1` shape without `vin[].prevout`; the adapter's
+  prevout-required check then throws, wrapped as `ChainError(RpcError)`
+  by the chain layer (the kind the codebase documents as "retry, don't
+  treat as definitive"), so a consumer's status-poll retry loop spins
+  forever on any Core < 25 node. Default `1` matches Python's cost
+  profile (N extra prevout fetches, batched via `batchRpc`) and works
+  on every Core version. Callers on Core ≥ 25.0 opt in to `2` at
+  construction to save the extra round-trips.
 
 ---
 

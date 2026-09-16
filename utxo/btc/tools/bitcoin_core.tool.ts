@@ -128,7 +128,7 @@ export class BitcoinCoreTool
     this.feeEstimateMode = options.feeEstimateMode ?? 'CONSERVATIVE';
     this.importTimestamp = options.importTimestamp ?? 'now';
     this.watchOnlyLabel = options.watchOnlyLabel ?? 'utxo-watch';
-    this.bitcoinCoreVerbose = options.bitcoinCoreVerbose ?? 2;
+    this.bitcoinCoreVerbose = options.bitcoinCoreVerbose ?? 1;
     const auth = Buffer.from(`${options.user}:${options.password}`).toString('base64');
     this.client = axios.create({
       baseURL: options.baseUrl.replace(/\/$/, ''),
