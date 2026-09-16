@@ -203,6 +203,34 @@ describe('RIN-226 — UtxoTransactionStatus surfaces inputs and net per-address 
     expect(s.inputsUnresolvedReason).toBe('pending');
   });
 
+  it('AC13 — batch-formatted "bitcoin-core[N] getrawtransaction: -5 …" error is not misclassified as NotFound', async () => {
+    const chain = chainWith(
+      async () => {
+        throw new Error('bitcoin-core[0] getrawtransaction: -5 No such mempool or blockchain transaction. Use gettransaction for wallet transactions.');
+      },
+      async () => { throw new Error('unused'); },
+    );
+    let caught: unknown;
+    let resolved: unknown;
+    try { resolved = await chain.getTransactionStatus('x'); } catch (e) { caught = e; }
+    expect(resolved).toBeUndefined();
+    expect(isChainError(caught, ChainErrorKinds.RpcError)).toBe(true);
+  });
+
+  it('AC14 — tool-wrapped parent-fetch failure surfaces as RpcError, not a NotFound status', async () => {
+    const chain = chainWith(
+      async () => {
+        throw new Error('BitcoinCoreTool.getTransactionWithInputs: prevout hydration failed for one of parents [pparent] on mempool: bitcoin-core[0] parent-prevout-fetch: -5 No such mempool or blockchain transaction. Use gettransaction for wallet transactions.');
+      },
+      async () => { throw new Error('unused'); },
+    );
+    let caught: unknown;
+    let resolved: unknown;
+    try { resolved = await chain.getTransactionStatus('x'); } catch (e) { caught = e; }
+    expect(resolved).toBeUndefined();
+    expect(isChainError(caught, ChainErrorKinds.RpcError)).toBe(true);
+  });
+
   it('AC12 — valueSats and valueBtcHr agree: Decimal(valueSats).div(1e8).equals(valueBtcHr)', async () => {
     const chain = chainWith(
       async () => ({

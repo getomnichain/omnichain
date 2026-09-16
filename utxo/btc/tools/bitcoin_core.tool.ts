@@ -259,9 +259,18 @@ export class BitcoinCoreTool
 
     if (needsWalk.length > 0) {
       const parentTxids = Array.from(new Set(needsWalk.map((v) => v.txid)));
-      const parents = await this.batchRpc<CoreTx>(
-        parentTxids.map((pTxid) => ({ method: 'getrawtransaction', params: [pTxid, 1] })),
-      );
+      let parents: CoreTx[];
+      try {
+        parents = await this.batchRpc<CoreTx>(
+          parentTxids.map((pTxid) => ({ method: 'getrawtransaction', params: [pTxid, 1] })),
+        );
+      } catch (err) {
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        const scrubbed = rawMsg.replace(/getrawtransaction:/g, 'parent-prevout-fetch:');
+        throw new Error(
+          `BitcoinCoreTool.getTransactionWithInputs: prevout hydration failed for one of parents [${parentTxids.join(', ')}] on ${txid}: ${scrubbed}`,
+        );
+      }
       const parentByTxid = new Map<string, CoreTx>();
       for (let i = 0; i < parentTxids.length; i++) parentByTxid.set(parentTxids[i], parents[i]);
       for (const v of needsWalk) {

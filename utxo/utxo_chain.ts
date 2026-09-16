@@ -845,7 +845,7 @@ function isProviderNotFoundError(err: unknown): boolean {
   const status = anyErr.response?.status;
   if (typeof status === 'number' && status === 404) return true;
   const message = typeof anyErr.message === 'string' ? anyErr.message : '';
-  if (/getrawtransaction:\s*-5\b/.test(message)) {
+  if (/^bitcoin-core getrawtransaction:\s*-5\b/.test(message)) {
     // Bitcoin Core RPC code -5 has TWO meanings:
     //   - "No such mempool or blockchain transaction" → genuinely unknown
     //     (node has -txindex enabled, or the tx is unknown even in mempool)
