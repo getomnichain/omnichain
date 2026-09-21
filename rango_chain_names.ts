@@ -93,8 +93,10 @@ import {
  * proof validators) should import from here instead of maintaining a
  * local copy. `test/rango_chain_names.spec.ts` fails the suite whenever
  * `chain_ids.ts` gains a new id that is neither mapped here nor listed
- * in `NOT_ON_RANGO`, so a new chain forces an explicit decision;
- * `prepublishOnly` runs the suite before npm publish.
+ * in `NOT_ON_RANGO`, so a new chain forces an explicit decision. That
+ * suite runs on every PR/push via `.github/workflows/test.yml` and on
+ * `npm publish` via `prepublishOnly`; submodule consumers vendoring
+ * omnichain from `main` inherit the PR check as their guarantee.
  *
  * Aliases (alternate spellings Rango may use in other endpoints) are
  * deliberately out of scope; if a consumer hits one, add it as a
@@ -171,9 +173,9 @@ export const RANGO_NAME_TO_CHAIN_ID: ReadonlyMap<string, number> = new Map<strin
  * `CHAIN_ID_TO_RANGO_NAME`.
  *
  * Every id in `chain_ids.ts` must appear in either `CHAIN_ID_TO_RANGO_NAME`
- * or here; the coverage test fails the suite otherwise (and `npm publish`
- * via `prepublishOnly`). Adding an id to `chain_ids.ts` without a decision
- * is a bug.
+ * or here; the coverage test fails the PR check and `npm publish` (via
+ * `prepublishOnly`) otherwise. Adding an id to `chain_ids.ts` without a
+ * decision is a bug.
  *
  * Grouped by reason:
  *   - Testnets/devnets Rango's `/meta` intentionally omits.

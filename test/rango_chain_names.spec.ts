@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 
 import * as chainIds from '../chain_ids.ts';
@@ -17,7 +17,6 @@ import {
   isStellar,
   isSui,
   isTon,
-  isTron,
   isUtxo,
   isXrpl,
 } from '../chain_ids.ts';
@@ -50,19 +49,24 @@ function isRangoFixtureRow(v: unknown): v is RangoFixtureRow {
   );
 }
 
-function fixturePath(): string {
-  const testPath = expect.getState().testPath;
-  const specDir = testPath ? dirname(testPath) : resolve(process.cwd(), 'test');
-  return resolve(specDir, 'fixtures/rango_meta_blockchains.json');
-}
-const FIXTURE_PATH = fixturePath();
-if (!existsSync(FIXTURE_PATH)) {
-  throw new Error(
-    `rango_chain_names.spec.ts: fixture not found at ${FIXTURE_PATH}. ` +
-      'The suite reads test/fixtures/rango_meta_blockchains.json from its spec directory.',
-  );
-}
+const FIXTURE_PATH = resolve(
+  dirname(expect.getState().testPath as string),
+  'fixtures/rango_meta_blockchains.json',
+);
 const FIXTURE_RAW: unknown = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
+
+/**
+ * Parses a Rango `blockchains[].chainId` string into a number. Accepts
+ * either `0x…` (case-insensitive) or a decimal string (Rango uses both:
+ * lowercase-hex for EVM, decimal for some non-EVM rows like HYPERLIQUID).
+ * Returns `null` for `null`, unparseable strings, or non-hex/decimal.
+ */
+function parseRangoChainId(raw: string | null): number | null {
+  if (raw === null) return null;
+  if (/^0x[0-9a-fA-F]+$/.test(raw)) return parseInt(raw, 16);
+  if (/^\d+$/.test(raw)) return parseInt(raw, 10);
+  return null;
+}
 
 const FIXTURE: RangoFixture = (() => {
   if (
@@ -81,13 +85,15 @@ const FIXTURE: RangoFixture = (() => {
 })();
 const FIXTURE_BY_NAME = new Map(FIXTURE.blockchains.map((r) => [r.name, r]));
 
+// TRON is intentionally absent — its id is positive (728126428) so the
+// hex/decimal fixture check covers it. This map is used only for the
+// non-positive family sweep.
 const RANGO_TYPE_TO_PREDICATE: ReadonlyMap<string, (chainId: number) => boolean> = new Map([
   ['SOLANA', isSolana],
   ['SUI', isSui],
   ['XRPL', isXrpl],
   ['STELLAR', isStellar],
   ['TON', isTon],
-  ['TRON', isTron],
   ['TRANSFER', isUtxo],
 ]);
 
@@ -188,6 +194,25 @@ describe('rango_chain_names', () => {
     expect(rangoNameForChainId('56' as unknown as number)).toBeUndefined();
     expect(rangoNameForChainId(null)).toBeUndefined();
     expect(rangoNameForChainId(undefined)).toBeUndefined();
+    expect(rangoNameForChainId(Infinity)).toBeUndefined();
+    expect(rangoNameForChainId(56.5)).toBeUndefined();
+  });
+
+  it('rangoNameForChainId returns undefined for every NOT_ON_RANGO id', () => {
+    for (const id of NOT_ON_RANGO) {
+      expect(rangoNameForChainId(id)).toBeUndefined();
+    }
+  });
+
+  it('does not accept a Rango chainId field (hex or decimal) as a name', () => {
+    expect(chainIdForRangoName('0x38')).toBeUndefined();
+    expect(chainIdForRangoName('56')).toBeUndefined();
+    expect(chainIdForRangoName('0x2b6653dc')).toBeUndefined();
+  });
+
+  it('does not silently strip C0 control characters (only ASCII whitespace)', () => {
+    expect(chainIdForRangoName('BSC\x00')).toBeUndefined();
+    expect(chainIdForRangoName('\x01bsc')).toBeUndefined();
   });
 
   it('NOT_ON_RANGO chains are not looked up by name either', () => {
@@ -249,13 +274,13 @@ describe('rango_chain_names', () => {
       }
     });
 
-    it('every mapped positive id hex-matches its fixture row (EVM + TRON)', () => {
+    it('every mapped positive id matches its fixture row (EVM hex + TRON hex + decimal fallback)', () => {
       for (const [id, name] of CHAIN_ID_TO_RANGO_NAME) {
         if (id <= 0) continue;
         const row = FIXTURE_BY_NAME.get(name);
         expect(row).toBeDefined();
-        expect(row?.chainId).toMatch(/^0x[0-9a-f]+$/);
-        expect(parseInt(row?.chainId ?? '', 16)).toBe(id);
+        const parsed = parseRangoChainId(row?.chainId ?? null);
+        expect(parsed).toBe(id);
       }
     });
 
@@ -275,18 +300,9 @@ describe('rango_chain_names', () => {
     });
 
     it('no chain in NOT_ON_RANGO is actually present in the snapshot fixture (hex OR decimal chainId)', () => {
-      // Rango's meta uses lowercase-hex for EVM but the fixture already
-      // carries at least one decimal string (`HYPERLIQUID: "1337"`). Parse
-      // both formats so a future refresh cannot regress fail-open.
-      const parseRangoChainId = (raw: string): number | null => {
-        if (/^0x[0-9a-fA-F]+$/.test(raw)) return parseInt(raw, 16);
-        if (/^\d+$/.test(raw)) return parseInt(raw, 10);
-        return null;
-      };
       for (const id of NOT_ON_RANGO) {
         if (id <= 0) continue;
         for (const row of FIXTURE.blockchains) {
-          if (!row.chainId) continue;
           const rowId = parseRangoChainId(row.chainId);
           if (rowId !== null && rowId === id) {
             throw new Error(

@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-21
+
 Adds a single canonical bidirectional map between omnichain chain ids and Rango's uppercase `blockchains[].name` identifiers. Removes the need for consumers (rango-intents price feed, gasless per-chain config, depositron proof validators) to maintain their own partial copies of the mapping.
 
 ### Added
@@ -16,7 +18,7 @@ Adds a single canonical bidirectional map between omnichain chain ids and Rango'
 - **`RANGO_NAME_TO_CHAIN_ID: ReadonlyMap<string, number>`** — the inverse map, keyed by uppercase name.
 - **`NOT_ON_RANGO: ReadonlySet<number>`** — explicit "not on Rango" decisions for testnets + mainnet chains omnichain declares but Rango's `/meta` does not carry (e.g. `MANTLE`, `OPBNB`, `SEI_EVM`, `WORLD_CHAIN`, `WANCHAIN`, `ABSTRACT`, `INK`, `BOB`, `ZKLINK_NOVA`, `TEMPO`). Each id must appear in the map or here; the coverage test fails otherwise, and `prepublishOnly` now runs the suite so an undecided chain id cannot ship.
 - **`rangoNameForChainId(chainId)`** and **`chainIdForRangoName(name)`** — accessors. The name-side normalises `trim() + toUpperCase()` and returns `undefined` for any non-string input, so callers looping over untrusted Rango feed rows can skip bad entries instead of aborting.
-- **Fixture** `test/fixtures/rango_meta_blockchains.json` — compact wrapper `{fetchedAt, source, blockchains: [{name, chainId, type}, …]}` of Rango's `/meta`, ~8 KB. The map's substance is verified against it: every mapped name exists, every positive-id row's `parseInt(chainId, 16)` (or decimal) equals the omnichain id, every non-positive mapped id lives on the family predicate the fixture type implies (`SOLANA→isSolana`, `SUI→isSui`, `TRON→isTron`, `TRANSFER→isUtxo`, …), and no `NOT_ON_RANGO` id is actually present in the fixture. Refreshing the map becomes "replace fixture, rerun tests."
+- **Fixture** `test/fixtures/rango_meta_blockchains.json` — compact wrapper `{fetchedAt, source, blockchains: [{name, chainId, type}, …]}` of Rango's `/meta`, ~8 KB. The map's substance is verified against it: every mapped name exists, every positive-id row's parsed `chainId` (hex `0x…` or decimal) equals the omnichain id, every non-positive mapped id lives on the family predicate the fixture type implies (`SOLANA→isSolana`, `SUI→isSui`, `XRPL→isXrpl`, `STELLAR→isStellar`, `TON→isTon`, `TRANSFER→isUtxo`; TRON is positive and covered by the hex check), and no `NOT_ON_RANGO` id is actually present in the fixture. Refreshing the map becomes "replace fixture, rerun tests."
 - **Tests** in `test/rango_chain_names.spec.ts`: bijection, no-duplicate names, name-format invariant (`/^[A-Z0-9_]+$/`), critical anchors (BTC=-1, SOLANA=-2000, ETH, BSC, ARBITRUM, BASE, LINEA, AVAX_CCHAIN, LTC, DOGE, BCH, TRON), case/whitespace normalisation, unknown-and-non-string handling, disjoint map/`NOT_ON_RANGO`, exhaustive `chain_ids.ts` coverage, and the three fixture-backed feed checks.
 
 ### Note
