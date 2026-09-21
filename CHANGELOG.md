@@ -8,6 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-21
+
+Adds a single canonical bidirectional map between omnichain chain ids and Rango's uppercase `blockchains[].name` identifiers. Removes the need for downstream consumers that talk to Rango to maintain their own partial copies of the mapping.
+
+### Added
+
+- **`CHAIN_ID_TO_RANGO_NAME: ReadonlyMap<number, string>`** on `rango_chain_names.ts` — primary map for every omnichain chain that appears in Rango's `/meta`. Sourced from `GET https://public-api.rango.exchange/basic/meta`, snapshot dated 2026-09-21.
+- **`RANGO_NAME_TO_CHAIN_ID: ReadonlyMap<string, number>`** — the inverse map, keyed by uppercase name.
+- **`NOT_ON_RANGO: ReadonlySet<number>`** — explicit "not on Rango" decisions for testnets + mainnet chains omnichain declares but Rango's `/meta` does not carry (e.g. `MANTLE`, `OPBNB`, `SEI_EVM`, `WORLD_CHAIN`, `WANCHAIN`, `ABSTRACT`, `INK`, `BOB`, `ZKLINK_NOVA`, `TEMPO`). Each id must appear in the map or here; the coverage test fails otherwise, and `prepublishOnly` now runs the suite so an undecided chain id cannot ship.
+- **`rangoNameForChainId(chainId)`** and **`chainIdForRangoName(name)`** — accessors. The name-side normalises `trim() + toUpperCase()` and returns `undefined` for any non-string input, so callers looping over untrusted Rango feed rows can skip bad entries instead of aborting.
+- **Fixture** `test/fixtures/rango_meta_blockchains.json` — compact wrapper `{fetchedAt, source, blockchains: [{name, chainId, type}, …]}` of Rango's `/meta`, ~8 KB. The map's substance is verified against it: every mapped name exists, every positive-id row's parsed `chainId` (hex `0x…` or decimal) equals the omnichain id, every non-positive mapped id lives on the family predicate the fixture type implies (`SOLANA→isSolana`, `SUI→isSui`, `XRPL→isXrpl`, `STELLAR→isStellar`, `TON→isTon`, `TRANSFER→isUtxo`; TRON is positive and covered by the hex check), and no `NOT_ON_RANGO` id is actually present in the fixture. Refreshing the map becomes "replace fixture, rerun tests."
+- **Tests** in `test/rango_chain_names.spec.ts`: bijection, no-duplicate names, name-format invariant (`/^[A-Z0-9_]+$/`), critical anchors (BTC=-1, SOLANA=-2000, ETH, BSC, ARBITRUM, BASE, LINEA, AVAX_CCHAIN, LTC, DOGE, BCH, TRON), case/whitespace normalisation, unknown-and-non-string handling, disjoint map/`NOT_ON_RANGO`, exhaustive `chain_ids.ts` coverage, and the three fixture-backed feed checks.
+
+### Note
+
+- Aliases (alternate Rango spellings for the same chain) are out of scope. If a consumer hits one in the wild, opening a follow-up to add it is a separate decision.
+
+---
+
+## [0.4.0] — 2026-09-16
+
 Brings TS `UtxoTransactionStatus` in line with the Python SDK's already-shipped UTXO shape: per-input `{address, value}` surfaced, and `balanceChanges` becomes net per-address (matching EVM/Solana). Every hydration detail lives in the per-tool provider, mirroring Python's `AbstractUtxoTool.get_tx`.
 
 ### Added
@@ -348,6 +369,14 @@ Initial npm release of `@getomnichain/omnichain`. Replaces prior vendored-submod
 
 ---
 
+[0.5.0]: https://github.com/getomnichain/omnichain/releases/tag/v0.5.0
+[0.4.0]: https://github.com/getomnichain/omnichain/releases/tag/v0.4.0
+[0.3.6]: https://github.com/getomnichain/omnichain/releases/tag/v0.3.6
+[0.3.5]: https://github.com/getomnichain/omnichain/releases/tag/v0.3.5
+[0.3.4]: https://github.com/getomnichain/omnichain/releases/tag/v0.3.4
+[0.3.3]: https://github.com/getomnichain/omnichain/releases/tag/v0.3.3
+[0.3.2]: https://github.com/getomnichain/omnichain/releases/tag/v0.3.2
+[0.3.1]: https://github.com/getomnichain/omnichain/releases/tag/v0.3.1
 [0.3.0]: https://github.com/getomnichain/omnichain/releases/tag/v0.3.0
 [0.2.1]: https://github.com/getomnichain/omnichain/releases/tag/v0.2.1
 [0.2.0]: https://github.com/getomnichain/omnichain/releases/tag/v0.2.0

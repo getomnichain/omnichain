@@ -8,6 +8,7 @@ export * from './errors.ts';
 export * from './is_address.decorator.ts';
 export * from './network_type.ts';
 export * from './priority.ts';
+export * from './rango_chain_names.ts';
 export * from './token.ts';
 export * from './transaction_status.ts';
 export * from './unsigned_transaction.ts';
