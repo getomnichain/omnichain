@@ -21,7 +21,10 @@ const OUT = resolve(
   '../test/fixtures/rango_meta_blockchains.json',
 );
 
-const res = await fetch(SOURCE, { headers: { accept: 'application/json' } });
+const res = await fetch(SOURCE, {
+  headers: { accept: 'application/json' },
+  signal: AbortSignal.timeout(30_000),
+});
 if (!res.ok) {
   console.error(`GET ${SOURCE} -> ${res.status} ${res.statusText}`);
   process.exit(1);
@@ -32,11 +35,11 @@ if (!Array.isArray(meta?.blockchains)) {
   process.exit(1);
 }
 
-const blockchains = meta.blockchains.map((b) => ({
-  name: b.name,
-  chainId: b.chainId ?? null,
-  type: b.type,
-}));
+// Sort by name so a Rango row-reorder produces no fixture diff — a
+// refresh diff shows only real additions/removals/renames.
+const blockchains = meta.blockchains
+  .map((b) => ({ name: b.name, chainId: b.chainId ?? null, type: b.type }))
+  .sort((a, b) => a.name.localeCompare(b.name));
 
 const today = new Date().toISOString().slice(0, 10);
 const wrapper = { fetchedAt: today, source: SOURCE, blockchains };

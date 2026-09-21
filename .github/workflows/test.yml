@@ -10,11 +10,14 @@ permissions:
 
 concurrency:
   group: test-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded PR runs, never main runs — submodule consumers pin
+  # main SHAs and rely on every push-to-main having a completed result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

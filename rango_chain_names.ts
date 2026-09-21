@@ -13,14 +13,14 @@ import * as C from './chain_ids.ts';
  * Source of truth: `GET https://public-api.rango.exchange/basic/meta`,
  * snapshot fetched 2026-09-21.
  *
- * Consumers (rango-intents price feed, gasless chain config, depositron
- * proof validators) should import from here instead of maintaining a
- * local copy. `test/rango_chain_names.spec.ts` fails the suite whenever
- * `chain_ids.ts` gains a new id that is neither mapped here nor listed
- * in `NOT_ON_RANGO`, so a new chain forces an explicit decision. That
- * suite runs on every PR/push via `.github/workflows/test.yml` and on
- * `npm publish` via `prepublishOnly`; submodule consumers vendoring
- * omnichain from `main` inherit the PR check as their guarantee.
+ * Downstream consumers that talk to Rango should import from here
+ * instead of maintaining a local copy. `test/rango_chain_names.spec.ts`
+ * fails the suite whenever `chain_ids.ts` gains a new id that is
+ * neither mapped here nor listed in `NOT_ON_RANGO`, so a new chain
+ * forces an explicit decision. That suite runs on every PR/push via
+ * `.github/workflows/test.yml` and on `npm publish` via
+ * `prepublishOnly`; consumers vendoring omnichain from `main` inherit
+ * the PR check as their guarantee.
  *
  * Aliases (alternate spellings Rango may use in other endpoints) are
  * deliberately out of scope; if a consumer hits one, add it as a
@@ -151,12 +151,13 @@ const MAX_RANGO_NAME_LENGTH = 64;
  * Omnichain chain id for a Rango blockchain name. Input is normalised
  * (`trim()` + `toUpperCase()`) so `' bsc '`, `'BSC'`, `'Bsc'` all resolve
  * to `56`. Returns `undefined` for an unknown name, for any non-string
- * input, for input longer than 64 characters (the longest Rango name in
- * the snapshot is 13), or for input carrying non-ASCII characters
- * (Unicode-aware `toUpperCase` folds `'ſ' → 'S'` and `'ı' → 'I'`, which
- * would resolve homoglyph inputs to real chain ids — the accessor fails
- * closed instead). Callers looping over untrusted Rango feed rows can
- * skip bad entries without a `TypeError`.
+ * input, for raw input longer than 64 characters (rejected before any
+ * per-character work — the longest Rango name in the snapshot is 13, so
+ * the bound is a DoS guard, not a contract), or for input carrying
+ * non-ASCII characters (Unicode-aware `toUpperCase` folds `'ſ' → 'S'`
+ * and `'ı' → 'I'`, which would resolve homoglyph inputs to real chain
+ * ids — the accessor fails closed instead). Callers looping over
+ * untrusted Rango feed rows can skip bad entries without a `TypeError`.
  */
 export function chainIdForRangoName(name: string | null | undefined): number | undefined {
   if (typeof name !== 'string') return undefined;

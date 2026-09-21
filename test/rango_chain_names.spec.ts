@@ -101,6 +101,28 @@ const RANGO_TYPE_TO_PREDICATE: ReadonlyMap<string, (chainId: number) => boolean>
   ['TRANSFER', isUtxo],
 ]);
 
+interface Collision {
+  readonly id: number;
+  readonly name: string;
+  readonly chainId: string;
+}
+function findNotOnRangoCollisions(
+  rows: readonly RangoFixtureRow[],
+  notOnRango: ReadonlySet<number>,
+): Collision[] {
+  const collisions: Collision[] = [];
+  for (const id of notOnRango) {
+    if (id <= 0) continue;
+    for (const row of rows) {
+      const rowId = parseRangoChainId(row.chainId);
+      if (rowId !== null && rowId === id) {
+        collisions.push({ id, name: row.name, chainId: row.chainId! });
+      }
+    }
+  }
+  return collisions;
+}
+
 describe('rango_chain_names', () => {
   it('fixture: wrapper shape, blockchains array with per-row typing, unique names', () => {
     expect(FIXTURE_RAW).toEqual(expect.objectContaining({ blockchains: expect.any(Array) }));
@@ -219,9 +241,13 @@ describe('rango_chain_names', () => {
     expect(chainIdForRangoName('\x01bsc')).toBeUndefined();
   });
 
-  it('rejects pathologically long input before scanning it', () => {
-    expect(chainIdForRangoName('A'.repeat(10_000))).toBeUndefined();
+  it('length bound: accepts padded input up to 64 chars, rejects at 65+', () => {
+    // Below the bound: 'BSC' padded with spaces to 64 chars → still resolves
+    // after trim() (spaces are ASCII whitespace, so pass the non-ASCII gate).
+    expect(chainIdForRangoName('BSC'.padEnd(64, ' '))).toBe(56);
+    // At and above the bound: rejected before any scan.
     expect(chainIdForRangoName('BSC'.padEnd(65, ' '))).toBeUndefined();
+    expect(chainIdForRangoName('A'.repeat(10_000))).toBeUndefined();
   });
 
   it('parseRangoChainId: hex, decimal, and safe-integer boundary', () => {
@@ -322,17 +348,19 @@ describe('rango_chain_names', () => {
     });
 
     it('no chain in NOT_ON_RANGO is actually present in the snapshot fixture (hex OR decimal chainId)', () => {
-      for (const id of NOT_ON_RANGO) {
-        if (id <= 0) continue;
-        for (const row of FIXTURE.blockchains) {
-          const rowId = parseRangoChainId(row.chainId);
-          if (rowId !== null && rowId === id) {
-            throw new Error(
-              `NOT_ON_RANGO[${id}] but fixture carries row name=${row.name} chainId=${row.chainId} — move it to CHAIN_ID_TO_RANGO_NAME`,
-            );
-          }
-        }
-      }
+      expect(findNotOnRangoCollisions(FIXTURE.blockchains, NOT_ON_RANGO)).toEqual([]);
+    });
+
+    it('the NOT_ON_RANGO collision detector fires when a synthetic row hits (hex, decimal)', () => {
+      // Guards against a future edit to `parseRangoChainId` or the sweep
+      // silently neutering the gate: the "no collisions" assertion above
+      // only passes trivially against the real fixture.
+      const synthesized: RangoFixtureRow[] = [
+        { name: 'MANTLE', chainId: '0x1388', type: 'EVM' },
+        { name: 'OPBNB', chainId: '204', type: 'EVM' },
+      ];
+      const hits = findNotOnRangoCollisions(synthesized, NOT_ON_RANGO);
+      expect(hits.map((c) => c.id).sort()).toEqual([204, 5000]);
     });
   });
 

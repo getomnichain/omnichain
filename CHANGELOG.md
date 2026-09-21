@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.5.0] — 2026-09-21
 
-Adds a single canonical bidirectional map between omnichain chain ids and Rango's uppercase `blockchains[].name` identifiers. Removes the need for consumers (rango-intents price feed, gasless per-chain config, depositron proof validators) to maintain their own partial copies of the mapping.
+Adds a single canonical bidirectional map between omnichain chain ids and Rango's uppercase `blockchains[].name` identifiers. Removes the need for downstream consumers that talk to Rango to maintain their own partial copies of the mapping.
 
 ### Added
 
