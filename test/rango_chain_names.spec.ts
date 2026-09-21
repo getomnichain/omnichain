@@ -17,6 +17,7 @@ import {
   isStellar,
   isSui,
   isTon,
+  isTron,
   isUtxo,
   isXrpl,
 } from '../chain_ids.ts';
@@ -236,9 +237,15 @@ describe('rango_chain_names', () => {
     expect(chainIdForRangoName('0x2b6653dc')).toBeUndefined();
   });
 
-  it('does not silently strip C0 control characters (only ASCII whitespace)', () => {
+  it('C0 controls: NUL/SOH are not treated as whitespace; VT/FF are (String.prototype.trim)', () => {
+    // NUL and SOH are not in String.trim's whitespace set, so names carrying
+    // them do not resolve.
     expect(chainIdForRangoName('BSC\x00')).toBeUndefined();
     expect(chainIdForRangoName('\x01bsc')).toBeUndefined();
+    // VT (0x0B) and FF (0x0C) ARE in String.trim's set — assert that
+    // explicitly rather than leaving it as an accident of the ASCII gate.
+    expect(chainIdForRangoName('\x0bbsc')).toBe(56);
+    expect(chainIdForRangoName('bsc\x0c')).toBe(56);
   });
 
   it('length bound: accepts padded input up to 64 chars, rejects at 65+', () => {
@@ -282,6 +289,17 @@ describe('rango_chain_names', () => {
     expect(chainIdForRangoName('IOTA_EVM')).toBeUndefined();
   });
 
+  it('rejects look-alike Rango names that point at unmapped chains', () => {
+    // `BNB` is a real /meta row (Cosmos Beacon Chain), NOT the BSC EVM
+    // chain (56). Consumers reaching for the SDK to translate `token.blockchain`
+    // must not accidentally resolve `'BNB' → 56`.
+    expect(chainIdForRangoName('BNB')).toBeUndefined();
+    // `HYPERLIQUID` is a real /meta row with chainId "1337" (decimal),
+    // distinct from `HYPEREVM` (chain id 999).
+    expect(chainIdForRangoName('HYPERLIQUID')).toBeUndefined();
+    expect(chainIdForRangoName('HYPEREVM')).toBe(999);
+  });
+
   it('raw RANGO_NAME_TO_CHAIN_ID export is not normalised (keys are already uppercase)', () => {
     // The exported map is documented as "keyed by uppercase name"; a caller
     // must go through `chainIdForRangoName` for case/whitespace tolerance.
@@ -322,13 +340,17 @@ describe('rango_chain_names', () => {
       }
     });
 
-    it('every mapped positive id matches its fixture row (EVM hex + TRON hex + decimal fallback)', () => {
+    it('every mapped positive id matches its fixture row on both parsed chainId AND type family', () => {
+      // Guard against cross-family numeric collision: the fixture carries
+      // decimal chainIds for non-EVM rows (HYPERLIQUID → "1337"), so a
+      // future EVM id colliding numerically must not silently pass the
+      // hex-match check while pointing at a non-EVM row.
       for (const [id, name] of CHAIN_ID_TO_RANGO_NAME) {
         if (id <= 0) continue;
         const row = FIXTURE_BY_NAME.get(name);
         expect(row).toBeDefined();
-        const parsed = parseRangoChainId(row?.chainId ?? null);
-        expect(parsed).toBe(id);
+        expect(parseRangoChainId(row?.chainId ?? null)).toBe(id);
+        expect(row?.type).toBe(isTron(id) ? 'TRON' : 'EVM');
       }
     });
 

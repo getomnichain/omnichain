@@ -1,5 +1,7 @@
 import * as C from './chain_ids.ts';
 
+const MAX_RANGO_NAME_LENGTH = 64;
+
 /**
  * Bidirectional lookup between omnichain chain ids and Rango's canonical
  * uppercase blockchain names (the `blockchains[].name` field of Rango's
@@ -19,8 +21,10 @@ import * as C from './chain_ids.ts';
  * neither mapped here nor listed in `NOT_ON_RANGO`, so a new chain
  * forces an explicit decision. That suite runs on every PR/push via
  * `.github/workflows/test.yml` and on `npm publish` via
- * `prepublishOnly`; consumers vendoring omnichain from `main` inherit
- * the PR check as their guarantee.
+ * `prepublishOnly`. When the `test` check is required on `main` via
+ * branch protection, consumers vendoring omnichain from `main` inherit
+ * that check as their guarantee; until then, the workflow signals but
+ * does not block.
  *
  * Aliases (alternate spellings Rango may use in other endpoints) are
  * deliberately out of scope; if a consumer hits one, add it as a
@@ -144,8 +148,6 @@ export function rangoNameForChainId(chainId: number | null | undefined): string 
   if (typeof chainId !== 'number' || Number.isNaN(chainId)) return undefined;
   return CHAIN_ID_TO_RANGO_NAME.get(chainId);
 }
-
-const MAX_RANGO_NAME_LENGTH = 64;
 
 /**
  * Omnichain chain id for a Rango blockchain name. Input is normalised

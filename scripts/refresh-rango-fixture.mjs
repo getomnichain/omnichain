@@ -15,7 +15,7 @@ import { writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
-const SOURCE = 'https://public-api.rango.exchange/basic/meta';
+const SOURCE = process.env.RANGO_META_URL ?? 'https://public-api.rango.exchange/basic/meta';
 const OUT = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../test/fixtures/rango_meta_blockchains.json',
@@ -35,11 +35,18 @@ if (!Array.isArray(meta?.blockchains)) {
   process.exit(1);
 }
 
-// Sort by name so a Rango row-reorder produces no fixture diff — a
-// refresh diff shows only real additions/removals/renames.
-const blockchains = meta.blockchains
-  .map((b) => ({ name: b.name, chainId: b.chainId ?? null, type: b.type }))
-  .sort((a, b) => a.name.localeCompare(b.name));
+// Validate row shape before projecting so a malformed upstream row fails
+// with a named error, not a bare TypeError in the comparator.
+const blockchains = meta.blockchains.map((b, i) => {
+  if (typeof b?.name !== 'string' || typeof b?.type !== 'string') {
+    console.error(`row ${i}: missing name or type — got ${JSON.stringify(b)}`);
+    process.exit(1);
+  }
+  return { name: b.name, chainId: b.chainId ?? null, type: b.type };
+});
+// Sort by name using a code-unit comparator (portable across ICU/locale)
+// so a Rango row-reorder produces no fixture diff.
+blockchains.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
 const today = new Date().toISOString().slice(0, 10);
 const wrapper = { fetchedAt: today, source: SOURCE, blockchains };
