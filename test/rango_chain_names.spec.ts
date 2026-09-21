@@ -138,15 +138,23 @@ describe('rango_chain_names', () => {
     expect(chainIdForRangoName('TRON')).toBe(728126428);
   });
 
-  it('anchors the non-EVM L1 families (guards against DASH ↔ ZCASH-style pairing swaps)', () => {
+  it('anchors every non-positive mapped id (sole guard against intra-UTXO-family swaps)', () => {
+    // Rango's /meta emits `type: "TRANSFER"` with `chainId: null` for every
+    // UTXO-family blockchain (BTC, LTC, DOGE, DASH, ZCASH, BCH), so the
+    // fixture-backed family-consistency check below cannot distinguish a
+    // DASH↔ZCASH swap. These per-id anchors are the only test that pins
+    // intra-UTXO ordering; do not remove them without an equivalent guard.
+    expect(chainIdForRangoName('BTC')).toBe(CHAIN_ID_BITCOIN_MAINNET);
+    expect(chainIdForRangoName('LTC')).toBe(-10);
+    expect(chainIdForRangoName('DOGE')).toBe(-12);
     expect(chainIdForRangoName('DASH')).toBe(CHAIN_ID_DASH_MAINNET);
     expect(chainIdForRangoName('ZCASH')).toBe(CHAIN_ID_ZCASH_MAINNET);
+    expect(chainIdForRangoName('BCH')).toBe(-18);
+    expect(chainIdForRangoName('SOLANA')).toBe(CHAIN_ID_SOLANA_MAINNET);
     expect(chainIdForRangoName('SUI')).toBe(CHAIN_ID_SUI_MAINNET);
     expect(chainIdForRangoName('XRPL')).toBe(CHAIN_ID_XRPL_MAINNET);
     expect(chainIdForRangoName('STELLAR')).toBe(CHAIN_ID_STELLAR_MAINNET);
     expect(chainIdForRangoName('TON')).toBe(CHAIN_ID_TON_MAINNET);
-    expect(rangoNameForChainId(CHAIN_ID_BITCOIN_MAINNET)).toBe('BTC');
-    expect(rangoNameForChainId(CHAIN_ID_SOLANA_MAINNET)).toBe('SOLANA');
     expect(rangoNameForChainId(CHAIN_ID_TRON_MAINNET)).toBe('TRON');
   });
 
@@ -178,6 +186,36 @@ describe('rango_chain_names', () => {
     expect(rangoNameForChainId(999_999_999)).toBeUndefined();
     expect(rangoNameForChainId(NaN)).toBeUndefined();
     expect(rangoNameForChainId('56' as unknown as number)).toBeUndefined();
+    expect(rangoNameForChainId(null)).toBeUndefined();
+    expect(rangoNameForChainId(undefined)).toBeUndefined();
+  });
+
+  it('NOT_ON_RANGO chains are not looked up by name either', () => {
+    expect(chainIdForRangoName('MANTLE')).toBeUndefined();
+    expect(chainIdForRangoName('SEPOLIA')).toBeUndefined();
+    expect(chainIdForRangoName('OPBNB')).toBeUndefined();
+    expect(chainIdForRangoName('SEI_EVM')).toBeUndefined();
+  });
+
+  it('rejects non-canonical spelling variants (D2 rules out aliases)', () => {
+    // Canonical names picked from Rango's /meta: AVAX_CCHAIN, POLYGONZK,
+    // HYPEREVM, MEGAETH, ZETA_CHAIN, IOTA, OKC. Alternate spellings a
+    // consumer might naively type must NOT resolve.
+    expect(chainIdForRangoName('AVALANCHE')).toBeUndefined();
+    expect(chainIdForRangoName('AVAX-CCHAIN')).toBeUndefined();
+    expect(chainIdForRangoName('POLYGON_ZKEVM')).toBeUndefined();
+    expect(chainIdForRangoName('ZETACHAIN')).toBeUndefined();
+    expect(chainIdForRangoName('OKX')).toBeUndefined();
+    expect(chainIdForRangoName('IOTA_EVM')).toBeUndefined();
+  });
+
+  it('raw RANGO_NAME_TO_CHAIN_ID export is not normalised (keys are already uppercase)', () => {
+    // The exported map is documented as "keyed by uppercase name"; a caller
+    // must go through `chainIdForRangoName` for case/whitespace tolerance.
+    // Pin the raw map's strictness so nobody "helpfully" lower-cases keys.
+    expect(RANGO_NAME_TO_CHAIN_ID.get('bsc')).toBeUndefined();
+    expect(RANGO_NAME_TO_CHAIN_ID.get(' BSC ')).toBeUndefined();
+    expect(RANGO_NAME_TO_CHAIN_ID.get('BSC')).toBe(56);
   });
 
   it('map and NOT_ON_RANGO are disjoint', () => {
@@ -222,9 +260,10 @@ describe('rango_chain_names', () => {
     });
 
     it('every mapped non-positive id lives on the correct family (fixture type ↔ chain_ids predicate)', () => {
-      // Guards against a swap like `DASH ↔ ZCASH` — both would round-trip in
-      // the map alone. This checks that the fixture's type for the paired
-      // Rango name matches the omnichain family predicate for the paired id.
+      // Guards only against CROSS-family swaps (e.g. SOLANA↔SUI, TON↔XRPL).
+      // Every UTXO-family row in Rango's /meta is `type: "TRANSFER"`, so
+      // intra-UTXO swaps (DASH↔ZCASH) are pinned solely by the explicit
+      // anchor block above.
       for (const [id, name] of CHAIN_ID_TO_RANGO_NAME) {
         if (id > 0) continue;
         const row = FIXTURE_BY_NAME.get(name);
@@ -235,13 +274,21 @@ describe('rango_chain_names', () => {
       }
     });
 
-    it('no chain in NOT_ON_RANGO is actually present in the snapshot fixture (any hex-typed row)', () => {
+    it('no chain in NOT_ON_RANGO is actually present in the snapshot fixture (hex OR decimal chainId)', () => {
+      // Rango's meta uses lowercase-hex for EVM but the fixture already
+      // carries at least one decimal string (`HYPERLIQUID: "1337"`). Parse
+      // both formats so a future refresh cannot regress fail-open.
+      const parseRangoChainId = (raw: string): number | null => {
+        if (/^0x[0-9a-fA-F]+$/.test(raw)) return parseInt(raw, 16);
+        if (/^\d+$/.test(raw)) return parseInt(raw, 10);
+        return null;
+      };
       for (const id of NOT_ON_RANGO) {
         if (id <= 0) continue;
         for (const row of FIXTURE.blockchains) {
-          if (!row.chainId || !/^0x[0-9a-f]+$/.test(row.chainId)) continue;
-          const rowId = parseInt(row.chainId, 16);
-          if (rowId === id) {
+          if (!row.chainId) continue;
+          const rowId = parseRangoChainId(row.chainId);
+          if (rowId !== null && rowId === id) {
             throw new Error(
               `NOT_ON_RANGO[${id}] but fixture carries row name=${row.name} chainId=${row.chainId} — move it to CHAIN_ID_TO_RANGO_NAME`,
             );

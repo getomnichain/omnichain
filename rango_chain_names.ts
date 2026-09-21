@@ -171,8 +171,9 @@ export const RANGO_NAME_TO_CHAIN_ID: ReadonlyMap<string, number> = new Map<strin
  * `CHAIN_ID_TO_RANGO_NAME`.
  *
  * Every id in `chain_ids.ts` must appear in either `CHAIN_ID_TO_RANGO_NAME`
- * or here; the coverage test fails CI otherwise. Adding an id to
- * `chain_ids.ts` without a decision is a bug.
+ * or here; the coverage test fails the suite otherwise (and `npm publish`
+ * via `prepublishOnly`). Adding an id to `chain_ids.ts` without a decision
+ * is a bug.
  *
  * Grouped by reason:
  *   - Testnets/devnets Rango's `/meta` intentionally omits.
@@ -210,9 +211,11 @@ export const NOT_ON_RANGO: ReadonlySet<number> = new Set<number>([
 
 /**
  * Rango's canonical uppercase blockchain name for a given omnichain chain
- * id, or `undefined` when the chain is not on Rango.
+ * id, or `undefined` when the chain is not on Rango, when the input is not
+ * a real number (`NaN`), or when it is `null` / `undefined`.
  */
-export function rangoNameForChainId(chainId: number): string | undefined {
+export function rangoNameForChainId(chainId: number | null | undefined): string | undefined {
+  if (typeof chainId !== 'number' || Number.isNaN(chainId)) return undefined;
   return CHAIN_ID_TO_RANGO_NAME.get(chainId);
 }
 
@@ -229,7 +232,8 @@ export function rangoNameForChainId(chainId: number): string | undefined {
 export function chainIdForRangoName(name: string | null | undefined): number | undefined {
   if (typeof name !== 'string') return undefined;
   // Reject non-ASCII before folding — see docblock above.
-  // eslint-disable-next-line no-control-regex
-  if (/[^\x00-\x7f]/.test(name)) return undefined;
+  for (let i = 0; i < name.length; i++) {
+    if (name.charCodeAt(i) > 0x7f) return undefined;
+  }
   return RANGO_NAME_TO_CHAIN_ID.get(name.trim().toUpperCase());
 }
