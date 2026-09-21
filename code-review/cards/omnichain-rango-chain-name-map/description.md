@@ -1,7 +1,7 @@
 ---
-id:            # set by post
+id: RIN-295
 title: Omnichain: bidirectional map between chain id and Rango blockchain name
-status: draft
+status: in-progress
 repos: [omnichain]
 ---
 
@@ -94,6 +94,9 @@ Two independent copies of this mapping already exist (`rango-intents/.../blockch
 - **Rango `/meta` snapshot is committed as a compact fixture.** Part B mentioned only the map as the derived artefact; iter-1 review flagged the risk that hand-typed names have no verifiable ground truth in-repo. Added `test/fixtures/rango_meta_blockchains.2026-09-21.json` (7.9 KB, three fields per row) + fixture-backed tests. Refreshes are now mechanical.
 - **`chainIdForRangoName` accepts non-string input and returns `undefined`.** Original R3 wording said "returns `undefined` when not mapped"; iter-1 review noted the two accessors had asymmetric failure modes on garbage input (id-side returned `undefined`, name-side threw `TypeError`). Made both fail-closed.
 - **`prepublishOnly` runs `npm test` in addition to `npm run build`.** AC3 depends on the coverage test failing when a new `CHAIN_ID_*` slips in without a decision; without CI in this repo the test needs a publish-time gate.
+- **`release.sh` runs `npm test` in preflight.** Iter-2 review flagged that `prepublishOnly` alone fires after `release.sh` commits + tags — a red suite would strand a release commit. `release.sh` now runs the suite before `npm version`; `prepublishOnly` stays as a backstop for hand publishes.
+- **`chainIdForRangoName` rejects non-ASCII inputs (fails closed on Unicode homoglyphs).** Iter-2 review flagged that `'ſolana'.toUpperCase() === 'SOLANA'` would resolve homoglyph inputs; better to fail closed than silently accept.
+- **`chainIdForRangoName` signature widened to `string | null | undefined`.** Iter-2 review flagged that a strict-TS consumer holding `row.blockchain: string | undefined` had to cast; the runtime guard already tolerated it, so the type now matches the contract.
 
 # Follow-ups raised
 

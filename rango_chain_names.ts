@@ -81,6 +81,11 @@ import {
  * uppercase blockchain names (the `blockchains[].name` field of Rango's
  * `/meta` response).
  *
+ * TypeScript-only module — no `omnichain-py` counterpart. `chain_ids.ts`
+ * mirrors the Python catalogue, but the Rango-name mapping is a
+ * TS-consumer concern (rango-intents, gasless, depositron all live in
+ * TS) and does not exist on the Python side.
+ *
  * Source of truth: `GET https://public-api.rango.exchange/basic/meta`,
  * snapshot fetched 2026-09-21.
  *
@@ -214,11 +219,17 @@ export function rangoNameForChainId(chainId: number): string | undefined {
 /**
  * Omnichain chain id for a Rango blockchain name. Input is normalised
  * (`trim()` + `toUpperCase()`) so `' bsc '`, `'BSC'`, `'Bsc'` all resolve
- * to `56`. Returns `undefined` for an unknown name and for any non-string
- * input, so callers passing untrusted feed rows can skip bad entries
- * instead of aborting a batch loop.
+ * to `56`. Returns `undefined` for an unknown name, for any non-string
+ * input, or for input carrying non-ASCII characters (Unicode-aware
+ * `toUpperCase` folds `'ſ' → 'S'` and `'ı' → 'I'`, which would resolve
+ * homoglyph inputs to real chain ids — the accessor fails closed
+ * instead). Callers looping over untrusted Rango feed rows can skip bad
+ * entries without a `TypeError`.
  */
-export function chainIdForRangoName(name: string): number | undefined {
+export function chainIdForRangoName(name: string | null | undefined): number | undefined {
   if (typeof name !== 'string') return undefined;
+  // Reject non-ASCII before folding — see docblock above.
+  // eslint-disable-next-line no-control-regex
+  if (/[^\x00-\x7f]/.test(name)) return undefined;
   return RANGO_NAME_TO_CHAIN_ID.get(name.trim().toUpperCase());
 }
