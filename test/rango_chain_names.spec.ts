@@ -3,6 +3,25 @@ import { dirname, resolve } from 'path';
 
 import * as chainIds from '../chain_ids.ts';
 import {
+  CHAIN_ID_BITCOIN_MAINNET,
+  CHAIN_ID_DASH_MAINNET,
+  CHAIN_ID_SOLANA_MAINNET,
+  CHAIN_ID_STELLAR_MAINNET,
+  CHAIN_ID_SUI_MAINNET,
+  CHAIN_ID_TON_MAINNET,
+  CHAIN_ID_TRON_MAINNET,
+  CHAIN_ID_TRON_SHASTA,
+  CHAIN_ID_XRPL_MAINNET,
+  CHAIN_ID_ZCASH_MAINNET,
+  isSolana,
+  isStellar,
+  isSui,
+  isTon,
+  isTron,
+  isUtxo,
+  isXrpl,
+} from '../chain_ids.ts';
+import {
   CHAIN_ID_TO_RANGO_NAME,
   NOT_ON_RANGO,
   RANGO_NAME_TO_CHAIN_ID,
@@ -15,25 +34,11 @@ interface RangoFixtureRow {
   chainId: string | null;
   type: string;
 }
-
-// Resolve the fixture relative to the running spec's own path so consumer
-// monorepo runners with a different cwd still find it. `expect.getState()`
-// is populated by every test-file loader ts-jest supports; we compute the
-// path once at module load.
-function fixturePath(): string {
-  const testPath = expect.getState().testPath;
-  const specDir = testPath ? dirname(testPath) : resolve(process.cwd(), 'test');
-  return resolve(specDir, 'fixtures/rango_meta_blockchains.2026-09-21.json');
+interface RangoFixture {
+  fetchedAt: string;
+  source: string;
+  blockchains: readonly RangoFixtureRow[];
 }
-const FIXTURE_PATH = fixturePath();
-if (!existsSync(FIXTURE_PATH)) {
-  throw new Error(
-    `rango_chain_names.spec.ts: fixture not found at ${FIXTURE_PATH}. ` +
-      'The suite reads test/fixtures/rango_meta_blockchains.2026-09-21.json ' +
-      'from its spec directory.',
-  );
-}
-const FIXTURE_RAW: unknown = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
 
 function isRangoFixtureRow(v: unknown): v is RangoFixtureRow {
   if (typeof v !== 'object' || v === null) return false;
@@ -45,20 +50,58 @@ function isRangoFixtureRow(v: unknown): v is RangoFixtureRow {
   );
 }
 
+function fixturePath(): string {
+  const testPath = expect.getState().testPath;
+  const specDir = testPath ? dirname(testPath) : resolve(process.cwd(), 'test');
+  return resolve(specDir, 'fixtures/rango_meta_blockchains.json');
+}
+const FIXTURE_PATH = fixturePath();
+if (!existsSync(FIXTURE_PATH)) {
+  throw new Error(
+    `rango_chain_names.spec.ts: fixture not found at ${FIXTURE_PATH}. ` +
+      'The suite reads test/fixtures/rango_meta_blockchains.json from its spec directory.',
+  );
+}
+const FIXTURE_RAW: unknown = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
+
+const FIXTURE: RangoFixture = (() => {
+  if (
+    typeof FIXTURE_RAW !== 'object' ||
+    FIXTURE_RAW === null ||
+    !Array.isArray((FIXTURE_RAW as { blockchains?: unknown }).blockchains)
+  ) {
+    return { fetchedAt: '', source: '', blockchains: [] };
+  }
+  const raw = FIXTURE_RAW as { fetchedAt?: unknown; source?: unknown; blockchains: unknown[] };
+  return {
+    fetchedAt: typeof raw.fetchedAt === 'string' ? raw.fetchedAt : '',
+    source: typeof raw.source === 'string' ? raw.source : '',
+    blockchains: raw.blockchains.filter(isRangoFixtureRow),
+  };
+})();
+const FIXTURE_BY_NAME = new Map(FIXTURE.blockchains.map((r) => [r.name, r]));
+
+const RANGO_TYPE_TO_PREDICATE: ReadonlyMap<string, (chainId: number) => boolean> = new Map([
+  ['SOLANA', isSolana],
+  ['SUI', isSui],
+  ['XRPL', isXrpl],
+  ['STELLAR', isStellar],
+  ['TON', isTon],
+  ['TRON', isTron],
+  ['TRANSFER', isUtxo],
+]);
+
 describe('rango_chain_names', () => {
-  it('fixture: array shape, per-row types, unique names', () => {
-    expect(Array.isArray(FIXTURE_RAW)).toBe(true);
-    const rows = FIXTURE_RAW as unknown[];
-    expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) {
-      expect(isRangoFixtureRow(row)).toBe(true);
-    }
-    const names = (rows as RangoFixtureRow[]).map((r) => r.name);
+  it('fixture: wrapper shape, blockchains array with per-row typing, unique names', () => {
+    expect(FIXTURE_RAW).toEqual(expect.objectContaining({ blockchains: expect.any(Array) }));
+    expect(FIXTURE.fetchedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(FIXTURE.source).toMatch(/^https:\/\//);
+    const raw = (FIXTURE_RAW as { blockchains: unknown[] }).blockchains;
+    const bad = raw.filter((r) => !isRangoFixtureRow(r));
+    expect(bad).toEqual([]);
+    const names = FIXTURE.blockchains.map((r) => r.name);
     expect(new Set(names).size).toBe(names.length);
   });
-
-  const FIXTURE = FIXTURE_RAW as readonly RangoFixtureRow[];
-  const FIXTURE_BY_NAME = new Map(FIXTURE.map((r) => [r.name, r]));
 
   it('exposes a bijection: every (id, name) round-trips both ways', () => {
     for (const [id, name] of CHAIN_ID_TO_RANGO_NAME) {
@@ -93,8 +136,18 @@ describe('rango_chain_names', () => {
     expect(chainIdForRangoName('DOGE')).toBe(-12);
     expect(chainIdForRangoName('BCH')).toBe(-18);
     expect(chainIdForRangoName('TRON')).toBe(728126428);
-    expect(rangoNameForChainId(-1)).toBe('BTC');
-    expect(rangoNameForChainId(-2000)).toBe('SOLANA');
+  });
+
+  it('anchors the non-EVM L1 families (guards against DASH ↔ ZCASH-style pairing swaps)', () => {
+    expect(chainIdForRangoName('DASH')).toBe(CHAIN_ID_DASH_MAINNET);
+    expect(chainIdForRangoName('ZCASH')).toBe(CHAIN_ID_ZCASH_MAINNET);
+    expect(chainIdForRangoName('SUI')).toBe(CHAIN_ID_SUI_MAINNET);
+    expect(chainIdForRangoName('XRPL')).toBe(CHAIN_ID_XRPL_MAINNET);
+    expect(chainIdForRangoName('STELLAR')).toBe(CHAIN_ID_STELLAR_MAINNET);
+    expect(chainIdForRangoName('TON')).toBe(CHAIN_ID_TON_MAINNET);
+    expect(rangoNameForChainId(CHAIN_ID_BITCOIN_MAINNET)).toBe('BTC');
+    expect(rangoNameForChainId(CHAIN_ID_SOLANA_MAINNET)).toBe('SOLANA');
+    expect(rangoNameForChainId(CHAIN_ID_TRON_MAINNET)).toBe('TRON');
   });
 
   it('normalises case and whitespace on the name-side lookup', () => {
@@ -103,9 +156,14 @@ describe('rango_chain_names', () => {
     expect(chainIdForRangoName('\tarbitrum\n')).toBe(42161);
   });
 
+  it('normalises only ASCII whitespace; NBSP/other non-ASCII is rejected', () => {
+    expect(chainIdForRangoName(' BSC')).toBeUndefined();
+    expect(chainIdForRangoName('BSC ')).toBeUndefined();
+  });
+
   it('rejects non-ASCII homoglyphs (fails closed on Unicode-uppercased inputs)', () => {
-    expect(chainIdForRangoName('ſolana')).toBeUndefined(); // U+017F long s → 'S' under Unicode uppercase
-    expect(chainIdForRangoName('ıota')).toBeUndefined();   // U+0131 dotless i → 'I' under Unicode uppercase
+    expect(chainIdForRangoName('ſolana')).toBeUndefined();
+    expect(chainIdForRangoName('ıota')).toBeUndefined();
   });
 
   it('returns undefined for unknown or non-string input', () => {
@@ -126,6 +184,7 @@ describe('rango_chain_names', () => {
     for (const id of NOT_ON_RANGO) {
       expect(CHAIN_ID_TO_RANGO_NAME.has(id)).toBe(false);
     }
+    expect(NOT_ON_RANGO.has(CHAIN_ID_TRON_SHASTA)).toBe(true);
   });
 
   it('coverage: every CHAIN_ID_* constant in chain_ids.ts is either mapped or explicitly not-on-Rango', () => {
@@ -162,15 +221,29 @@ describe('rango_chain_names', () => {
       }
     });
 
-    it('no chain in NOT_ON_RANGO is actually present in the snapshot fixture', () => {
+    it('every mapped non-positive id lives on the correct family (fixture type ↔ chain_ids predicate)', () => {
+      // Guards against a swap like `DASH ↔ ZCASH` — both would round-trip in
+      // the map alone. This checks that the fixture's type for the paired
+      // Rango name matches the omnichain family predicate for the paired id.
+      for (const [id, name] of CHAIN_ID_TO_RANGO_NAME) {
+        if (id > 0) continue;
+        const row = FIXTURE_BY_NAME.get(name);
+        expect(row).toBeDefined();
+        const predicate = RANGO_TYPE_TO_PREDICATE.get(row!.type);
+        expect(predicate).toBeDefined();
+        expect(predicate!(id)).toBe(true);
+      }
+    });
+
+    it('no chain in NOT_ON_RANGO is actually present in the snapshot fixture (any hex-typed row)', () => {
       for (const id of NOT_ON_RANGO) {
         if (id <= 0) continue;
-        for (const row of FIXTURE) {
-          if (row.type !== 'EVM' || !row.chainId) continue;
+        for (const row of FIXTURE.blockchains) {
+          if (!row.chainId || !/^0x[0-9a-f]+$/.test(row.chainId)) continue;
           const rowId = parseInt(row.chainId, 16);
           if (rowId === id) {
             throw new Error(
-              `NOT_ON_RANGO[${id}] but fixture carries EVM row name=${row.name} chainId=${row.chainId} — move it to CHAIN_ID_TO_RANGO_NAME`,
+              `NOT_ON_RANGO[${id}] but fixture carries row name=${row.name} chainId=${row.chainId} — move it to CHAIN_ID_TO_RANGO_NAME`,
             );
           }
         }

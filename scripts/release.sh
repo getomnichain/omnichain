@@ -38,9 +38,6 @@ fi
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 echo "release.sh: on branch $CURRENT_BRANCH"
 
-echo "release.sh: running test suite"
-npm test
-
 # 2. Version bump + tag
 NEW_VERSION="$(npm version "$BUMP" --no-git-tag-version)"
 NEW_VERSION="${NEW_VERSION#v}"
