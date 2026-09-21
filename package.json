@@ -70,6 +70,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-vm-modules --no-warnings node_modules/jest/bin/jest.js",
     "release": "bash scripts/release.sh",
+    "rango:refresh": "node scripts/refresh-rango-fixture.mjs",
     "prepublishOnly": "npm test && npm run build"
   },
   "dependencies": {

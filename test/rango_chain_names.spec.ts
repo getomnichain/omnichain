@@ -59,13 +59,17 @@ const FIXTURE_RAW: unknown = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
  * Parses a Rango `blockchains[].chainId` string into a number. Accepts
  * either `0x…` (case-insensitive) or a decimal string (Rango uses both:
  * lowercase-hex for EVM, decimal for some non-EVM rows like HYPERLIQUID).
- * Returns `null` for `null`, unparseable strings, or non-hex/decimal.
+ * Returns `null` for `null`, unparseable strings, non-hex/non-decimal, or
+ * values that do not fit `Number.isSafeInteger` (Rango carries STARKNET
+ * as `0x534e5f4d41494e`, which exceeds 2^53).
  */
 function parseRangoChainId(raw: string | null): number | null {
   if (raw === null) return null;
-  if (/^0x[0-9a-fA-F]+$/.test(raw)) return parseInt(raw, 16);
-  if (/^\d+$/.test(raw)) return parseInt(raw, 10);
-  return null;
+  let n: number;
+  if (/^0[xX][0-9a-fA-F]+$/.test(raw)) n = parseInt(raw, 16);
+  else if (/^\d+$/.test(raw)) n = parseInt(raw, 10);
+  else return null;
+  return Number.isSafeInteger(n) ? n : null;
 }
 
 const FIXTURE: RangoFixture = (() => {
@@ -215,6 +219,24 @@ describe('rango_chain_names', () => {
     expect(chainIdForRangoName('\x01bsc')).toBeUndefined();
   });
 
+  it('rejects pathologically long input before scanning it', () => {
+    expect(chainIdForRangoName('A'.repeat(10_000))).toBeUndefined();
+    expect(chainIdForRangoName('BSC'.padEnd(65, ' '))).toBeUndefined();
+  });
+
+  it('parseRangoChainId: hex, decimal, and safe-integer boundary', () => {
+    expect(parseRangoChainId('0x38')).toBe(56);
+    expect(parseRangoChainId('0X38')).toBe(56);
+    expect(parseRangoChainId('56')).toBe(56);
+    expect(parseRangoChainId('1337')).toBe(1337);
+    // STARKNET-style ids exceed Number.MAX_SAFE_INTEGER → treat as no numeric id
+    expect(parseRangoChainId('0x534e5f4d41494e')).toBeNull();
+    // Rango's TON row carries "-239" — signed literal, not accepted.
+    expect(parseRangoChainId('-239')).toBeNull();
+    expect(parseRangoChainId('not-a-number')).toBeNull();
+    expect(parseRangoChainId(null)).toBeNull();
+  });
+
   it('NOT_ON_RANGO chains are not looked up by name either', () => {
     expect(chainIdForRangoName('MANTLE')).toBeUndefined();
     expect(chainIdForRangoName('SEPOLIA')).toBeUndefined();
@@ -312,5 +334,14 @@ describe('rango_chain_names', () => {
         }
       }
     });
+  });
+
+  it('symbols are reachable from the public barrel (../index.ts)', async () => {
+    const barrel = await import('../index.ts');
+    expect(barrel.chainIdForRangoName('BSC')).toBe(56);
+    expect(barrel.rangoNameForChainId(-1)).toBe('BTC');
+    expect(barrel.CHAIN_ID_TO_RANGO_NAME.size).toBe(CHAIN_ID_TO_RANGO_NAME.size);
+    expect(barrel.RANGO_NAME_TO_CHAIN_ID.size).toBe(RANGO_NAME_TO_CHAIN_ID.size);
+    expect(barrel.NOT_ON_RANGO.size).toBe(NOT_ON_RANGO.size);
   });
 });
