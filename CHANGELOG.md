@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+Adds a single canonical bidirectional map between omnichain chain ids and Rango's uppercase `blockchains[].name` identifiers. Removes the need for consumers (rango-intents price feed, gasless per-chain config, depositron proof validators) to maintain their own partial copies of the mapping.
+
+### Added
+
+- **`CHAIN_ID_TO_RANGO_NAME: ReadonlyMap<number, string>`** on `rango_chain_names.ts` — primary map for every omnichain chain that appears in Rango's `/meta`. Sourced from `GET https://public-api.rango.exchange/basic/meta`, snapshot dated 2026-09-21.
+- **`RANGO_NAME_TO_CHAIN_ID: ReadonlyMap<string, number>`** — the inverse map, keyed by uppercase name.
+- **`NOT_ON_RANGO: ReadonlySet<number>`** — explicit "not on Rango" decisions for testnets + mainnet chains omnichain declares but Rango's `/meta` does not carry (e.g. `MANTLE`, `OPBNB`, `SEI_EVM`, `WORLD_CHAIN`, `WANCHAIN`, `ABSTRACT`, `INK`, `BOB`, `ZKLINK_NOVA`, `TEMPO`). Each id must appear in the map or here; the coverage test fails CI otherwise.
+- **`rangoNameForChainId(chainId)`** and **`chainIdForRangoName(name)`** — accessors. The name-side normalises `trim() + toUpperCase()`.
+- **7 unit tests** in `test/rango_chain_names.spec.ts`: bijection, no-duplicate-names, critical anchors (BTC=-1, SOLANA=-2000, ETH, BSC, ARBITRUM, BASE, LINEA, AVAX_CCHAIN), case/whitespace normalisation, unknown-input handling, disjoint map/`NOT_ON_RANGO`, exhaustive `chain_ids.ts` coverage.
+
+### Note
+
+- Aliases (alternate Rango spellings for the same chain) are out of scope. If a consumer hits one in the wild, opening a follow-up to add it is a separate decision.
+
+---
+
+## [0.4.0] — 2026-09-16
+
 Brings TS `UtxoTransactionStatus` in line with the Python SDK's already-shipped UTXO shape: per-input `{address, value}` surfaced, and `balanceChanges` becomes net per-address (matching EVM/Solana). Every hydration detail lives in the per-tool provider, mirroring Python's `AbstractUtxoTool.get_tx`.
 
 ### Added

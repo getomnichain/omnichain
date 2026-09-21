@@ -4,6 +4,7 @@ export * from './address.factory.ts';
 export * from './address_field.decorator.ts';
 export * from './chain.base.ts';
 export * from './chain_ids.ts';
+export * from './rango_chain_names.ts';
 export * from './errors.ts';
 export * from './is_address.decorator.ts';
 export * from './network_type.ts';
