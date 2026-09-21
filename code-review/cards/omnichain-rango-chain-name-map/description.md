@@ -90,13 +90,16 @@ Two independent copies of this mapping already exist (`rango-intents/.../blockch
 
 # Deviations from the plan
 
-None.
+- **AC5 (consumer parity) is deferred.** rango-intents `blockchain_chain_id.map.ts` replacement and gasless `rangoChainName` fallback are follow-up PRs against their own repos, tracked below. Both are cross-repo consumer changes; landing them alongside this SDK card would require coordinated version bumps that are outside RIN-295's scope.
+- **Rango `/meta` snapshot is committed as a compact fixture.** Part B mentioned only the map as the derived artefact; iter-1 review flagged the risk that hand-typed names have no verifiable ground truth in-repo. Added `test/fixtures/rango_meta_blockchains.2026-09-21.json` (7.9 KB, three fields per row) + fixture-backed tests. Refreshes are now mechanical.
+- **`chainIdForRangoName` accepts non-string input and returns `undefined`.** Original R3 wording said "returns `undefined` when not mapped"; iter-1 review noted the two accessors had asymmetric failure modes on garbage input (id-side returned `undefined`, name-side threw `TypeError`). Made both fail-closed.
+- **`prepublishOnly` runs `npm test` in addition to `npm run build`.** AC3 depends on the coverage test failing when a new `CHAIN_ID_*` slips in without a decision; without CI in this repo the test needs a publish-time gate.
 
 # Follow-ups raised
 
-- rango-intents `blockchain_chain_id.map.ts` (6 entries) should be replaced by re-exports from `@getomnichain/omnichain` and its `.spec.ts` retargeted. Separate PR against `rango-intents/staging` so this card can ship without cross-repo coordination.
-- gasless `chain_config.yaml` per-chain `rangoChainName` field can become optional, falling back to `rangoNameForChainId(chain.id)` when absent. Deferred until at least one consumer needs the fallback path (avoid unnecessary yaml churn today).
-- Rango `/meta` snapshot source URL used: `https://public-api.rango.exchange/basic/meta`, fetched 2026-09-21 by the implementer. Not stored in-repo (18 MB); the map is the derived artefact. Future refreshes: re-fetch and diff against `CHAIN_ID_TO_RANGO_NAME.values()`.
+- rango-intents `blockchain_chain_id.map.ts` (6 entries) → re-export from `@getomnichain/omnichain@0.5.0`, retarget its `.spec.ts`. Separate PR against `rango-intents/staging`.
+- gasless `chain_config.yaml` per-chain `rangoChainName` field can become optional, falling back to `rangoNameForChainId(chain.id)` when absent. Deferred until at least one consumer needs the fallback path (no yaml churn today).
+- Rango `/meta` source: `https://public-api.rango.exchange/basic/meta`, fetched 2026-09-21. Compact fixture committed under `test/fixtures/`. Future refreshes: re-fetch the endpoint, replace the fixture, rerun the suite, resolve any deltas.
 
 # Notes on canonical names picked from the snapshot
 

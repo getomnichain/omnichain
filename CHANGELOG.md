@@ -14,9 +14,10 @@ Adds a single canonical bidirectional map between omnichain chain ids and Rango'
 
 - **`CHAIN_ID_TO_RANGO_NAME: ReadonlyMap<number, string>`** on `rango_chain_names.ts` — primary map for every omnichain chain that appears in Rango's `/meta`. Sourced from `GET https://public-api.rango.exchange/basic/meta`, snapshot dated 2026-09-21.
 - **`RANGO_NAME_TO_CHAIN_ID: ReadonlyMap<string, number>`** — the inverse map, keyed by uppercase name.
-- **`NOT_ON_RANGO: ReadonlySet<number>`** — explicit "not on Rango" decisions for testnets + mainnet chains omnichain declares but Rango's `/meta` does not carry (e.g. `MANTLE`, `OPBNB`, `SEI_EVM`, `WORLD_CHAIN`, `WANCHAIN`, `ABSTRACT`, `INK`, `BOB`, `ZKLINK_NOVA`, `TEMPO`). Each id must appear in the map or here; the coverage test fails CI otherwise.
-- **`rangoNameForChainId(chainId)`** and **`chainIdForRangoName(name)`** — accessors. The name-side normalises `trim() + toUpperCase()`.
-- **7 unit tests** in `test/rango_chain_names.spec.ts`: bijection, no-duplicate-names, critical anchors (BTC=-1, SOLANA=-2000, ETH, BSC, ARBITRUM, BASE, LINEA, AVAX_CCHAIN), case/whitespace normalisation, unknown-input handling, disjoint map/`NOT_ON_RANGO`, exhaustive `chain_ids.ts` coverage.
+- **`NOT_ON_RANGO: ReadonlySet<number>`** — explicit "not on Rango" decisions for testnets + mainnet chains omnichain declares but Rango's `/meta` does not carry (e.g. `MANTLE`, `OPBNB`, `SEI_EVM`, `WORLD_CHAIN`, `WANCHAIN`, `ABSTRACT`, `INK`, `BOB`, `ZKLINK_NOVA`, `TEMPO`). Each id must appear in the map or here; the coverage test fails otherwise, and `prepublishOnly` now runs the suite so an undecided chain id cannot ship.
+- **`rangoNameForChainId(chainId)`** and **`chainIdForRangoName(name)`** — accessors. The name-side normalises `trim() + toUpperCase()` and returns `undefined` for any non-string input, so callers looping over untrusted Rango feed rows can skip bad entries instead of aborting.
+- **Fixture** `test/fixtures/rango_meta_blockchains.2026-09-21.json` — compact `{name, chainId, type}` per `blockchains[]` from Rango's `/meta`, 7.9 KB. The map's substance is verified against it: every mapped name exists, every EVM entry's `parseInt(chainId, 16)` equals the omnichain id, and no `NOT_ON_RANGO` EVM chainId is actually present in the fixture. Refreshing the map becomes "replace fixture, rerun tests."
+- **Tests** in `test/rango_chain_names.spec.ts`: bijection, no-duplicate names, name-format invariant (`/^[A-Z0-9_]+$/`), critical anchors (BTC=-1, SOLANA=-2000, ETH, BSC, ARBITRUM, BASE, LINEA, AVAX_CCHAIN, LTC, DOGE, BCH, TRON), case/whitespace normalisation, unknown-and-non-string handling, disjoint map/`NOT_ON_RANGO`, exhaustive `chain_ids.ts` coverage, and the three fixture-backed feed checks.
 
 ### Note
 

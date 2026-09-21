@@ -86,10 +86,10 @@ import {
  *
  * Consumers (rango-intents price feed, gasless chain config, depositron
  * proof validators) should import from here instead of maintaining a
- * local copy — the coverage test in `test/rango_chain_names.spec.ts`
- * fails CI whenever `chain_ids.ts` gains a new id that is neither
- * mapped here nor listed in `NOT_ON_RANGO`, so a new chain forces an
- * explicit decision.
+ * local copy. `test/rango_chain_names.spec.ts` fails the suite whenever
+ * `chain_ids.ts` gains a new id that is neither mapped here nor listed
+ * in `NOT_ON_RANGO`, so a new chain forces an explicit decision;
+ * `prepublishOnly` runs the suite before npm publish.
  *
  * Aliases (alternate spellings Rango may use in other endpoints) are
  * deliberately out of scope; if a consumer hits one, add it as a
@@ -175,6 +175,7 @@ export const RANGO_NAME_TO_CHAIN_ID: ReadonlyMap<string, number> = new Map<strin
  *     `CHAIN_ID_TO_RANGO_NAME` once Rango starts publishing them.
  */
 export const NOT_ON_RANGO: ReadonlySet<number> = new Set<number>([
+  // testnets/devnets — Rango's /meta never carries these.
   CHAIN_ID_BITCOIN_TESTNET,
   CHAIN_ID_BITCOIN_SIGNET,
   CHAIN_ID_SOLANA_TESTNET,
@@ -189,6 +190,7 @@ export const NOT_ON_RANGO: ReadonlySet<number> = new Set<number>([
   CHAIN_ID_SEPOLIA,
   CHAIN_ID_CELO_SEPOLIA,
 
+  // Mainnet, absent from /meta as of 2026-09-21 — move to the map when Rango publishes them.
   CHAIN_ID_OPBNB,
   CHAIN_ID_WORLD_CHAIN,
   CHAIN_ID_WANCHAIN,
@@ -212,8 +214,11 @@ export function rangoNameForChainId(chainId: number): string | undefined {
 /**
  * Omnichain chain id for a Rango blockchain name. Input is normalised
  * (`trim()` + `toUpperCase()`) so `' bsc '`, `'BSC'`, `'Bsc'` all resolve
- * to `56`. Returns `undefined` for an unknown name.
+ * to `56`. Returns `undefined` for an unknown name and for any non-string
+ * input, so callers passing untrusted feed rows can skip bad entries
+ * instead of aborting a batch loop.
  */
 export function chainIdForRangoName(name: string): number | undefined {
+  if (typeof name !== 'string') return undefined;
   return RANGO_NAME_TO_CHAIN_ID.get(name.trim().toUpperCase());
 }
