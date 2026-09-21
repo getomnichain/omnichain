@@ -36,10 +36,19 @@ if (!Array.isArray(meta?.blockchains)) {
 }
 
 // Validate row shape before projecting so a malformed upstream row fails
-// with a named error, not a bare TypeError in the comparator.
+// with a named error, not a bare TypeError in the comparator or an
+// opaque isRangoFixtureRow rejection at test time.
 const blockchains = meta.blockchains.map((b, i) => {
-  if (typeof b?.name !== 'string' || typeof b?.type !== 'string') {
-    console.error(`row ${i}: missing name or type — got ${JSON.stringify(b)}`);
+  if (typeof b?.name !== 'string') {
+    console.error(`row ${i}: name must be a string — got ${JSON.stringify(b?.name)}`);
+    process.exit(1);
+  }
+  if (typeof b?.type !== 'string') {
+    console.error(`row ${i} (${b.name}): type must be a string — got ${JSON.stringify(b?.type)}`);
+    process.exit(1);
+  }
+  if (b.chainId != null && typeof b.chainId !== 'string') {
+    console.error(`row ${i} (${b.name}): chainId must be string|null — got ${JSON.stringify(b.chainId)}`);
     process.exit(1);
   }
   return { name: b.name, chainId: b.chainId ?? null, type: b.type };

@@ -156,19 +156,14 @@ describe('rango_chain_names', () => {
     }
   });
 
-  it('anchors the known-critical entries', () => {
-    expect(chainIdForRangoName('BTC')).toBe(-1);
-    expect(chainIdForRangoName('SOLANA')).toBe(-2000);
+  it('anchors the AC1 EVM entries', () => {
+    // Non-positive families + TRON are pinned by the dedicated block below.
     expect(chainIdForRangoName('ETH')).toBe(1);
     expect(chainIdForRangoName('BSC')).toBe(56);
     expect(chainIdForRangoName('ARBITRUM')).toBe(42161);
     expect(chainIdForRangoName('BASE')).toBe(8453);
     expect(chainIdForRangoName('LINEA')).toBe(59144);
     expect(chainIdForRangoName('AVAX_CCHAIN')).toBe(43114);
-    expect(chainIdForRangoName('LTC')).toBe(-10);
-    expect(chainIdForRangoName('DOGE')).toBe(-12);
-    expect(chainIdForRangoName('BCH')).toBe(-18);
-    expect(chainIdForRangoName('TRON')).toBe(728126428);
   });
 
   it('anchors every non-positive mapped id (sole guard against intra-UTXO-family swaps)', () => {
@@ -373,6 +368,17 @@ describe('rango_chain_names', () => {
       expect(findNotOnRangoCollisions(FIXTURE.blockchains, NOT_ON_RANGO)).toEqual([]);
     });
 
+    it('every fixture name satisfies the accessor preconditions (ASCII + ≤64 chars)', () => {
+      // An unmapped fixture row promoted to CHAIN_ID_TO_RANGO_NAME later
+      // would silently fail the bijection if its name violates the
+      // accessor's ASCII/length preconditions. Assert them up-front so the
+      // failure has a clear message.
+      const namePrecondition = /^[\x20-\x7e]{1,64}$/;
+      for (const row of FIXTURE.blockchains) {
+        expect(row.name).toMatch(namePrecondition);
+      }
+    });
+
     it('the NOT_ON_RANGO collision detector fires when a synthetic row hits (hex, decimal)', () => {
       // Guards against a future edit to `parseRangoChainId` or the sweep
       // silently neutering the gate: the "no collisions" assertion above
@@ -382,7 +388,7 @@ describe('rango_chain_names', () => {
         { name: 'OPBNB', chainId: '204', type: 'EVM' },
       ];
       const hits = findNotOnRangoCollisions(synthesized, NOT_ON_RANGO);
-      expect(hits.map((c) => c.id).sort()).toEqual([204, 5000]);
+      expect(hits.map((c) => c.id).sort((a, b) => a - b)).toEqual([204, 5000]);
     });
   });
 

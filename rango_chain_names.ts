@@ -9,11 +9,12 @@ const MAX_RANGO_NAME_LENGTH = 64;
  *
  * TypeScript-only module — no `omnichain-py` counterpart. `chain_ids.ts`
  * mirrors the Python catalogue, but the Rango-name mapping is a
- * TS-consumer concern (rango-intents, gasless, depositron all live in
- * TS) and does not exist on the Python side.
+ * TS-consumer concern and does not exist on the Python side.
  *
- * Source of truth: `GET https://public-api.rango.exchange/basic/meta`,
- * snapshot fetched 2026-09-21.
+ * Source of truth: `GET https://public-api.rango.exchange/basic/meta`.
+ * The snapshot backing this module lives at
+ * `test/fixtures/rango_meta_blockchains.json`; its `fetchedAt` field is
+ * the single source-of-date. Refresh via `npm run rango:refresh`.
  *
  * Downstream consumers that talk to Rango should import from here
  * instead of maintaining a local copy. `test/rango_chain_names.spec.ts`
@@ -126,7 +127,7 @@ export const NOT_ON_RANGO: ReadonlySet<number> = new Set<number>([
   C.CHAIN_ID_SEPOLIA,
   C.CHAIN_ID_CELO_SEPOLIA,
 
-  // Mainnet, absent from /meta as of 2026-09-21 — move to the map when Rango publishes them.
+  // Mainnet, absent from /meta as of the fixture snapshot — move to the map when Rango publishes them.
   C.CHAIN_ID_OPBNB,
   C.CHAIN_ID_WORLD_CHAIN,
   C.CHAIN_ID_WANCHAIN,
@@ -154,9 +155,10 @@ export function rangoNameForChainId(chainId: number | null | undefined): string 
  * (`trim()` + `toUpperCase()`) so `' bsc '`, `'BSC'`, `'Bsc'` all resolve
  * to `56`. Returns `undefined` for an unknown name, for any non-string
  * input, for raw input longer than 64 characters (rejected before any
- * per-character work — the longest Rango name in the snapshot is 13, so
- * the bound is a DoS guard, not a contract), or for input carrying
- * non-ASCII characters (Unicode-aware `toUpperCase` folds `'ſ' → 'S'`
+ * per-character work — the bound is several times the longest name in
+ * the snapshot, so it is a DoS guard, not a contract), or for input
+ * carrying non-ASCII characters (Unicode-aware `toUpperCase` folds
+ * `'ſ' → 'S'`
  * and `'ı' → 'I'`, which would resolve homoglyph inputs to real chain
  * ids — the accessor fails closed instead). Callers looping over
  * untrusted Rango feed rows can skip bad entries without a `TypeError`.
