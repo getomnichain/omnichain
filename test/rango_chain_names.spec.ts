@@ -3,16 +3,7 @@ import { dirname, resolve } from 'path';
 
 import * as chainIds from '../chain_ids.ts';
 import {
-  CHAIN_ID_BITCOIN_MAINNET,
-  CHAIN_ID_DASH_MAINNET,
-  CHAIN_ID_SOLANA_MAINNET,
-  CHAIN_ID_STELLAR_MAINNET,
-  CHAIN_ID_SUI_MAINNET,
-  CHAIN_ID_TON_MAINNET,
-  CHAIN_ID_TRON_MAINNET,
   CHAIN_ID_TRON_SHASTA,
-  CHAIN_ID_XRPL_MAINNET,
-  CHAIN_ID_ZCASH_MAINNET,
   isSolana,
   isStellar,
   isSui,
@@ -125,15 +116,27 @@ function findNotOnRangoCollisions(
 }
 
 describe('rango_chain_names', () => {
-  it('fixture: wrapper shape, blockchains array with per-row typing, unique names', () => {
+  it('fixture: wrapper shape, blockchains array with per-row typing, unique names, sorted, real date, canonical source', () => {
     expect(FIXTURE_RAW).toEqual(expect.objectContaining({ blockchains: expect.any(Array) }));
+    // fetchedAt is a real ISO date, not in the future.
     expect(FIXTURE.fetchedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(FIXTURE.source).toMatch(/^https:\/\//);
+    const parsed = Date.parse(FIXTURE.fetchedAt);
+    expect(Number.isNaN(parsed)).toBe(false);
+    expect(parsed).toBeLessThanOrEqual(Date.now());
+    // Source is pinned to the documented endpoint so a refresh via
+    // RANGO_META_URL against another host cannot silently divorce the
+    // fixture from the module JSDoc / CHANGELOG.
+    expect(FIXTURE.source).toBe('https://public-api.rango.exchange/basic/meta');
+    // Row typing.
     const raw = (FIXTURE_RAW as { blockchains: unknown[] }).blockchains;
     const bad = raw.filter((r) => !isRangoFixtureRow(r));
     expect(bad).toEqual([]);
+    // Unique names.
     const names = FIXTURE.blockchains.map((r) => r.name);
     expect(new Set(names).size).toBe(names.length);
+    // Code-unit sorted (matches refresh-rango-fixture.mjs's comparator).
+    const sorted = [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    expect(names).toEqual(sorted);
   });
 
   it('exposes a bijection: every (id, name) round-trips both ways', () => {
@@ -172,18 +175,20 @@ describe('rango_chain_names', () => {
     // fixture-backed family-consistency check below cannot distinguish a
     // DASH↔ZCASH swap. These per-id anchors are the only test that pins
     // intra-UTXO ordering; do not remove them without an equivalent guard.
-    expect(chainIdForRangoName('BTC')).toBe(CHAIN_ID_BITCOIN_MAINNET);
+    // Values are numeric literals (not `CHAIN_ID_*` constants) so a
+    // simultaneous edit to `chain_ids.ts` cannot silently move the anchor.
+    expect(chainIdForRangoName('BTC')).toBe(-1);
     expect(chainIdForRangoName('LTC')).toBe(-10);
     expect(chainIdForRangoName('DOGE')).toBe(-12);
-    expect(chainIdForRangoName('DASH')).toBe(CHAIN_ID_DASH_MAINNET);
-    expect(chainIdForRangoName('ZCASH')).toBe(CHAIN_ID_ZCASH_MAINNET);
+    expect(chainIdForRangoName('DASH')).toBe(-14);
+    expect(chainIdForRangoName('ZCASH')).toBe(-16);
     expect(chainIdForRangoName('BCH')).toBe(-18);
-    expect(chainIdForRangoName('SOLANA')).toBe(CHAIN_ID_SOLANA_MAINNET);
-    expect(chainIdForRangoName('SUI')).toBe(CHAIN_ID_SUI_MAINNET);
-    expect(chainIdForRangoName('XRPL')).toBe(CHAIN_ID_XRPL_MAINNET);
-    expect(chainIdForRangoName('STELLAR')).toBe(CHAIN_ID_STELLAR_MAINNET);
-    expect(chainIdForRangoName('TON')).toBe(CHAIN_ID_TON_MAINNET);
-    expect(rangoNameForChainId(CHAIN_ID_TRON_MAINNET)).toBe('TRON');
+    expect(chainIdForRangoName('SOLANA')).toBe(-2000);
+    expect(chainIdForRangoName('SUI')).toBe(-2500);
+    expect(chainIdForRangoName('XRPL')).toBe(-3000);
+    expect(chainIdForRangoName('STELLAR')).toBe(-3500);
+    expect(chainIdForRangoName('TON')).toBe(-4000);
+    expect(rangoNameForChainId(728126428)).toBe('TRON');
   });
 
   it('normalises case and whitespace on the name-side lookup', () => {
@@ -218,6 +223,8 @@ describe('rango_chain_names', () => {
     expect(rangoNameForChainId(undefined)).toBeUndefined();
     expect(rangoNameForChainId(Infinity)).toBeUndefined();
     expect(rangoNameForChainId(56.5)).toBeUndefined();
+    // bigint (e.g. ethers v6 `Network.chainId`) is rejected — see JSDoc.
+    expect(rangoNameForChainId(56n as unknown as number)).toBeUndefined();
   });
 
   it('rangoNameForChainId returns undefined for every NOT_ON_RANGO id', () => {
@@ -309,6 +316,25 @@ describe('rango_chain_names', () => {
       expect(CHAIN_ID_TO_RANGO_NAME.has(id)).toBe(false);
     }
     expect(NOT_ON_RANGO.has(CHAIN_ID_TRON_SHASTA)).toBe(true);
+  });
+
+  it('every non-positive id in NOT_ON_RANGO is a testnet/devnet/signet variant', () => {
+    // Pins the file comment's "testnets/devnets Rango's /meta never carries"
+    // invariant so a future mainnet id like `CHAIN_ID_<FAMILY>_MAINNET = -5000`
+    // cannot be parked in NOT_ON_RANGO to silence the coverage sweep.
+    const negativeConstantsByValue = new Map<number, string>();
+    for (const [key, value] of Object.entries(chainIds)) {
+      if (key.startsWith('CHAIN_ID_') && typeof value === 'number' && value <= 0) {
+        negativeConstantsByValue.set(value, key);
+      }
+    }
+    const testnetKeyPattern = /TESTNET|DEVNET|SIGNET/;
+    for (const id of NOT_ON_RANGO) {
+      if (id > 0) continue;
+      const key = negativeConstantsByValue.get(id);
+      expect(key).toBeDefined();
+      expect(key).toMatch(testnetKeyPattern);
+    }
   });
 
   it('coverage: every CHAIN_ID_* constant in chain_ids.ts is either mapped or explicitly not-on-Rango', () => {

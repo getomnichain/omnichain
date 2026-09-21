@@ -144,6 +144,10 @@ export const NOT_ON_RANGO: ReadonlySet<number> = new Set<number>([
  * Rango's canonical uppercase blockchain name for a given omnichain chain
  * id, or `undefined` when the chain is not on Rango, when the input is not
  * a real number (`NaN`), or when it is `null` / `undefined`.
+ *
+ * `bigint` input is rejected at runtime and returns `undefined`. Callers
+ * bridging from `ethers` v6's `Network.chainId: bigint` should narrow with
+ * `Number(x)` and check `Number.isSafeInteger` first.
  */
 export function rangoNameForChainId(chainId: number | null | undefined): string | undefined {
   if (typeof chainId !== 'number' || Number.isNaN(chainId)) return undefined;
