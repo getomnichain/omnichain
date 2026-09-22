@@ -41,6 +41,8 @@ import {
   NestedBalanceChanges,
 } from '../transaction_status.ts';
 import {
+  SOLANA_FINALIZED_CONFIRMATIONS,
+  SolanaConfirmationStatus,
   SolanaTransactionFees,
   SolanaTransactionStatus,
 } from './solana_transaction_status.ts';
@@ -903,13 +905,22 @@ export class SolanaChain extends Chain {
       scrubUrl = null;
     }
 
-    let tx;
-    try {
-      tx = await connection.getTransaction(txHash, {
+    // RIN-296 D1: fetch `getTransaction` and `getSignatureStatus` in
+    // parallel so the common (Success) case pays one round-trip of
+    // latency instead of two. `getSignatureStatus` populates the four
+    // new finality fields (slot / confirmations / confirmationStatus /
+    // signers) on the status; `slot` and `signers` also come from
+    // `getTransaction` when it succeeds.
+    const [txResult, sigResult] = await Promise.allSettled([
+      connection.getTransaction(txHash, {
         commitment: 'confirmed',
         maxSupportedTransactionVersion: 0,
-      });
-    } catch (err) {
+      }),
+      connection.getSignatureStatus(txHash, { searchTransactionHistory: true }),
+    ]);
+
+    if (txResult.status === 'rejected') {
+      const err = txResult.reason as unknown;
       const rawMsg = err instanceof Error ? err.message : String(err);
       throw new ChainError(
         ChainErrorKinds.RpcError,
@@ -918,15 +929,22 @@ export class SolanaChain extends Chain {
         sanitizeCause(err, scrubUrl),
       );
     }
+    const tx = txResult.value;
+
+    // RIN-296 D2: sig-status failure on the Success path degrades to
+    // `null` fields rather than throwing — a working tx read must not
+    // fail because a metadata enrichment call failed.
+    const sigValue = sigResult.status === 'fulfilled' ? (sigResult.value?.value ?? null) : null;
+    const confirmationStatus = extractSolanaConfirmationStatus(sigValue?.confirmationStatus);
+    const confirmations = normaliseSolanaConfirmations(sigValue);
+
     if (!tx) {
-      // Full tx not fetchable; fall back to signature status. Consume BOTH
-      // fields (`confirmationStatus` + `err`) — the previous fix that
-      // always returned Pending on settled-but-unfetchable let a settled-
-      // FAILED tx poll indefinitely.
-      let sig;
-      try {
-        sig = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
-      } catch (err) {
+      // Full tx not fetchable; use signature status. Consume BOTH fields
+      // (`confirmationStatus` + `err`) — always returning Pending on
+      // settled-but-unfetchable would let a settled-FAILED tx poll
+      // indefinitely.
+      if (sigResult.status === 'rejected') {
+        const err = sigResult.reason as unknown;
         const rawMsg = err instanceof Error ? err.message : String(err);
         throw new ChainError(
           ChainErrorKinds.RpcError,
@@ -935,34 +953,52 @@ export class SolanaChain extends Chain {
           sanitizeCause(err, scrubUrl),
         );
       }
-      if (!sig || !sig.value) return SolanaTransactionStatus.notFound(this.chainId);
-      const settled =
-        sig.value.confirmationStatus === 'finalized' ||
-        sig.value.confirmationStatus === 'confirmed';
-      if (settled && sig.value.err) {
-        // Fees are not reconstructable from a sig-status only — factory
-        // now accepts fees: null for exactly this case.
+      if (!sigValue) return SolanaTransactionStatus.notFound(this.chainId);
+      const slot = sigValue.slot ?? null;
+      const settled = confirmationStatus === 'finalized' || confirmationStatus === 'confirmed';
+      if (settled && sigValue.err) {
         return SolanaTransactionStatus.failed({
           chainId: this.chainId,
           inclusionAt: null,
-          error: { code: 'REVERTED', reason: JSON.stringify(sig.value.err) },
+          error: { code: 'REVERTED', reason: JSON.stringify(sigValue.err) },
           fees: null,
+          slot,
+          confirmations,
+          confirmationStatus,
         });
       }
       // settled-Success without a fetchable body OR still propagating —
       // keep polling. NotFound here would misreport a settled deposit.
-      return SolanaTransactionStatus.pending(this.chainId);
+      // RIN-296 D3: pass finality through so consumers polling on
+      // Pending see the tx's position toward finality.
+      return SolanaTransactionStatus.pending(this.chainId, {
+        slot,
+        confirmations,
+        confirmationStatus,
+      });
     }
+
+    // RIN-296 R2: `slot` and `signers` are read from the `getTransaction`
+    // response the SDK already fetches. `signers` = the first
+    // `numRequiredSignatures` static account keys, matching
+    // omnichain-py `signer_keys = account_keys[: header.num_required_signatures]`.
+    const slot = tx.slot;
+    const accounts = tx.transaction.message.staticAccountKeys.map((k) => k.toBase58());
+    const signers = accounts.slice(0, tx.transaction.message.header.numRequiredSignatures);
 
     if (!tx.meta) {
       // A returned tx without meta is a valid RPC response shape (some
       // very old txs or unusual nodes). Report Pending so consumers keep
       // polling rather than throwing from a status read; matches the
       // _decodeBalanceChanges guard at the same file.
-      return SolanaTransactionStatus.pending(this.chainId);
+      return SolanaTransactionStatus.pending(this.chainId, {
+        slot,
+        confirmations,
+        confirmationStatus,
+        signers,
+      });
     }
 
-    const accounts = tx.transaction.message.staticAccountKeys.map((k) => k.toBase58());
     const feePayer = accounts[0] ?? '';
     if (feePayer.length === 0) {
       throw new ChainError(
@@ -991,6 +1027,10 @@ export class SolanaChain extends Chain {
         inclusionAt,
         error: { code: 'REVERTED', reason: JSON.stringify(tx.meta.err) },
         fees,
+        slot,
+        confirmations,
+        confirmationStatus,
+        signers,
       });
     }
 
@@ -1015,6 +1055,10 @@ export class SolanaChain extends Chain {
       inclusionAt,
       balanceChanges,
       fees,
+      slot,
+      confirmations,
+      confirmationStatus,
+      signers,
     });
   }
 
@@ -1909,6 +1953,36 @@ export function signatureBase58FromBytes(txBytes: Uint8Array): string {
 }
 
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+
+/**
+ * Narrow `getSignatureStatuses` `confirmationStatus` (a raw string) to
+ * the known union, falling back to `null` for unknown values so a
+ * future upstream widening doesn't lie about the type.
+ */
+function extractSolanaConfirmationStatus(
+  raw: string | null | undefined,
+): SolanaConfirmationStatus | null {
+  if (raw === 'processed' || raw === 'confirmed' || raw === 'finalized') return raw;
+  return null;
+}
+
+/**
+ * Normalise `getSignatureStatuses` `value.confirmations` to a monotone
+ * count consumers can gate on. Per the RPC contract, `null` means
+ * rooted (past `finalized`); the SDK maps that to
+ * {@link SOLANA_FINALIZED_CONFIRMATIONS} so `confirmations >= threshold`
+ * checks behave the way callers expect. Passing a null `sigValue`
+ * (sig-status unavailable — a metadata-enrichment failure on the
+ * success path) returns `null` so consumers can distinguish "unknown"
+ * from any real count.
+ */
+function normaliseSolanaConfirmations(
+  sigValue: { confirmations: number | null } | null,
+): number | null {
+  if (sigValue === null) return null;
+  if (sigValue.confirmations !== null) return sigValue.confirmations;
+  return SOLANA_FINALIZED_CONFIRMATIONS;
+}
 
 function parseSolanaSignature(raw: string): Uint8Array {
   const hexCandidate = raw.startsWith('0x') ? raw.slice(2) : raw;
