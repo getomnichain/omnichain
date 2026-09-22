@@ -8,6 +8,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-22
+
+Surfaces Solana finality on `SolanaTransactionStatus` (RIN-296, SDK half of RIN-285). Non-blocking pollers can now read one status snapshot and see how close to finality a tx is, matching the pattern EVM (`blockNumber` + tip derivation) and UTXO (RIN-195's carried `confirmations`) already use.
+
+### Added
+
+- **`SolanaTransactionStatus.slot: number | null`** — from `getTransaction`'s `slot` on the success path; from `getSignatureStatus`'s `slot` on the ledger-pruned fallback.
+- **`SolanaTransactionStatus.confirmations: number | null`** — the raw RPC count for non-final states, normalised to the exported `SOLANA_FINALIZED_CONFIRMATIONS = 32` when the RPC returns `null` (rooted, per the Solana RPC contract). `null` when the sig-status read was unavailable.
+- **`SolanaTransactionStatus.confirmationStatus: 'processed' | 'confirmed' | 'finalized' | null`** — the raw RPC string.
+- **`SolanaTransactionStatus.signers: readonly string[]`** — base58 signer keys in message order (the first `header.numRequiredSignatures` `staticAccountKeys`). Mirrors omnichain-py `signer_keys = account_keys[: header.num_required_signatures]` at `impl/solana/base.py:1175`. Empty on the ledger-pruned fallback and on `notFound`.
+- **`SOLANA_FINALIZED_CONFIRMATIONS = 32`** — exported constant.
+- **`SolanaConfirmationStatus`** — union of the three RPC states.
+
+### Changed
+
+- **`SolanaChain.getTransactionStatus`** fires `getTransaction` and `getSignatureStatus` in parallel via `Promise.allSettled` (RIN-296 D1) — the common Success case pays one round-trip of latency instead of two. Sig-status failure on the Success path degrades the four new fields to `null`/`[]` rather than failing the whole read (D2). The ledger-pruned Pending branch carries whatever finality it has (D3).
+
+### Note
+
+- No `blockNumber` field. Solana slots are not block heights (skipped slots exist) and `getChainTipHeight` returns a block height (0.3.3 fix); consumers deriving finality from `blockNumber` on other families must gate Solana on `confirmations`.
+- **Additive only.** All new fields optional in the init with safe defaults (`null` / `[]`); every pre-0.5.1 `SolanaTransactionStatus.successful/failed/pending/notFound` call site compiles unchanged.
+- **Note on version bump.** RIN-285 R4 specifies a **minor** bump. This release ships as a **patch** (0.5.0 → 0.5.1) per requester decision. Under SemVer this is a documented divergence — the change is additive to the public surface (new optional fields, new exported constant/type) and a minor bump would be more strictly correct.
+
+---
+
 ## [0.5.0] — 2026-09-21
 
 Adds a single canonical bidirectional map between omnichain chain ids and Rango's uppercase `blockchains[].name` identifiers. Removes the need for downstream consumers that talk to Rango to maintain their own partial copies of the mapping.
@@ -369,6 +394,7 @@ Initial npm release of `@getomnichain/omnichain`. Replaces prior vendored-submod
 
 ---
 
+[0.5.1]: https://github.com/getomnichain/omnichain/releases/tag/v0.5.1
 [0.5.0]: https://github.com/getomnichain/omnichain/releases/tag/v0.5.0
 [0.4.0]: https://github.com/getomnichain/omnichain/releases/tag/v0.4.0
 [0.3.6]: https://github.com/getomnichain/omnichain/releases/tag/v0.3.6

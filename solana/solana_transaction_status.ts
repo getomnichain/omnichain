@@ -51,6 +51,16 @@ export class SolanaTransactionFees {
   }
 }
 
+/**
+ * Confirmation count reported for a rooted (finalized-and-past)
+ * Solana transaction. The RPC returns `confirmations: null` when rooted;
+ * the SDK normalises to this constant so consumers gated on
+ * `confirmations >= threshold` see a monotone number.
+ */
+export const SOLANA_FINALIZED_CONFIRMATIONS = 32;
+
+export type SolanaConfirmationStatus = 'processed' | 'confirmed' | 'finalized';
+
 export interface SolanaTransactionStatusInit {
   chainId: number;
   status: TransactionStatusType;
@@ -58,10 +68,27 @@ export interface SolanaTransactionStatusInit {
   balanceChanges?: NestedBalanceChanges | null;
   error?: TransactionErrorInfo | null;
   fees?: SolanaTransactionFees | null;
+  slot?: number | null;
+  confirmations?: number | null;
+  confirmationStatus?: SolanaConfirmationStatus | null;
+  signers?: readonly string[];
 }
 
 export class SolanaTransactionStatus extends TransactionStatus {
   readonly fees: SolanaTransactionFees | null;
+  /** Slot from `getTransaction.slot`, or from `getSignatureStatus.slot`
+   * on the ledger-pruned fallback. `null` when neither surfaced it. */
+  readonly slot: number | null;
+  /** `getSignatureStatus.confirmations`, normalised to
+   * {@link SOLANA_FINALIZED_CONFIRMATIONS} for rooted responses. `null`
+   * when the sig-status read was unavailable. */
+  readonly confirmations: number | null;
+  /** Raw RPC `confirmationStatus`. `null` when unavailable or unknown. */
+  readonly confirmationStatus: SolanaConfirmationStatus | null;
+  /** Base58 signer keys in message order (`staticAccountKeys[0..header.numRequiredSignatures]`).
+   * Empty when the SDK never observed the message (ledger-pruned fallback,
+   * `notFound`). */
+  readonly signers: readonly string[];
 
   constructor(init: SolanaTransactionStatusInit) {
     super({
@@ -72,6 +99,10 @@ export class SolanaTransactionStatus extends TransactionStatus {
       balanceChanges: init.balanceChanges,
     });
     this.fees = init.fees ?? null;
+    this.slot = init.slot ?? null;
+    this.confirmations = init.confirmations ?? null;
+    this.confirmationStatus = init.confirmationStatus ?? null;
+    this.signers = init.signers ?? [];
   }
 
   static successful(args: {
@@ -79,6 +110,10 @@ export class SolanaTransactionStatus extends TransactionStatus {
     inclusionAt: Date | null;
     balanceChanges: NestedBalanceChanges;
     fees: SolanaTransactionFees;
+    slot?: number | null;
+    confirmations?: number | null;
+    confirmationStatus?: SolanaConfirmationStatus | null;
+    signers?: readonly string[];
   }): SolanaTransactionStatus {
     return new SolanaTransactionStatus({
       chainId: args.chainId,
@@ -87,6 +122,10 @@ export class SolanaTransactionStatus extends TransactionStatus {
       balanceChanges: args.balanceChanges,
       fees: args.fees,
       error: null,
+      slot: args.slot,
+      confirmations: args.confirmations,
+      confirmationStatus: args.confirmationStatus,
+      signers: args.signers,
     });
   }
 
@@ -95,13 +134,17 @@ export class SolanaTransactionStatus extends TransactionStatus {
    * the slot's ledger data so `getTransaction` returned null but
    * `getSignatureStatus` reports `finalized` + `err`) has no way to
    * reconstruct fees; the alternative would be polling `Pending`
-   * indefinitely (iter-2 medium).
+   * indefinitely.
    */
   static failed(args: {
     chainId: number;
     inclusionAt: Date | null;
     error: TransactionErrorInfo;
     fees: SolanaTransactionFees | null;
+    slot?: number | null;
+    confirmations?: number | null;
+    confirmationStatus?: SolanaConfirmationStatus | null;
+    signers?: readonly string[];
   }): SolanaTransactionStatus {
     return new SolanaTransactionStatus({
       chainId: args.chainId,
@@ -110,10 +153,22 @@ export class SolanaTransactionStatus extends TransactionStatus {
       error: args.error,
       balanceChanges: null,
       fees: args.fees,
+      slot: args.slot,
+      confirmations: args.confirmations,
+      confirmationStatus: args.confirmationStatus,
+      signers: args.signers,
     });
   }
 
-  static pending(chainId: number): SolanaTransactionStatus {
+  static pending(
+    chainId: number,
+    finality?: {
+      slot?: number | null;
+      confirmations?: number | null;
+      confirmationStatus?: SolanaConfirmationStatus | null;
+      signers?: readonly string[];
+    },
+  ): SolanaTransactionStatus {
     return new SolanaTransactionStatus({
       chainId,
       status: TransactionStatusTypes.Pending,
@@ -121,6 +176,10 @@ export class SolanaTransactionStatus extends TransactionStatus {
       error: null,
       balanceChanges: null,
       fees: null,
+      slot: finality?.slot,
+      confirmations: finality?.confirmations,
+      confirmationStatus: finality?.confirmationStatus,
+      signers: finality?.signers,
     });
   }
 

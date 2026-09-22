@@ -161,6 +161,29 @@ decodes these into a `NestedBalanceChanges` — the same nested Map shape EVM em
 and returns a `SolanaTransactionStatus` (extends `TransactionStatus`) with `fees:
 SolanaTransactionFees` alongside. Wallet keys are the raw base58 (case-sensitive).
 
+**Finality fields (RIN-296).** The status also carries four fields populated by firing
+`getSignatureStatus` in parallel with `getTransaction`:
+
+- `slot: number | null` — from `getTransaction.slot` on the Success path; from
+  `getSignatureStatus.slot` on the ledger-pruned fallback.
+- `confirmations: number | null` — the raw RPC count (0..31) for non-final states,
+  normalised to the exported `SOLANA_FINALIZED_CONFIRMATIONS = 32` when the RPC reports
+  `null` (rooted). Saturates at 32 — consumers running a uniform `confirmationBlocks: 64`
+  gate across families should either special-case Solana or bound at 32.
+- `confirmationStatus: 'processed' | 'confirmed' | 'finalized' | null` — raw RPC string.
+- `signers: readonly string[]` — base58 signer keys in message order
+  (`staticAccountKeys[0..header.numRequiredSignatures]`). Empty on the ledger-pruned
+  fallback and on `notFound`.
+
+**No `blockNumber`.** Solana slots are not block heights (skipped slots exist) and
+`getChainTipHeight` returns a block height (0.3.3 fix). Consumers deriving finality from
+`blockNumber` on other families must gate Solana on `confirmations`.
+
+**Sig-status soft-fail (D2).** If `getSignatureStatus` errors while `getTransaction`
+succeeds, the returned Success/Failed status keeps `slot` + `signers` populated but
+`confirmations`/`confirmationStatus` are `null`. The whole read is not thrown — a working
+tx read shouldn't fail because a metadata enrichment call failed.
+
 Fallback path when `getTransaction` returns null:
 - `getSignatureStatus` yields no value at all → `NotFound`.
 - `getSignatureStatus` reports `finalized`/`confirmed` with `err` set →
