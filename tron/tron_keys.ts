@@ -1,20 +1,16 @@
-import { createHash } from 'node:crypto';
+import { SigningKey, getBytes, keccak256 as ethersKeccak256 } from 'ethers';
 
-import bs58 from 'bs58';
-import { SigningKey, keccak256 as ethersKeccak256 } from 'ethers';
-
+import { bytesFromHex } from '../bytes_from_hex.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { TRON_ADDRESS_PREFIX_BYTE, b58decodeCheck, b58encodeCheck, tronSha256 } from './tron_base58.ts';
+
+export { TRON_ADDRESS_PREFIX_BYTE, b58decodeCheck, b58encodeCheck, tronSha256 } from './tron_base58.ts';
 
 export const SECPK1_N = 115792089237316195423570985008687907852837564279074904382605163141518161494337n;
 export const TRON_MESSAGE_PREFIX = '\x19TRON Signed Message:\n';
-export const TRON_ADDRESS_PREFIX_BYTE = 0x41;
 
 export function tronKeccak256(data: Uint8Array): Uint8Array {
-  return hexToBytes(ethersKeccak256(data));
-}
-
-export function tronSha256(data: Uint8Array): Uint8Array {
-  return new Uint8Array(createHash('sha256').update(data).digest());
+  return getBytes(ethersKeccak256(data));
 }
 
 export function bytesToHex(bytes: Uint8Array): string {
@@ -22,45 +18,7 @@ export function bytesToHex(bytes: Uint8Array): string {
 }
 
 export function hexToBytes(hex: string): Uint8Array {
-  const body = hex.startsWith('0x') || hex.startsWith('0X') ? hex.slice(2) : hex;
-  if (body.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(body)) {
-    throw new ChainError(ChainErrorKinds.InvalidArgument, `Invalid hex string: ${JSON.stringify(hex)}`);
-  }
-  return new Uint8Array(Buffer.from(body, 'hex'));
-}
-
-export function b58encodeCheck(payload: Uint8Array): string {
-  const checksum = tronSha256(tronSha256(payload)).subarray(0, 4);
-  const full = new Uint8Array(payload.length + 4);
-  full.set(payload, 0);
-  full.set(checksum, payload.length);
-  return bs58.encode(full);
-}
-
-export function b58decodeCheck(value: string): Uint8Array {
-  let decoded: Uint8Array;
-  try {
-    decoded = bs58.decode(value);
-  } catch (err) {
-    throw new ChainError(
-      ChainErrorKinds.InvalidAddress,
-      `Invalid base58 string: ${JSON.stringify(value)}`,
-      { address: value },
-      err,
-    );
-  }
-  if (decoded.length < 4) {
-    throw new ChainError(ChainErrorKinds.InvalidAddress, 'Invalid checksum', { address: value });
-  }
-  const payload = decoded.subarray(0, decoded.length - 4);
-  const checksum = decoded.subarray(decoded.length - 4);
-  const expected = tronSha256(tronSha256(payload)).subarray(0, 4);
-  for (let i = 0; i < 4; i++) {
-    if (checksum[i] !== expected[i]) {
-      throw new ChainError(ChainErrorKinds.InvalidAddress, 'Invalid checksum', { address: value });
-    }
-  }
-  return new Uint8Array(payload);
+  return bytesFromHex(hex);
 }
 
 function badAddress(raw: unknown): ChainError {
@@ -220,7 +178,7 @@ export class TronPublicKey {
 }
 
 export class TronPrivateKey {
-  private readonly rawKey: Uint8Array;
+  readonly #rawKey: Uint8Array;
   readonly publicKey: TronPublicKey;
 
   constructor(privateKeyBytes: Uint8Array) {
@@ -237,8 +195,8 @@ export class TronPrivateKey {
     if (!(scalar > 0n && scalar < SECPK1_N)) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, 'private key is not in the valid range');
     }
-    this.rawKey = new Uint8Array(privateKeyBytes);
-    const uncompressed = hexToBytes(SigningKey.computePublicKey(this.rawKey, false));
+    this.#rawKey = new Uint8Array(privateKeyBytes);
+    const uncompressed = getBytes(SigningKey.computePublicKey(this.#rawKey, false));
     this.publicKey = new TronPublicKey(uncompressed.subarray(1));
   }
 
@@ -255,16 +213,16 @@ export class TronPrivateKey {
   }
 
   signMsgHash(messageHash: Uint8Array): TronSignature {
-    const signature = new SigningKey(this.rawKey).sign(messageHash);
-    return new TronSignature(concatBytes(hexToBytes(signature.r), hexToBytes(signature.s), Uint8Array.of(signature.yParity)));
+    const signature = new SigningKey(this.#rawKey).sign(messageHash);
+    return new TronSignature(concatBytes(getBytes(signature.r), getBytes(signature.s), Uint8Array.of(signature.yParity)));
   }
 
   toBytes(): Uint8Array {
-    return new Uint8Array(this.rawKey);
+    return new Uint8Array(this.#rawKey);
   }
 
   hex(): string {
-    return bytesToHex(this.rawKey);
+    return bytesToHex(this.#rawKey);
   }
 }
 
@@ -355,7 +313,7 @@ export class TronSignature {
       s: `0x${s.toString(16).padStart(64, '0')}`,
       v: 27 + parity,
     });
-    return new TronPublicKey(hexToBytes(recovered).subarray(1));
+    return new TronPublicKey(getBytes(recovered).subarray(1));
   }
 }
 

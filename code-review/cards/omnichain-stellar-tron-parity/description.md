@@ -348,15 +348,39 @@ Decisions taken with the requester (sepehr) on 2026-10-03, before coding. They o
 - **`@stellar/stellar-sdk` pinned to `^15.1.0`.** v16/v17 require Node ≥ 22; the package declares Node ≥ 20. v15.1 was verified against Stellar mainnet at protocol 29 (60/60 live transactions decoded).
 - **TronGrid key.** Constructor `trongridApiKey` plus `TRONGRID_API_KEY` env fallback, like Python. tronpy's bundled shared keys are not copied.
 - **Python bugs fixed rather than copied (approved list).**
-  - Transport/API errors during status throw `ChainError(RpcError)` instead of returning `NotFound`.
-  - Non-SAC Soroban balances use exact decimal conversion instead of float division.
+  - Transport/API errors during status throw `ChainError(RpcError)` instead of returning `NotFound`. This includes a failed Tron `gettransactionbyid`: Python swallows it and continues with `{}`, while TS rethrows it.
+  - Amount conversions are exact. This covers the hr↔mr conversion in transfers and balances and `AssetBalanceChange` in status. Python's default 28-significant-digit `Decimal` context rounds above that, so an 18-decimal amount such as `12345678901.123456789012345678` differs. Python also divides non-SAC Soroban balances with a float.
+  - A Soroban RPC `getTransaction` response with no `events` object, as older RPC versions return it, falls back to Stellar Expert. Python reads `events.diagnostic_events_xdr` on `None` and raises `AttributeError`. Current RPCs return `events` without diagnostic XDR, so both SDKs fall back there.
   - Debug `print()` calls are dropped.
   - The Stellar `isFullBalance` no-op and the Tron 0.3 TRX full-balance reserve are kept as-is.
+- **Bugs that are identical in both SDKs are kept for parity.** They are reported to omnichain-py and TS together as RIN-316 to RIN-319, verified on omnichain-py `5c9d512` (= PyPI 0.0.3):
+  - Soroban contract spoofing;
+  - Tron internal-transaction accounting;
+  - signing the node-supplied txID;
+  - the decimals fallback cache and unpaginated Horizon effects.
 - **Small additional divergences.**
   - No logging, because the TS SDK has no logger.
-  - `StellarWallet` errors never echo the secret seed.
+  - Secrets never leak:
+    - `StellarWallet` errors never echo the secret seed.
+    - Hex parsing errors report only a position, exactly like `bytes.fromhex`.
+    - `StellarWallet.secretSeed`, `TronWallet.privateKeyHex`, the keypair / private key and the TronGrid API key are held in `#private` fields. The Python-named accessors still return them, but `JSON.stringify` / `util.inspect` never show them.
   - `signAndBroadcastTransaction` drops the `broad_cast` spelling slip.
   - Tron's TS `broadcast` adapter treats `DUP_TRANSACTION_ERROR` as success, like Solana's "already processed".
+  - Stellar's TS `broadcast` adapter maps a Horizon `400` on submit (`tx_bad_seq`, `tx_failed`, …) to `BroadcastRejected` with the result codes. Timeouts and other HTTP failures stay `RpcError`, because the transaction may still land.
+  - Tron's TS `verifyMessageSignature` adapter also accepts a `0x`-prefixed (TronWeb) signature. `TronChain.verifySignature` keeps Python's `bytes.fromhex` parsing.
+  - A TronGrid `403 "Exceed the user daily usage"` throws `RpcError`. tronpy sleeps 0.9 s and retries forever on a single key.
+  - The canonical-transaction schemas (R12) use a hand-written validator equivalent to the pydantic models instead of `zod`, so Tron adds no dependency.
+  - A zero Stellar operation amount, which comes from a zero transfer or `slippageTolerancePercent = 100`, raises `ChainError(InvalidArgument)` at build time. Python builds the operation and the network rejects it at submit. All other amount errors use the `raise_if_not_valid_amount` texts of Python's stellar-sdk. Fee-bump envelopes are rejected with Python's `Unexpected EnvelopeType: 5.`.
+  - The TS predicates `isBase58CheckAddress` / `isHexAddress` return `false` where tronpy's raise `ValueError`. Callers throw their own error, as in Python.
+  - Python `type(x)` in messages renders as `<class 'Name'>` with no module path. Reprs of SDK objects that have no TS equivalent are shortened: the Stellar operations list prints its length.
+  - `AssetBalanceChange.upsert` (the shared TS base used by every family) drops rows whose net change is zero. Python keeps them.
+- **TS-only address factory (not bound by Python parity).**
+  - `addressFor` accepts only a canonical Tron `T…` base58check address with prefix byte `0x41`. Hex, `0x…` and wrong-prefix forms are rejected, so no input is silently rewritten into a different address. The chain's own `formatWalletAddress` keeps tronpy's lenient forms.
+  - Stellar `G…` / `M…` addresses are validated with an SDK-free StrKey check, verified to agree with stellar-sdk. This keeps `@IsAddress` / `addressFor` from loading `@stellar/stellar-sdk`.
+- **Python value semantics where JS differs.**
+  - Assets used as map keys (`*_STABLECOINS_PEG`, `getWalletBalance`) go through `AssetMap`, which looks keys up by value like a Python `dict` (`chain_id`, `symbol`, `identifier`, `decimals`).
+  - `TronAsset` / `StellarAsset` accept an empty symbol, like Python. `Token` keeps rejecting it for the other families.
+- **Known TS limitation (reported, not changed in this card).** TronGrid JSON integers above 2^53 lose precision in `JSON.parse` before they reach `BigInt`. Python's ints do not.
 - **Shared base additions (overrides the "no change to shared bases" non-goal).** The Python base types listed in R0 are added as new modules. `UnsignedTransaction` gains Python's JSON contract: `toJson` / `toJsonStr` throwing `FeatureNotSupported` where not implemented, plus a polymorphic `fromJson`. `NetworkType` gains `STELLAR`, and `addressFor` parses Tron and Stellar addresses. All of this is additive; the EVM / Solana / UTXO / TON behaviour is unchanged.
 - **Version 0.6.0** (Q3 resolved by the requester).
 - **Q2** stays as Python has it: Stellar Expert is the fallback source. Today's Soroban RPC exposes diagnostic events at the top level rather than under `events`, so in practice both SDKs use Stellar Expert for Soroban history.
@@ -373,6 +397,10 @@ Decisions taken with the requester (sepehr) on 2026-10-03, before coding. They o
   - Both live transactions produce identical output from Python and TS.
   - A transaction built by TS, signed by Python's `StellarWallet` from JSON and broadcast by TS landed successfully.
 - **Live Tron mainnet.** Balance reads, `resolveAsset`, USDT and TRX unsigned builds, USDT `triggerconstantcontract` simulation with real energy. The live transaction's canonical parse is identical in Python and TS.
+- **Review round 1 fixes, checked against the real libraries:**
+  - `bytes.fromhex`, `repr()` / `str()` and tronpy's exception texts are asserted from fixtures that CPython 3.12, tronpy 0.6.2 and eth_abi 5.2 generated. This includes `trcToken`, which tronpy cannot encode.
+  - The SDK-free StrKey check agrees with stellar-sdk on 42,005 random and mutated inputs.
+  - The Horizon (`getBaseFee`, `400` / `504` submit) and TronGrid (headers, solid-block fallback, revert texts) paths are tested over real local HTTP, through each SDK's own HTTP client.
 
 # Follow-ups raised
 

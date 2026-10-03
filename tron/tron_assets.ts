@@ -1,3 +1,4 @@
+import { AssetMap } from '../asset_map.ts';
 import { FiatCurrency } from '../chain_type.ts';
 import { TronAsset } from './tron_asset.ts';
 import { TronMainnet, TronShastaTestnet } from './tron_chains.ts';
@@ -14,7 +15,7 @@ export const TRON_SHASTA_TRX = TronShastaTestnet.nativeAsset;
 
 export const TRON_ASSETS_REQUIRING_ZERO_RESET_APPROVAL: ReadonlyArray<TronAsset> = [TRON_USDT];
 
-export const TRON_MAINNET_STABLECOINS_PEG: ReadonlyMap<TronAsset, FiatCurrency> = new Map<TronAsset, FiatCurrency>([
+export const TRON_MAINNET_STABLECOINS_PEG: ReadonlyMap<TronAsset, FiatCurrency> = new AssetMap<TronAsset, FiatCurrency>([
   [TRON_USDC, FiatCurrency.USD],
   [TRON_USDT, FiatCurrency.USD],
 ]);

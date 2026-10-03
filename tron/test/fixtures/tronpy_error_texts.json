@@ -1,0 +1,73 @@
+{
+ "revert_hex": {
+  "revert_ok": "08c379a0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000124e6f7420656e6f7567682062616c616e63650000000000000000000000000000",
+  "revert_bad_padding": "08c379a0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000036162630000000000000000000000000000000000000000000000000000000001",
+  "revert_bad_utf8": "08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000002fffe000000000000000000000000000000000000000000000000000000000000",
+  "revert_odd_hex": "08c379a0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000036162630000000000000000000000000000000000000000000000000000000000f",
+  "revert_truncated": "08c379a0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000287878787878787878787878787878787878787878787878787878787878787878"
+ },
+ "tvm": {
+  "revert_ok": [
+   "TvmError",
+   "REVERT opcode executed: Not enough balance"
+  ],
+  "revert_bad_padding": [
+   "TvmError",
+   "REVERT opcode executed"
+  ],
+  "revert_bad_utf8": [
+   "TvmError",
+   "REVERT opcode executed"
+  ],
+  "revert_odd_hex": [
+   "TvmError",
+   "REVERT opcode executed"
+  ],
+  "revert_truncated": [
+   "TvmError",
+   "REVERT opcode executed"
+  ]
+ },
+ "api": {
+  "sigerror": [
+   "BadSignature",
+   "bad sig"
+  ],
+  "dup": [
+   "UnknownError",
+   "('dup transaction', 'DUP_TRANSACTION_ERROR')"
+  ],
+  "tapos": [
+   "TaposError",
+   "Tapos check error"
+  ],
+  "too_big": [
+   "TransactionError",
+   "too big"
+  ],
+  "contract_validate": [
+   "ValidationError",
+   "Validate TransferContract error, balance is not sufficient."
+  ],
+  "spaced_hex": [
+   "UnknownError",
+   "('abc', 'OTHER_ERROR')"
+  ],
+  "no_message": [
+   "UnknownError",
+   "(\"{'code': 'SERVER_BUSY'}\", 'SERVER_BUSY')"
+  ],
+  "numeric_message": [
+   "UnknownError",
+   "(12, 'OTHER_ERROR')"
+  ],
+  "error_key": [
+   "ApiError",
+   "class java.lang.NullPointerException : null"
+  ],
+  "nested": [
+   "BadSignature",
+   "nope"
+  ]
+ }
+}

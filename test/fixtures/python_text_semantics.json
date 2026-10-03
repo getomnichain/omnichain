@@ -1,0 +1,3717 @@
+{
+"fromhex": [
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "0FCDe\td5 ",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "62A4",
+"hex": "62a4"
+},
+{
+"input": "fAF76\rCC7AFE",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "1F4C",
+"hex": "1f4c"
+},
+{
+"input": "242aD\u00a0f",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "e5A ",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "7CB 3",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "91f ",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "\u000b4\faF0a1B368\f",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "bD58DE 9\tE\u00a0",
+"error": "non-hexadecimal number found in fromhex() arg at position 10"
+},
+{
+"input": "bbF2D6",
+"hex": "bbf2d6"
+},
+{
+"input": "6D3991cCdb",
+"hex": "6d3991ccdb"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "E\n9A1a",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": " 6C379E1831De",
+"hex": "6c379e1831de"
+},
+{
+"input": "BCCbD3F41gC35f",
+"error": "non-hexadecimal number found in fromhex() arg at position 9"
+},
+{
+"input": "6aB",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": " Bc",
+"hex": "bc"
+},
+{
+"input": "0\u000b4d66DD6\r31\u00a0e",
+"error": "non-hexadecimal number found in fromhex() arg at position 12"
+},
+{
+"input": "2CB0F9",
+"hex": "2cb0f9"
+},
+{
+"input": "c7 e5",
+"hex": "c7e5"
+},
+{
+"input": "bF4d",
+"hex": "bf4d"
+},
+{
+"input": "cb7f66\u000b5Ecf6F",
+"hex": "cb7f665ecf6f"
+},
+{
+"input": "8eA",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "Ce\t\rEB59",
+"hex": "ceeb59"
+},
+{
+"input": "d5",
+"hex": "d5"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "2d7\u3000c",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "BCCBcd5gAAA4e0",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "FD101F6533",
+"hex": "fd101f6533"
+},
+{
+"input": "12CdbDde\f1",
+"error": "non-hexadecimal number found in fromhex() arg at position 10"
+},
+{
+"input": "FC45b9dE\u3000",
+"error": "non-hexadecimal number found in fromhex() arg at position 8"
+},
+{
+"input": "4\u000b89eFf",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "14228B05\r3\fc",
+"error": "non-hexadecimal number found in fromhex() arg at position 10"
+},
+{
+"input": "4B\u000b7CA1e2",
+"hex": "4b7ca1e2"
+},
+{
+"input": "6DD\u00a08C\tc7",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "dxE\u3000b59",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "\u3000199",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "4C7f",
+"hex": "4c7f"
+},
+{
+"input": "E6EF0F",
+"hex": "e6ef0f"
+},
+{
+"input": "dD78\u001c10",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "C77F7952d4",
+"hex": "c77f7952d4"
+},
+{
+"input": "dBDbD",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "5aef0Ad",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "7e387E04B6D",
+"error": "non-hexadecimal number found in fromhex() arg at position 11"
+},
+{
+"input": "eeF3\u3000bbCEcBA",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "9cA\r885\rD6d",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "F6\u3000Bec",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "7f",
+"hex": "7f"
+},
+{
+"input": "a",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "CA8g948F0",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "6f",
+"hex": "6f"
+},
+{
+"input": "A0bE\f",
+"hex": "a0be"
+},
+{
+"input": "1D8e",
+"hex": "1d8e"
+},
+{
+"input": "\u001c\u3000CeBa\n2",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "8\fC3fAe35",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "44eA\u00a0956\u00a08x",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "\u000bF\u00a0e4\re\n396dDg",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "Fb9A0\n",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "\r6",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "D\u001cCC\u000bdf E",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "g",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "e",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "\u00a025Ae4dF3E",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "5",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "Exab",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "3 Cef9",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "7",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "\nCc",
+"hex": "cc"
+},
+{
+"input": "7D7g\u00a0E8gE2e43a",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "6E",
+"hex": "6e"
+},
+{
+"input": "A 4B",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "A3",
+"hex": "a3"
+},
+{
+"input": "33",
+"hex": "33"
+},
+{
+"input": "34\f",
+"hex": "34"
+},
+{
+"input": "5c751E8cB8A\f",
+"error": "non-hexadecimal number found in fromhex() arg at position 11"
+},
+{
+"input": "Ea",
+"hex": "ea"
+},
+{
+"input": "e\r8gB47b163C68",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "4125Dx4Eag",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "05gc",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "c75",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "5\u3000",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "D\f5fDd79B\u30008",
+"error": "non-hexadecimal number found in fromhex() arg at position 9"
+},
+{
+"input": "5832B72x",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "BFde",
+"hex": "bfde"
+},
+{
+"input": "\fBA cF7",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "4D9ae\t",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "5",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "dEE0\u001c23C3E7A60",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "AfFb\t",
+"hex": "affb"
+},
+{
+"input": "5Ba737",
+"hex": "5ba737"
+},
+{
+"input": "C\t2",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "eEd\u3000g\u001cc2A",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "cgx\u00a0Db\f536b4",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "489d0aaF51",
+"hex": "489d0aaf51"
+},
+{
+"input": "\u001c\t\u000b4\u000b",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "b\n",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "A5fCD 8C1\u000b8\n9c",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "14\rF4E1C77",
+"error": "non-hexadecimal number found in fromhex() arg at position 10"
+},
+{
+"input": "2Fcd",
+"hex": "2fcd"
+},
+{
+"input": "3\t8fc9B4\f",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "334",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "d97DbBA79e3d",
+"hex": "d97dbba79e3d"
+},
+{
+"input": "38CxE5BB9E4",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "782e9f3de",
+"error": "non-hexadecimal number found in fromhex() arg at position 9"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "c5",
+"hex": "c5"
+},
+{
+"input": "ff4c",
+"hex": "ff4c"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "5d0\u001c\tB3",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "CC\u000b7b",
+"hex": "cc7b"
+},
+{
+"input": "\u00a0\rE5eF64cEaf",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "AExbC680\n9A1",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "645E",
+"hex": "645e"
+},
+{
+"input": "eAF3\nE",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "gD72fcBBCC2\u00a0C",
+"error": "non-hexadecimal number found in fromhex() arg at position 11"
+},
+{
+"input": "\u001c3\nfC26\u000bC8FdD",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "fFCC\u001c7b0",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "79Ed3Bx5g\r85",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "0F7378145dE\n5x",
+"error": "non-hexadecimal number found in fromhex() arg at position 11"
+},
+{
+"input": "7",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "9861bC4c",
+"hex": "9861bc4c"
+},
+{
+"input": "d7x6D6",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "B7",
+"hex": "b7"
+},
+{
+"input": "CE8F9\nC",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "7f07\u000b9a44\f",
+"hex": "7f079a44"
+},
+{
+"input": "10b4927Ag0d0 E",
+"error": "non-hexadecimal number found in fromhex() arg at position 8"
+},
+{
+"input": "E9a8Ebe8CF\u001c\t",
+"error": "non-hexadecimal number found in fromhex() arg at position 10"
+},
+{
+"input": "eb98d\u00a0BE1",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "687e88CAC5D\u000bEB",
+"error": "non-hexadecimal number found in fromhex() arg at position 11"
+},
+{
+"input": "79 CF4",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "FC4fA449aDD",
+"error": "non-hexadecimal number found in fromhex() arg at position 11"
+},
+{
+"input": "1",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "B09f\u001c\n79D819g",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "D9\u001cc\u001c2b7bBB901",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "69",
+"hex": "69"
+},
+{
+"input": "6",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "F2a6e",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "e596E16c2efx",
+"error": "non-hexadecimal number found in fromhex() arg at position 11"
+},
+{
+"input": "0",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "bF",
+"hex": "bf"
+},
+{
+"input": "8EE",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "8000",
+"hex": "8000"
+},
+{
+"input": " e84\u000bDF0ex0",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "10ABEF",
+"hex": "10abef"
+},
+{
+"input": "1275\nc72\n22",
+"error": "non-hexadecimal number found in fromhex() arg at position 8"
+},
+{
+"input": "2c40fbB48x2",
+"error": "non-hexadecimal number found in fromhex() arg at position 9"
+},
+{
+"input": "\rfE1",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "B212x6",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "bBb3E1Ef2 \u00a0D",
+"error": "non-hexadecimal number found in fromhex() arg at position 10"
+},
+{
+"input": "eF63\u000b4e30\r",
+"hex": "ef634e30"
+},
+{
+"input": "51b9\f0d253C",
+"hex": "51b90d253c"
+},
+{
+"input": "f59C46A",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "Fba",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "5F\u000bdgED\n\u300049",
+"error": "non-hexadecimal number found in fromhex() arg at position 8"
+},
+{
+"input": "g\n9ag",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "g\u00a0FFC7EE4f",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "A267Ec\nDg",
+"error": "non-hexadecimal number found in fromhex() arg at position 8"
+},
+{
+"input": "5",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "9E4c5CbgFFe",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "cb3806xd44F6b",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "E97C2D",
+"hex": "e97c2d"
+},
+{
+"input": "\f9f5D2B",
+"hex": "9f5d2b"
+},
+{
+"input": "94cC2b98a",
+"error": "non-hexadecimal number found in fromhex() arg at position 9"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "2\n\tE3E6B",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "aD\r162",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "B7",
+"hex": "b7"
+},
+{
+"input": "b6B82b",
+"hex": "b6b82b"
+},
+{
+"input": "301e\u00a01eA8",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "0ac",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "2bC1AF3e327A",
+"hex": "2bc1af3e327a"
+},
+{
+"input": "\r\rb\u001c\tC\nC",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "a7",
+"hex": "a7"
+},
+{
+"input": "\u30003\u00a011831 \fB",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "Aa27gF8F096F",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "1e69Dd",
+"hex": "1e69dd"
+},
+{
+"input": "CbDFCC",
+"hex": "cbdfcc"
+},
+{
+"input": "aBE\t9c",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "C15C2Fc\rA",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "8ceaE",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "\f 7d",
+"hex": "7d"
+},
+{
+"input": "D1d1bdc6C9B",
+"error": "non-hexadecimal number found in fromhex() arg at position 11"
+},
+{
+"input": "6220E",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "D EcA\u001c",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "9xB5f6a\u00a0eg",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": " \fa",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "\u3000EfA\faFC31",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "Fad7f103E2",
+"hex": "fad7f103e2"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "3bBBF",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "a\u3000",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "37Aa6dE9ex\u30009",
+"error": "non-hexadecimal number found in fromhex() arg at position 10"
+},
+{
+"input": "\ff0cEx0E1ec",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "\u001c88\rf3\u00a047\r8c",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "75B4",
+"hex": "75b4"
+},
+{
+"input": "bD",
+"hex": "bd"
+},
+{
+"input": " e",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "0\t821\rd\u3000\u000b",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "d\tB6ffgDDD",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "c\f89\ra06CF6094",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "c3a",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "ED5E",
+"hex": "ed5e"
+},
+{
+"input": "0 E6e9c74",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": " c2426630EE",
+"hex": "c2426630ee"
+},
+{
+"input": "B650D94\u00a0",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "1659aFb",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "fD\r37bA0c",
+"hex": "fd37ba0c"
+},
+{
+"input": "C\u000b8BAdA",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "dC6\u00a0g251\u3000d",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "9",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "c",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "e5",
+"hex": "e5"
+},
+{
+"input": "5\fa20A",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "\rDbx4D",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "b\tc180\u30000f7",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "3269\u001cCdCFD g",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "9c0\t9517",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "25B",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "B 4\u300065A",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "cc8",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "2\nf\n5e33f\u3000F",
+"error": "non-hexadecimal number found in fromhex() arg at position 9"
+},
+{
+"input": "2D3916e2",
+"hex": "2d3916e2"
+},
+{
+"input": "\n\f4b45",
+"hex": "4b45"
+},
+{
+"input": "9aBD2",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "\u30004C518638a2",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "7gAaEfBD38",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "e\u00a02\n\u001c22\u001c65cD3",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "6e013",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "a8dE6",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "x9\u000b74f3Ec1",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "Ege8\tEb6f",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "f b1gA557219c7",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "4\nbFE\n\u3000f",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "e8FfA36",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "60",
+"hex": "60"
+},
+{
+"input": "fA\u000bCCadb\u3000a9c",
+"error": "non-hexadecimal number found in fromhex() arg at position 8"
+},
+{
+"input": "Egb\n",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "c1B",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "b9e49c4",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "dC12D5AF",
+"hex": "dc12d5af"
+},
+{
+"input": "D\r6D70B\u000bC8\u001cd5E",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "B6c81513be215",
+"error": "non-hexadecimal number found in fromhex() arg at position 13"
+},
+{
+"input": "bx2\u000bA2E53bd",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "CD3",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "FFA5",
+"hex": "ffa5"
+},
+{
+"input": "00A",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "\u00a078B0\u000b7C\r76\u001ce",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "\r5",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "63\f8",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "a ",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "E2fa782\u001cB5dbgg",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "1B\u3000aeCDb",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "f AB",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "fDd70",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": " C\u001c",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "7bx",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "86\f7\u000bdFBf7D",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "2B",
+"hex": "2b"
+},
+{
+"input": "34F9CF9\u000b4Cca\u001c",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "E\fC",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "4Fb2",
+"hex": "4fb2"
+},
+{
+"input": "9d0a\u000b1E \u00a0",
+"error": "non-hexadecimal number found in fromhex() arg at position 8"
+},
+{
+"input": "A1gbaC\n",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "d6ddE0\fDx3E0",
+"error": "non-hexadecimal number found in fromhex() arg at position 8"
+},
+{
+"input": "ADFF\u00a0Eg",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "4B05d08E24\u3000F\t",
+"error": "non-hexadecimal number found in fromhex() arg at position 10"
+},
+{
+"input": "309dE3",
+"hex": "309de3"
+},
+{
+"input": "3B 71\r5E\u00a0\f",
+"error": "non-hexadecimal number found in fromhex() arg at position 8"
+},
+{
+"input": "F81E5B7c",
+"hex": "f81e5b7c"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "f",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "\r045Dc3gBAB",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "50Fbg7d8",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "2bA25C\nE",
+"error": "non-hexadecimal number found in fromhex() arg at position 8"
+},
+{
+"input": "B59E8a944 93",
+"error": "non-hexadecimal number found in fromhex() arg at position 9"
+},
+{
+"input": "C\t45\u001c5eee5Bf4",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "43",
+"hex": "43"
+},
+{
+"input": "79DE8",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "EB818bgc",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "3CBb",
+"hex": "3cbb"
+},
+{
+"input": "De0\nA3ACA",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "b09E\fc2\nfca4AD",
+"hex": "b09ec2fca4ad"
+},
+{
+"input": "Ecex\nD0xB",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "\rcedDE",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "6F\r1d5\t64\f4\t",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "\t\ne5eFF",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "135b938d",
+"hex": "135b938d"
+},
+{
+"input": "4F7\fCef\nF",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "Ad8",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "6E79 19cEC7",
+"hex": "6e7919cec7"
+},
+{
+"input": "1aCAFb5A\u000bfc9",
+"error": "non-hexadecimal number found in fromhex() arg at position 12"
+},
+{
+"input": "DF54dB\u00a0\u000b30f9\u3000",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "a\n4B\u3000cfax",
+"error": "non-hexadecimal number found in fromhex() arg at position 4"
+},
+{
+"input": "5562c\t",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "F",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "Bd96B3Ef",
+"hex": "bd96b3ef"
+},
+{
+"input": "11EA",
+"hex": "11ea"
+},
+{
+"input": "FfC58D85",
+"hex": "ffc58d85"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "8Aa78x",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "0CC2\n03",
+"hex": "0cc203"
+},
+{
+"input": "b",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "2x",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "2ABfd\u3000DF",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "\u00a0\rc6 fa8",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "Bc9\u3000\n17B",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "0ee7e394",
+"hex": "0ee7e394"
+},
+{
+"input": "x8",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "b0780",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "Ccc1ABf7bEc\r",
+"error": "non-hexadecimal number found in fromhex() arg at position 11"
+},
+{
+"input": "95Ag0D\rF",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "85e0",
+"hex": "85e0"
+},
+{
+"input": "\ne529FFD9\u00a0a",
+"error": "non-hexadecimal number found in fromhex() arg at position 9"
+},
+{
+"input": "a9fce",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "A0",
+"hex": "a0"
+},
+{
+"input": "C7\u00a0C9\n4ba79",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "B2C",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "\u3000 ",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "f5E0d153eEFDAb",
+"hex": "f5e0d153eefdab"
+},
+{
+"input": "xA4eACD6C5",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "5461",
+"hex": "5461"
+},
+{
+"input": "EaF313F6gA88",
+"error": "non-hexadecimal number found in fromhex() arg at position 8"
+},
+{
+"input": "32C\u000bbeC29aag",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "aDf4\u000b72619a79F",
+"error": "non-hexadecimal number found in fromhex() arg at position 14"
+},
+{
+"input": "e\u000bA3d\u00a0x",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "ad",
+"hex": "ad"
+},
+{
+"input": "bFD0a",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "e\n4F\rfeC",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "\u00a058bE54",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "a20\u000bC3g\tBffF",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "x 2cdAF",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "2f",
+"hex": "2f"
+},
+{
+"input": "\u3000B8bD 27A4F\u000b4",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "F8",
+"hex": "f8"
+},
+{
+"input": "391a\t3Bdea",
+"error": "non-hexadecimal number found in fromhex() arg at position 10"
+},
+{
+"input": "244cdB",
+"hex": "244cdb"
+},
+{
+"input": "1C2C3f6f4bB",
+"error": "non-hexadecimal number found in fromhex() arg at position 11"
+},
+{
+"input": "6A5B",
+"hex": "6a5b"
+},
+{
+"input": "30F3C",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "aA3f0f3\n9E\u001c6",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "AF\r9FC deB",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "fb7aB6812e\n0\f\t",
+"error": "non-hexadecimal number found in fromhex() arg at position 12"
+},
+{
+"input": "d2a14dd",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "C5\n47",
+"hex": "c547"
+},
+{
+"input": "273F3bb\u3000\u00a0",
+"error": "non-hexadecimal number found in fromhex() arg at position 7"
+},
+{
+"input": "C4A",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "af1",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "f\u00a08",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "0",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "54A",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "22\u001cA82309A9cd",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "Fg7\tA5E8D\u001c",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "\u000b615Fcb10\rEA",
+"hex": "615fcb10ea"
+},
+{
+"input": "E3Ee",
+"hex": "e3ee"
+},
+{
+"input": "c81\u00a0b1d84a 5cE",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "\u30007Bd4x25",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "ae",
+"hex": "ae"
+},
+{
+"input": "d\fAbbb\u00a027A0",
+"error": "non-hexadecimal number found in fromhex() arg at position 6"
+},
+{
+"input": "27adc29fcgdDaE",
+"error": "non-hexadecimal number found in fromhex() arg at position 9"
+},
+{
+"input": "dCF\u001c0\u001caa",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "f7D\u00a032",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "5F2",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "ba\u00a0ce4",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": "CE442",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "2B55bFAeE",
+"error": "non-hexadecimal number found in fromhex() arg at position 9"
+},
+{
+"input": "0\u3000AC6EEfg\u3000ed",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "B6A55",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "aA91\n6D",
+"hex": "aa916d"
+},
+{
+"input": "\u00a0\n7\nE\u001c\u000b\u001c919",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "CaBaE",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "BA6\t0d8dg",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "59d6E",
+"error": "non-hexadecimal number found in fromhex() arg at position 5"
+},
+{
+"input": "4a93b\r779\u00a0\fg",
+"error": "non-hexadecimal number found in fromhex() arg at position 9"
+},
+{
+"input": "8C4f9b2cB50\u000b50",
+"error": "non-hexadecimal number found in fromhex() arg at position 11"
+},
+{
+"input": "5",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "84a18bF29E",
+"hex": "84a18bf29e"
+},
+{
+"input": "7",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "",
+"hex": ""
+},
+{
+"input": " ",
+"hex": ""
+},
+{
+"input": "ab cd",
+"hex": "abcd"
+},
+{
+"input": " abcd \n",
+"hex": "abcd"
+},
+{
+"input": "a bcd",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "abc",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "zz",
+"error": "non-hexadecimal number found in fromhex() arg at position 0"
+},
+{
+"input": "0xab",
+"error": "non-hexadecimal number found in fromhex() arg at position 1"
+},
+{
+"input": "abc d",
+"error": "non-hexadecimal number found in fromhex() arg at position 3"
+},
+{
+"input": "ab\u001ccd",
+"error": "non-hexadecimal number found in fromhex() arg at position 2"
+},
+{
+"input": "AB\tcd\u000b",
+"hex": "abcd"
+}
+],
+"str": [
+{
+"value": "\u008a\u00b4\u0082+8{\u00cf",
+"repr": "'\\x8a\u00b4\\x82+8{\u00cf'"
+},
+{
+"value": "g\u0018\u00e0",
+"repr": "'g\\x18\u00e0'"
+},
+{
+"value": "v\u0092",
+"repr": "'v\\x92'"
+},
+{
+"value": "\u001b\u00cf\u00bbp\"",
+"repr": "'\\x1b\u00cf\u00bbp\"'"
+},
+{
+"value": "\u0003D>\u009c\n\u00ea\ufffe\u000f",
+"repr": "'\\x03D>\\x9c\\n\u00ea\\ufffe\\x0f'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u0081\u008d\u00bf",
+"repr": "'\\x81\\x8d\u00bf'"
+},
+{
+"value": "V(BW\u0006Y!",
+"repr": "'V(BW\\x06Y!'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "%\u00a0",
+"repr": "'%\\xa0'"
+},
+{
+"value": "`.U\u00bf\u000b",
+"repr": "'`.U\u00bf\\x0b'"
+},
+{
+"value": "\"\u0082\u00b9\u00f8\u0098J",
+"repr": "'\"\\x82\u00b9\u00f8\\x98J'"
+},
+{
+"value": "\u0093\u00a5\u00a2\ue000",
+"repr": "'\\x93\u00a5\u00a2\\ue000'"
+},
+{
+"value": "\u0011c\u00b9r\u00fb",
+"repr": "'\\x11c\u00b9r\u00fb'"
+},
+{
+"value": "\u00fc\u00e7s\u00a8\u009d!",
+"repr": "'\u00fc\u00e7s\u00a8\\x9d!'"
+},
+{
+"value": "M\u008e\u00b5",
+"repr": "'M\\x8e\u00b5'"
+},
+{
+"value": "3{\u00aa\u0378",
+"repr": "'3{\u00aa\\u0378'"
+},
+{
+"value": "\u00d3\u3000\u00e5\u00a9V",
+"repr": "'\u00d3\\u3000\u00e5\u00a9V'"
+},
+{
+"value": "\u0094\u00a3u6;L",
+"repr": "'\\x94\u00a3u6;L'"
+},
+{
+"value": "\u0096\u00a6Y",
+"repr": "'\\x96\u00a6Y'"
+},
+{
+"value": "\u00bd\u0083\u0015\u0012c",
+"repr": "'\u00bd\\x83\\x15\\x12c'"
+},
+{
+"value": "\u00caV",
+"repr": "'\u00caV'"
+},
+{
+"value": "\u000f\u00c6\u00bd\u00df\u000b7\u00f8H",
+"repr": "'\\x0f\u00c6\u00bd\u00df\\x0b7\u00f8H'"
+},
+{
+"value": "\u00e2\u001a\u00a7\u1680\u00ba",
+"repr": "'\u00e2\\x1a\u00a7\\u1680\u00ba'"
+},
+{
+"value": "\u00e8bK\u00bb8U",
+"repr": "'\u00e8bK\u00bb8U'"
+},
+{
+"value": "S\u0086\u00b1&I>",
+"repr": "'S\\x86\u00b1&I>'"
+},
+{
+"value": "0ChN:\u00b4B\u0097\u00b6",
+"repr": "'0ChN:\u00b4B\\x97\u00b6'"
+},
+{
+"value": "n\u00ad",
+"repr": "'n\\xad'"
+},
+{
+"value": "C",
+"repr": "'C'"
+},
+{
+"value": "\u00ad\u00b9\"> ",
+"repr": "'\\xad\u00b9\"> '"
+},
+{
+"value": "\u00b4\u009e",
+"repr": "'\u00b4\\x9e'"
+},
+{
+"value": "\ud83d\ude00y'\u0013\u00c9",
+"repr": "\"\ud83d\ude00y'\\x13\u00c9\""
+},
+{
+"value": "x\u00f0\u0097\u0014\u0014\u00d8\u0018\u00a8\u001dt",
+"repr": "'x\u00f0\\x97\\x14\\x14\u00d8\\x18\u00a8\\x1dt'"
+},
+{
+"value": "\u00a6\u000b~~\u00aa\u0017",
+"repr": "'\u00a6\\x0b~~\u00aa\\x17'"
+},
+{
+"value": "\u00d1w\u00f2\u00f9\u00ec",
+"repr": "'\u00d1w\u00f2\u00f9\u00ec'"
+},
+{
+"value": "\u00bf\u00ce\u00f8\u0000",
+"repr": "'\u00bf\u00ce\u00f8\\x00'"
+},
+{
+"value": "V\u0013\f\u0015",
+"repr": "'V\\x13\\x0c\\x15'"
+},
+{
+"value": "\u00ef@ypx\u00ad\u00aa\u00d9\u200b",
+"repr": "'\u00ef@ypx\\xad\u00aa\u00d9\\u200b'"
+},
+{
+"value": "E\u0081V\u00e1\"\ue0006 ",
+"repr": "'E\\x81V\u00e1\"\\ue0006 '"
+},
+{
+"value": "\u00fd\u00a7v\u008d\u00fe\u00e7\u00f2",
+"repr": "'\u00fd\u00a7v\\x8d\u00fe\u00e7\u00f2'"
+},
+{
+"value": "E\u061cQ",
+"repr": "'E\\u061cQ'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "1\u00b0\u00f2",
+"repr": "'1\u00b0\u00f2'"
+},
+{
+"value": "\u2028q\u0378",
+"repr": "'\\u2028q\\u0378'"
+},
+{
+"value": "\u00d4\u0013\u00d2No\u0085\u00e7~\u0093\u001d",
+"repr": "'\u00d4\\x13\u00d2No\\x85\u00e7~\\x93\\x1d'"
+},
+{
+"value": "\u00aa\u00ad|\u009d",
+"repr": "'\u00aa\\xad|\\x9d'"
+},
+{
+"value": "\u00ca9q\u00fb;\u00e9\u00b8\u00f1\u00f8",
+"repr": "'\u00ca9q\u00fb;\u00e9\u00b8\u00f1\u00f8'"
+},
+{
+"value": "\u00bb",
+"repr": "'\u00bb'"
+},
+{
+"value": "'\u00bd\u00bfa-Hd>\u00bb",
+"repr": "\"'\u00bd\u00bfa-Hd>\u00bb\""
+},
+{
+"value": "\u00ad\u008c\u00f4\u00f8\u0095t\u00e7\u00ce",
+"repr": "'\\xad\\x8c\u00f4\u00f8\\x95t\u00e7\u00ce'"
+},
+{
+"value": "Su\u00f7\u0019\u0011pe",
+"repr": "'Su\u00f7\\x19\\x11pe'"
+},
+{
+"value": "L\u00e0\u0091\u00e6?\u00d6K",
+"repr": "'L\u00e0\\x91\u00e6?\u00d6K'"
+},
+{
+"value": "c",
+"repr": "'c'"
+},
+{
+"value": "\u0014sr\u0010g\u00c7p\u0082",
+"repr": "'\\x14sr\\x10g\u00c7p\\x82'"
+},
+{
+"value": "\u00cc\b}\u00acP\u00f2\"jI\u0017",
+"repr": "'\u00cc\\x08}\u00acP\u00f2\"jI\\x17'"
+},
+{
+"value": "\u0085\u0019\u0097\u0015\u0005\u0081\u00df6\u00a8\u0013",
+"repr": "'\\x85\\x19\\x97\\x15\\x05\\x81\u00df6\u00a8\\x13'"
+},
+{
+"value": "W",
+"repr": "'W'"
+},
+{
+"value": "\u00e2\u00d4;\u00b0",
+"repr": "'\u00e2\u00d4;\u00b0'"
+},
+{
+"value": "\u00fe\u0013jbS\u00c4\u00b2\u0016\u008c",
+"repr": "'\u00fe\\x13jbS\u00c4\u00b2\\x16\\x8c'"
+},
+{
+"value": "n\u0095A\"\u1680\u00a4@",
+"repr": "'n\\x95A\"\\u1680\u00a4@'"
+},
+{
+"value": "\u00d4\u00ea;D\u00ee-",
+"repr": "'\u00d4\u00ea;D\u00ee-'"
+},
+{
+"value": "\u00d9$\u0082\u00ca=",
+"repr": "'\u00d9$\\x82\u00ca='"
+},
+{
+"value": "\u00e9",
+"repr": "'\u00e9'"
+},
+{
+"value": "w\u00f2",
+"repr": "'w\u00f2'"
+},
+{
+"value": "\u000bdpB\u00de\u001f\u00b1[\u00e2\u0012",
+"repr": "'\\x0bdpB\u00de\\x1f\u00b1[\u00e2\\x12'"
+},
+{
+"value": "\u00fd\u00d8\u00b6R\u00fe\u0007\u00ea\u00e4\u00ec",
+"repr": "'\u00fd\u00d8\u00b6R\u00fe\\x07\u00ea\u00e4\u00ec'"
+},
+{
+"value": "\u001d\u00c0",
+"repr": "'\\x1d\u00c0'"
+},
+{
+"value": ")\u001e",
+"repr": "')\\x1e'"
+},
+{
+"value": "(\u00b8N\u00f29{j",
+"repr": "'(\u00b8N\u00f29{j'"
+},
+{
+"value": "H",
+"repr": "'H'"
+},
+{
+"value": "\u3000\u00daW\u00bf\u00c2b",
+"repr": "'\\u3000\u00daW\u00bf\u00c2b'"
+},
+{
+"value": "H)\u3000U\u00b3",
+"repr": "'H)\\u3000U\u00b3'"
+},
+{
+"value": "\u0378bP",
+"repr": "'\\u0378bP'"
+},
+{
+"value": "\u001f\u008f\u001a\u0014at\u0092",
+"repr": "'\\x1f\\x8f\\x1a\\x14at\\x92'"
+},
+{
+"value": "\u00da\u00b3\u00da\u00e9\u00e8\u00ea",
+"repr": "'\u00da\u00b3\u00da\u00e9\u00e8\u00ea'"
+},
+{
+"value": "\u00a6\u00fe\ud83d\ude00:\u00dd\u0087",
+"repr": "'\u00a6\u00fe\ud83d\ude00:\u00dd\\x87'"
+},
+{
+"value": "%\u007f\u00d9\u0016",
+"repr": "'%\\x7f\u00d9\\x16'"
+},
+{
+"value": "*ok\f\u00e6\u00d8\u00e39",
+"repr": "'*ok\\x0c\u00e6\u00d8\u00e39'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "e\u00b1\u00df\"\u00ef\u0018\u00c7\u00cb2J",
+"repr": "'e\u00b1\u00df\"\u00ef\\x18\u00c7\u00cb2J'"
+},
+{
+"value": "}\u00c0\u00e7\u00e6\u0003\u0006!\u00fb",
+"repr": "'}\u00c0\u00e7\u00e6\\x03\\x06!\u00fb'"
+},
+{
+"value": "\u009fU\u00cb_\u00b7B@p\u00b0B",
+"repr": "'\\x9fU\u00cb_\u00b7B@p\u00b0B'"
+},
+{
+"value": "%\u008e`{/\u000f",
+"repr": "'%\\x8e`{/\\x0f'"
+},
+{
+"value": "\"d\u00cc\u00f3\u00b2\u0007\u009f\u00ac\u0097",
+"repr": "'\"d\u00cc\u00f3\u00b2\\x07\\x9f\u00ac\\x97'"
+},
+{
+"value": "\u0019\u008f",
+"repr": "'\\x19\\x8f'"
+},
+{
+"value": "\u00a6",
+"repr": "'\u00a6'"
+},
+{
+"value": "\u008dD\u00dd",
+"repr": "'\\x8dD\u00dd'"
+},
+{
+"value": "\u00e3\u0014!\u00c0\u009e",
+"repr": "'\u00e3\\x14!\u00c0\\x9e'"
+},
+{
+"value": "B2d\u00c2\u00a7\u00a7\u00fe",
+"repr": "'B2d\u00c2\u00a7\u00a7\u00fe'"
+},
+{
+"value": "\u00e1\u00d3\u00d6\u009b\u0012\u00a4",
+"repr": "'\u00e1\u00d3\u00d6\\x9b\\x12\u00a4'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "t\u00d7^",
+"repr": "'t\u00d7^'"
+},
+{
+"value": "Z\u0086$",
+"repr": "'Z\\x86$'"
+},
+{
+"value": "\u00a9)\\\u00f6\u00fcP\u0019s",
+"repr": "'\u00a9)\\\\\u00f6\u00fcP\\x19s'"
+},
+{
+"value": "\udbff\udfffi!\u00fc",
+"repr": "'\\U0010ffffi!\u00fc'"
+},
+{
+"value": "\u00cc",
+"repr": "'\u00cc'"
+},
+{
+"value": "\u00ae\u00b82\u00f7\u00fbt\u00f4\u0085\u00d5",
+"repr": "'\u00ae\u00b82\u00f7\u00fbt\u00f4\\x85\u00d5'"
+},
+{
+"value": "#e\u0096\u00bc\u00f3\u0019\u000b:mA",
+"repr": "'#e\\x96\u00bc\u00f3\\x19\\x0b:mA'"
+},
+{
+"value": "G~=",
+"repr": "'G~='"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u00f8\ud83d\ude00\u00a7\u00de\u00c2",
+"repr": "'\u00f8\ud83d\ude00\u00a7\u00de\u00c2'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\ue000\u00dd\u0088\u00ac\u009d\u00e6",
+"repr": "'\\ue000\u00dd\\x88\u00ac\\x9d\u00e6'"
+},
+{
+"value": "\u0016",
+"repr": "'\\x16'"
+},
+{
+"value": "\u00e9\u00c9w",
+"repr": "'\u00e9\u00c9w'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u00d3a\u00ccEcx\u00c3\u00cfN",
+"repr": "'\u00d3a\u00ccEcx\u00c3\u00cfN'"
+},
+{
+"value": "\u0085\u00d1\\\u00a3\u00ce",
+"repr": "'\\x85\u00d1\\\\\u00a3\u00ce'"
+},
+{
+"value": "\u00f4/>\u00d3\ue000\u00c6\u001e",
+"repr": "'\u00f4/>\u00d3\\ue000\u00c6\\x1e'"
+},
+{
+"value": "\u00ac\u00d1T\u001b`'\u00d2\u0086",
+"repr": "\"\u00ac\u00d1T\\x1b`'\u00d2\\x86\""
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u000f",
+"repr": "'\\x0f'"
+},
+{
+"value": "<\u0083R\u0081d\u00cal\u00d3",
+"repr": "'<\\x83R\\x81d\u00cal\u00d3'"
+},
+{
+"value": "'a3\u00c2",
+"repr": "\"'a3\u00c2\""
+},
+{
+"value": "\u0090\u0016",
+"repr": "'\\x90\\x16'"
+},
+{
+"value": "x",
+"repr": "'x'"
+},
+{
+"value": "\u00e6nc\u1680\u00dd",
+"repr": "'\u00e6nc\\u1680\u00dd'"
+},
+{
+"value": "BU]K\u00cdG\u00dc",
+"repr": "'BU]K\u00cdG\u00dc'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u00bd\u00d23\u00e8\u00a5\u00c0",
+"repr": "'\u00bd\u00d23\u00e8\u00a5\u00c0'"
+},
+{
+"value": "*\u00a4\u00c2\u001fA\u007fl\u00f2",
+"repr": "'*\u00a4\u00c2\\x1fA\\x7fl\u00f2'"
+},
+{
+"value": "1\r",
+"repr": "'1\\r'"
+},
+{
+"value": "\u00d7\u0378mY\u00a4\u0083",
+"repr": "'\u00d7\\u0378mY\u00a4\\x83'"
+},
+{
+"value": "1H",
+"repr": "'1H'"
+},
+{
+"value": ":G\u00fe%[%\udbff\udfff",
+"repr": "':G\u00fe%[%\\U0010ffff'"
+},
+{
+"value": "-\u00c7\u00d0\u00c2\udbff\udfff\u00e8\u00e5\f\u00cag",
+"repr": "'-\u00c7\u00d0\u00c2\\U0010ffff\u00e8\u00e5\\x0c\u00cag'"
+},
+{
+"value": "\u00a4\u00c5\u00e7\u00ba",
+"repr": "'\u00a4\u00c5\u00e7\u00ba'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\t\u00c2ytCG\u061c1\u00f60",
+"repr": "'\\t\u00c2ytCG\\u061c1\u00f60'"
+},
+{
+"value": "\u008f",
+"repr": "'\\x8f'"
+},
+{
+"value": "U\u00f9\u00ec\u00a64",
+"repr": "'U\u00f9\u00ec\u00a64'"
+},
+{
+"value": "\u0016LQ^m",
+"repr": "'\\x16LQ^m'"
+},
+{
+"value": "\u0003+\u0095",
+"repr": "'\\x03+\\x95'"
+},
+{
+"value": "\u00ce\u0378\u00bcZ\u000f",
+"repr": "'\u00ce\\u0378\u00bcZ\\x0f'"
+},
+{
+"value": "\u0086\u00ef6\u00e0",
+"repr": "'\\x86\u00ef6\u00e0'"
+},
+{
+"value": "\u00b1",
+"repr": "'\u00b1'"
+},
+{
+"value": "\u00ac",
+"repr": "'\u00ac'"
+},
+{
+"value": "O\u00f5\u00ef\u00b1\u00ebe:",
+"repr": "'O\u00f5\u00ef\u00b1\u00ebe:'"
+},
+{
+"value": "\u00da\ud83d\ude00",
+"repr": "'\u00da\ud83d\ude00'"
+},
+{
+"value": "\u0081\u00d1\u0004@\u008a\u0018(\u00cb",
+"repr": "'\\x81\u00d1\\x04@\\x8a\\x18(\u00cb'"
+},
+{
+"value": "#P\u000b\u00df7\u0002\u0011\u00ed",
+"repr": "'#P\\x0b\u00df7\\x02\\x11\u00ed'"
+},
+{
+"value": "\u008e",
+"repr": "'\\x8e'"
+},
+{
+"value": "\u00f6\u00fc\u00d7DI",
+"repr": "'\u00f6\u00fc\u00d7DI'"
+},
+{
+"value": "\u00bdx. (\u00e2\u00d0",
+"repr": "'\u00bdx. (\u00e2\u00d0'"
+},
+{
+"value": "\u00e2\u001f\u00c3\u00bc\u0094.\u0087\u00a4",
+"repr": "'\u00e2\\x1f\u00c3\u00bc\\x94.\\x87\u00a4'"
+},
+{
+"value": "i",
+"repr": "'i'"
+},
+{
+"value": "\u00a0; Hx",
+"repr": "'\\xa0; Hx'"
+},
+{
+"value": "\u001e<\u00c4\u00e3 \u00e2|yX2",
+"repr": "'\\x1e<\u00c4\u00e3 \u00e2|yX2'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u001c\u00c5\u00f9",
+"repr": "'\\x1c\u00c5\u00f9'"
+},
+{
+"value": "\u0089'y\u00b6\u0097\u001e\u00cd\u00e0",
+"repr": "\"\\x89'y\u00b6\\x97\\x1e\u00cd\u00e0\""
+},
+{
+"value": "(",
+"repr": "'('"
+},
+{
+"value": "\u0084#\u0084k\ud83d\ude00\u00b0\u00138",
+"repr": "'\\x84#\\x84k\ud83d\ude00\u00b0\\x138'"
+},
+{
+"value": "\u3000\u0018\u00f73\u0085\u0011c\u00e6\u00f3/",
+"repr": "'\\u3000\\x18\u00f73\\x85\\x11c\u00e6\u00f3/'"
+},
+{
+"value": "%\u0011\u00ac\u00eae\u0017\u00c3",
+"repr": "'%\\x11\u00ac\u00eae\\x17\u00c3'"
+},
+{
+"value": "\u001b\u00d4{",
+"repr": "'\\x1b\u00d4{'"
+},
+{
+"value": "L4\ud83d\ude002",
+"repr": "'L4\ud83d\ude002'"
+},
+{
+"value": "\f",
+"repr": "'\\x0c'"
+},
+{
+"value": ".o\u00fa\u00f7f\u000e\u0096",
+"repr": "'.o\u00fa\u00f7f\\x0e\\x96'"
+},
+{
+"value": "h\u009chU\u00d1\u00b20\u00d2\u00c0\u00b6",
+"repr": "'h\\x9chU\u00d1\u00b20\u00d2\u00c0\u00b6'"
+},
+{
+"value": "\u00e9\u008f\u00d1}\u00e5\u00865^;",
+"repr": "'\u00e9\\x8f\u00d1}\u00e5\\x865^;'"
+},
+{
+"value": "\u009b\u00b84v;\u00ff\u00be}i",
+"repr": "'\\x9b\u00b84v;\u00ff\u00be}i'"
+},
+{
+"value": "\u0017\u00f5C\u009e",
+"repr": "'\\x17\u00f5C\\x9e'"
+},
+{
+"value": "F\u00d92\u001fX\u0095\u009bfz",
+"repr": "'F\u00d92\\x1fX\\x95\\x9bfz'"
+},
+{
+"value": "\u00a1\u00ed\u2028\u00a9/\u00d1",
+"repr": "'\u00a1\u00ed\\u2028\u00a9/\u00d1'"
+},
+{
+"value": "Y\u009c\u0092",
+"repr": "'Y\\x9c\\x92'"
+},
+{
+"value": "r",
+"repr": "'r'"
+},
+{
+"value": "\u0093",
+"repr": "'\\x93'"
+},
+{
+"value": "[\u0003",
+"repr": "'[\\x03'"
+},
+{
+"value": "\ufffe\bS\u00a9\u00f4R\u00d0\u00ca\ue000",
+"repr": "'\\ufffe\\x08S\u00a9\u00f4R\u00d0\u00ca\\ue000'"
+},
+{
+"value": "\u008d\u0092\u00bbG|9\u0010c\u00eb\u0015",
+"repr": "'\\x8d\\x92\u00bbG|9\\x10c\u00eb\\x15'"
+},
+{
+"value": "\u00f0\u200b",
+"repr": "'\u00f0\\u200b'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u0084s\u001cHS8\u000b",
+"repr": "'\\x84s\\x1cHS8\\x0b'"
+},
+{
+"value": "\u0090\u00e4x&\u00a93\u00cdL",
+"repr": "'\\x90\u00e4x&\u00a93\u00cdL'"
+},
+{
+"value": "\u3000",
+"repr": "'\\u3000'"
+},
+{
+"value": "-\u0085\u00c6R\u0013\u0098Z",
+"repr": "'-\\x85\u00c6R\\x13\\x98Z'"
+},
+{
+"value": "\u0015\u00e9'",
+"repr": "\"\\x15\u00e9'\""
+},
+{
+"value": "N\u00f1",
+"repr": "'N\u00f1'"
+},
+{
+"value": "\u00fa\u00d7",
+"repr": "'\u00fa\u00d7'"
+},
+{
+"value": "\u0000\u00ac\u00fa\u000e",
+"repr": "'\\x00\u00ac\u00fa\\x0e'"
+},
+{
+"value": "e\u0017/m\u0089u\u00de",
+"repr": "'e\\x17/m\\x89u\u00de'"
+},
+{
+"value": "\u000f\u00c6\u0084\u00f3~6\u00b2",
+"repr": "'\\x0f\u00c6\\x84\u00f3~6\u00b2'"
+},
+{
+"value": "dtt\u00fb\u001a\u0016\u00a3m\u00c2",
+"repr": "'dtt\u00fb\\x1a\\x16\u00a3m\u00c2'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": ":V\u00bb\u00a6\u0000\u0011\u001e\u0006\u00b0",
+"repr": "':V\u00bb\u00a6\\x00\\x11\\x1e\\x06\u00b0'"
+},
+{
+"value": "\u00b2\u001e\u00ec\u00f2\u200b;\u0084\u00a2\ufffe\u0010",
+"repr": "'\u00b2\\x1e\u00ec\u00f2\\u200b;\\x84\u00a2\\ufffe\\x10'"
+},
+{
+"value": "%",
+"repr": "'%'"
+},
+{
+"value": "\u00ea \u00a5\b\u00adu\u00ee",
+"repr": "'\u00ea \u00a5\\x08\\xadu\u00ee'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "U\u001ei",
+"repr": "'U\\x1ei'"
+},
+{
+"value": "\\",
+"repr": "'\\\\'"
+},
+{
+"value": "\u061c\u00d4G6\"\u00e0\u0004\u00ea",
+"repr": "'\\u061c\u00d4G6\"\u00e0\\x04\u00ea'"
+},
+{
+"value": "\u00f9\u0095\r",
+"repr": "'\u00f9\\x95\\r'"
+},
+{
+"value": "==\u0018\u3000\b\u00b1X",
+"repr": "'==\\x18\\u3000\\x08\u00b1X'"
+},
+{
+"value": "m\u00e6I\u0011HR\u00ad\u0005\u00bd\u00d1",
+"repr": "'m\u00e6I\\x11HR\\xad\\x05\u00bd\u00d1'"
+},
+{
+"value": "\u00e5\u061c\u200bw\u00b1Ao\u0087\u00c4",
+"repr": "'\u00e5\\u061c\\u200bw\u00b1Ao\\x87\u00c4'"
+},
+{
+"value": "\"\u00e3\u0016\u0011\u00ab\u00a4\u0002\u008cK;",
+"repr": "'\"\u00e3\\x16\\x11\u00ab\u00a4\\x02\\x8cK;'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "Y\u00fbH\u00b5|v\u00ff\u00c2\u00d2\u008e",
+"repr": "'Y\u00fbH\u00b5|v\u00ff\u00c2\u00d2\\x8e'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u00ad\u00b2\u00dc",
+"repr": "'\\xad\u00b2\u00dc'"
+},
+{
+"value": ">L\u00f6\u001e\ufffe\u00e8|6\u00e9{",
+"repr": "'>L\u00f6\\x1e\\ufffe\u00e8|6\u00e9{'"
+},
+{
+"value": "\u000e",
+"repr": "'\\x0e'"
+},
+{
+"value": "C\u00ac\u00b1\u008et\u0013\u00b0\u0017};",
+"repr": "'C\u00ac\u00b1\\x8et\\x13\u00b0\\x17};'"
+},
+{
+"value": "\u0087R\u00f0\u00a3\u0081",
+"repr": "'\\x87R\u00f0\u00a3\\x81'"
+},
+{
+"value": "\u0004\u00ec}s8\u0014\u0011",
+"repr": "'\\x04\u00ec}s8\\x14\\x11'"
+},
+{
+"value": "\u001f",
+"repr": "'\\x1f'"
+},
+{
+"value": "\u1680",
+"repr": "'\\u1680'"
+},
+{
+"value": "Klk\u0378b",
+"repr": "'Klk\\u0378b'"
+},
+{
+"value": "\u200b'R\u0089\u000fb=",
+"repr": "\"\\u200b'R\\x89\\x0fb=\""
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "e\u00bb\u0003d\u00ac\u009a\u0089",
+"repr": "'e\u00bb\\x03d\u00ac\\x9a\\x89'"
+},
+{
+"value": "\u00d3\u00c8\u00dax\u00b8$J,\u00bd",
+"repr": "'\u00d3\u00c8\u00dax\u00b8$J,\u00bd'"
+},
+{
+"value": "W\u00bdh",
+"repr": "'W\u00bdh'"
+},
+{
+"value": "\u0002\u00e5",
+"repr": "'\\x02\u00e5'"
+},
+{
+"value": "\u00eb'\u009a%\u00c0\u0094",
+"repr": "\"\u00eb'\\x9a%\u00c0\\x94\""
+},
+{
+"value": "(\ue000\u0002\u0011\u00ba",
+"repr": "'(\\ue000\\x02\\x11\u00ba'"
+},
+{
+"value": "f\u001dA\u0083e\u00d2#\u00c3\u3000\u2028",
+"repr": "'f\\x1dA\\x83e\u00d2#\u00c3\\u3000\\u2028'"
+},
+{
+"value": "\u00e5\u00d8\u00a6\u00bc}\u00be\u00ade",
+"repr": "'\u00e5\u00d8\u00a6\u00bc}\u00be\\xade'"
+},
+{
+"value": "\u00190\u00ee\u00a7 B/\u0087t",
+"repr": "'\\x190\u00ee\u00a7 B/\\x87t'"
+},
+{
+"value": "\u00d3\u00d4\u00f1o\u0097\u0098\u0088\u00b6\"",
+"repr": "'\u00d3\u00d4\u00f1o\\x97\\x98\\x88\u00b6\"'"
+},
+{
+"value": "\f\u00b5\u0013\u000b\u0080\u00b0\u008c\u00c8\u00ed",
+"repr": "'\\x0c\u00b5\\x13\\x0b\\x80\u00b0\\x8c\u00c8\u00ed'"
+},
+{
+"value": "%\u001f\tx-",
+"repr": "'%\\x1f\\tx-'"
+},
+{
+"value": "\u00e2\u0010",
+"repr": "'\u00e2\\x10'"
+},
+{
+"value": ",*D&Q\u00a4\u00a7R\u00f7\u00bf",
+"repr": "',*D&Q\u00a4\u00a7R\u00f7\u00bf'"
+},
+{
+"value": "\u007fi\u001b\u00d3\u00b4~",
+"repr": "'\\x7fi\\x1b\u00d3\u00b4~'"
+},
+{
+"value": "U\u00de.\t\u0093\u0017\u00e8\u00e5|",
+"repr": "'U\u00de.\\t\\x93\\x17\u00e8\u00e5|'"
+},
+{
+"value": "\u0090>,\u200b\u00c3/?",
+"repr": "'\\x90>,\\u200b\u00c3/?'"
+},
+{
+"value": "\u00d0p%^\u00d2\u00ff\u00ef\u00ab^\u00c4",
+"repr": "'\u00d0p%^\u00d2\u00ff\u00ef\u00ab^\u00c4'"
+},
+{
+"value": "?L\u001d\u0096\u0004\u00f1\u0086\u008ew",
+"repr": "'?L\\x1d\\x96\\x04\u00f1\\x86\\x8ew'"
+},
+{
+"value": "q\u00c0C\u008a-\u00d0p\u00bc",
+"repr": "'q\u00c0C\\x8a-\u00d0p\u00bc'"
+},
+{
+"value": "/`\u00b9\u0094@\u0085\u00f2\u00db4\"",
+"repr": "'/`\u00b9\\x94@\\x85\u00f2\u00db4\"'"
+},
+{
+"value": "\u00ae\u0014n\u00df\u0007\u0090",
+"repr": "'\u00ae\\x14n\u00df\\x07\\x90'"
+},
+{
+"value": "Dyl\u0015s-\u00c9p",
+"repr": "'Dyl\\x15s-\u00c9p'"
+},
+{
+"value": "j\u0091\u0015",
+"repr": "'j\\x91\\x15'"
+},
+{
+"value": "n\udbff\udfff\u0000\u0017\u0004\u00ef",
+"repr": "'n\\U0010ffff\\x00\\x17\\x04\u00ef'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u00e2\u00d9\u00b8\u00d9\u0015\u00ef\u0012",
+"repr": "'\u00e2\u00d9\u00b8\u00d9\\x15\u00ef\\x12'"
+},
+{
+"value": "0",
+"repr": "'0'"
+},
+{
+"value": "\u0003\u00eb.;\u00c3`\u0094)\u00e4\u00ed",
+"repr": "'\\x03\u00eb.;\u00c3`\\x94)\u00e4\u00ed'"
+},
+{
+"value": "\u0005j\u00c3\u0099 \u0018\u00a6\u2028\u00ec\u008d",
+"repr": "'\\x05j\u00c3\\x99 \\x18\u00a6\\u2028\u00ec\\x8d'"
+},
+{
+"value": "\tb\u0090>\u00f8\u0084\u00a2",
+"repr": "'\\tb\\x90>\u00f8\\x84\u00a2'"
+},
+{
+"value": "\u00e8\u0003>\u00b2\u008d\u00c7*q\u00c8\u00a5",
+"repr": "'\u00e8\\x03>\u00b2\\x8d\u00c7*q\u00c8\u00a5'"
+},
+{
+"value": "\u00f4\u00f0KU",
+"repr": "'\u00f4\u00f0KU'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "L\u0378\u200b`",
+"repr": "'L\\u0378\\u200b`'"
+},
+{
+"value": "\u001f0&\u00bc\u00a4CQ",
+"repr": "'\\x1f0&\u00bc\u00a4CQ'"
+},
+{
+"value": "\u00b9\u00c1",
+"repr": "'\u00b9\u00c1'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u0098\u00fbI\u009fc\u00c3%",
+"repr": "'\\x98\u00fbI\\x9fc\u00c3%'"
+},
+{
+"value": "\u00f0I\u00ac\u00a0",
+"repr": "'\u00f0I\u00ac\\xa0'"
+},
+{
+"value": "\u00ad@\u00e8^\u00f0@\u00da\u009f\u00f7\u009e",
+"repr": "'\\xad@\u00e8^\u00f0@\u00da\\x9f\u00f7\\x9e'"
+},
+{
+"value": "\u00a7\u0081m",
+"repr": "'\u00a7\\x81m'"
+},
+{
+"value": "\u0088\u0086\u00b0\u0001\u00f3\u001f\u00da^\u00da",
+"repr": "'\\x88\\x86\u00b0\\x01\u00f3\\x1f\u00da^\u00da'"
+},
+{
+"value": "\u00fc!\u00d8\u00af\u00b3\u00ed\u00fc\u0090\u001d",
+"repr": "'\u00fc!\u00d8\u00af\u00b3\u00ed\u00fc\\x90\\x1d'"
+},
+{
+"value": "\u00d9\u00c7m\u00e30\u00f8",
+"repr": "'\u00d9\u00c7m\u00e30\u00f8'"
+},
+{
+"value": "\u0093",
+"repr": "'\\x93'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u008e\u008d5\fO\u00b17\u00d8",
+"repr": "'\\x8e\\x8d5\\x0cO\u00b17\u00d8'"
+},
+{
+"value": "e|\u00c5\u0081\u00c9",
+"repr": "'e|\u00c5\\x81\u00c9'"
+},
+{
+"value": "\u009d\u00f2\u009a\u00a4X/\u00fbF\u00d5:",
+"repr": "'\\x9d\u00f2\\x9a\u00a4X/\u00fbF\u00d5:'"
+},
+{
+"value": "8]\u009d\u0095JJH",
+"repr": "'8]\\x9d\\x95JJH'"
+},
+{
+"value": "\u00ac\u200bC\u00ff",
+"repr": "'\u00ac\\u200bC\u00ff'"
+},
+{
+"value": "h\u00ec\u0098\rP\u00f1\f",
+"repr": "'h\u00ec\\x98\\rP\u00f1\\x0c'"
+},
+{
+"value": "\u00fb\u00ec7",
+"repr": "'\u00fb\u00ec7'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u00e7 I",
+"repr": "'\u00e7 I'"
+},
+{
+"value": "1O1\u00fd\u007f\u0096\u00a8+\u000e",
+"repr": "'1O1\u00fd\\x7f\\x96\u00a8+\\x0e'"
+},
+{
+"value": "\u00bf\u00f7/p\u0081",
+"repr": "'\u00bf\u00f7/p\\x81'"
+},
+{
+"value": "\u00f9\u008a\u0098\u00df|$)",
+"repr": "'\u00f9\\x8a\\x98\u00df|$)'"
+},
+{
+"value": "?\u000e`s\u009cm6\t\u0019",
+"repr": "'?\\x0e`s\\x9cm6\\t\\x19'"
+},
+{
+"value": "U\u00a6\u00ad\u00e7T\u0096\u009d",
+"repr": "'U\u00a6\\xad\u00e7T\\x96\\x9d'"
+},
+{
+"value": "\u0016D\u00f3X\u0006\ue000\u00a3\u2028",
+"repr": "'\\x16D\u00f3X\\x06\\ue000\u00a3\\u2028'"
+},
+{
+"value": "\u00e3G\u00c07",
+"repr": "'\u00e3G\u00c07'"
+},
+{
+"value": "\u0087\u00b5F\u009e\u00ae6",
+"repr": "'\\x87\u00b5F\\x9e\u00ae6'"
+},
+{
+"value": "\u0097\u00ad\u0096\u200b[c\u0083\u00a6",
+"repr": "'\\x97\\xad\\x96\\u200b[c\\x83\u00a6'"
+},
+{
+"value": "U",
+"repr": "'U'"
+},
+{
+"value": "m\u0085\u00eay",
+"repr": "'m\\x85\u00eay'"
+},
+{
+"value": "\u00b6\u00dc",
+"repr": "'\u00b6\u00dc'"
+},
+{
+"value": "u\u00da\u00e8'\u0089v",
+"repr": "\"u\u00da\u00e8'\\x89v\""
+},
+{
+"value": "A\u009an/9",
+"repr": "'A\\x9an/9'"
+},
+{
+"value": "\u00d0-\u009b\u00f53\u00c35/",
+"repr": "'\u00d0-\\x9b\u00f53\u00c35/'"
+},
+{
+"value": "\u009b",
+"repr": "'\\x9b'"
+},
+{
+"value": "\\\u00d6E\u00abC<;",
+"repr": "'\\\\\u00d6E\u00abC<;'"
+},
+{
+"value": "\u00ed\u001a\u00f6\u0019\u00aeTB\u009b\u00d8b",
+"repr": "'\u00ed\\x1a\u00f6\\x19\u00aeTB\\x9b\u00d8b'"
+},
+{
+"value": "",
+"repr": "''"
+},
+{
+"value": "\u00ccy[\u00a1\u0096\u00a4\u00fdT",
+"repr": "'\u00ccy[\u00a1\\x96\u00a4\u00fdT'"
+},
+{
+"value": "\u009ap\u009f\u00c7x\u00b9^w\"",
+"repr": "'\\x9ap\\x9f\u00c7x\u00b9^w\"'"
+},
+{
+"value": "\u00f3\u009e\u00bc\u0088\u061c",
+"repr": "'\u00f3\\x9e\u00bc\\x88\\u061c'"
+},
+{
+"value": ";",
+"repr": "';'"
+},
+{
+"value": "1\u00a0",
+"repr": "'1\\xa0'"
+},
+{
+"value": "k]\u00e5\u00187\u00e9e",
+"repr": "'k]\u00e5\\x187\u00e9e'"
+},
+{
+"value": "\u00c2\u00bf\u00cc\u00ed\u00b9\u0099P",
+"repr": "'\u00c2\u00bf\u00cc\u00ed\u00b9\\x99P'"
+},
+{
+"value": "r\u00ac\u0004\u00ddV",
+"repr": "'r\u00ac\\x04\u00ddV'"
+},
+{
+"value": "q\u0082\u00f8\u009en\u0378\u001a",
+"repr": "'q\\x82\u00f8\\x9en\\u0378\\x1a'"
+},
+{
+"value": "'\u00d5:\u00ea\u00ad",
+"repr": "\"'\u00d5:\u00ea\\xad\""
+},
+{
+"value": "\u00a4J\u001e",
+"repr": "'\u00a4J\\x1e'"
+}
+],
+"bytes": [
+{
+"hex": "8b8ffff6fc6a0095fe132722",
+"repr": "b'\\x8b\\x8f\\xff\\xf6\\xfcj\\x00\\x95\\xfe\\x13\\'\"'"
+},
+{
+"hex": "101847ec",
+"repr": "b'\\x10\\x18G\\xec'"
+},
+{
+"hex": "7298ffd5365a23b256",
+"repr": "b'r\\x98\\xff\\xd56Z#\\xb2V'"
+},
+{
+"hex": "606910b8",
+"repr": "b'`i\\x10\\xb8'"
+},
+{
+"hex": "fcd0dd2fffd0",
+"repr": "b'\\xfc\\xd0\\xdd/\\xff\\xd0'"
+},
+{
+"hex": "85dd1eab2344571b27",
+"repr": "b\"\\x85\\xdd\\x1e\\xab#DW\\x1b'\""
+},
+{
+"hex": "824bde5cb52e6287a7",
+"repr": "b'\\x82K\\xde\\\\\\xb5.b\\x87\\xa7'"
+},
+{
+"hex": "3cc98324aa22",
+"repr": "b'<\\xc9\\x83$\\xaa\"'"
+},
+{
+"hex": "6e22111784a2a4f3",
+"repr": "b'n\"\\x11\\x17\\x84\\xa2\\xa4\\xf3'"
+},
+{
+"hex": "",
+"repr": "b''"
+},
+{
+"hex": "27",
+"repr": "b\"'\""
+},
+{
+"hex": "d048c45a7884c8",
+"repr": "b'\\xd0H\\xc4Zx\\x84\\xc8'"
+},
+{
+"hex": "70239e",
+"repr": "b'p#\\x9e'"
+},
+{
+"hex": "5b10befd1d175b",
+"repr": "b'[\\x10\\xbe\\xfd\\x1d\\x17['"
+},
+{
+"hex": "69b722",
+"repr": "b'i\\xb7\"'"
+},
+{
+"hex": "6e3f27",
+"repr": "b\"n?'\""
+},
+{
+"hex": "baacb2cf84",
+"repr": "b'\\xba\\xac\\xb2\\xcf\\x84'"
+},
+{
+"hex": "b138",
+"repr": "b'\\xb18'"
+},
+{
+"hex": "",
+"repr": "b''"
+},
+{
+"hex": "22b4ac7648068e3d",
+"repr": "b'\"\\xb4\\xacvH\\x06\\x8e='"
+},
+{
+"hex": "31c0bf27",
+"repr": "b\"1\\xc0\\xbf'\""
+},
+{
+"hex": "f756d4b422",
+"repr": "b'\\xf7V\\xd4\\xb4\"'"
+},
+{
+"hex": "bb0d0a1d36df",
+"repr": "b'\\xbb\\r\\n\\x1d6\\xdf'"
+},
+{
+"hex": "8764c248d3a0",
+"repr": "b'\\x87d\\xc2H\\xd3\\xa0'"
+},
+{
+"hex": "7eabf3b0663889fc",
+"repr": "b'~\\xab\\xf3\\xb0f8\\x89\\xfc'"
+},
+{
+"hex": "6c209435d227",
+"repr": "b\"l \\x945\\xd2'\""
+},
+{
+"hex": "eba2929bb143",
+"repr": "b'\\xeb\\xa2\\x92\\x9b\\xb1C'"
+},
+{
+"hex": "63b2",
+"repr": "b'c\\xb2'"
+},
+{
+"hex": "678dfb9e22",
+"repr": "b'g\\x8d\\xfb\\x9e\"'"
+},
+{
+"hex": "46e881f5d4cd2f82a3",
+"repr": "b'F\\xe8\\x81\\xf5\\xd4\\xcd/\\x82\\xa3'"
+},
+{
+"hex": "857327",
+"repr": "b\"\\x85s'\""
+},
+{
+"hex": "5ea2b5ad08dcb28d79",
+"repr": "b'^\\xa2\\xb5\\xad\\x08\\xdc\\xb2\\x8dy'"
+},
+{
+"hex": "b04c",
+"repr": "b'\\xb0L'"
+},
+{
+"hex": "ea3f04d5ec8491ee190a",
+"repr": "b'\\xea?\\x04\\xd5\\xec\\x84\\x91\\xee\\x19\\n'"
+},
+{
+"hex": "",
+"repr": "b''"
+},
+{
+"hex": "cff4352722",
+"repr": "b'\\xcf\\xf45\\'\"'"
+},
+{
+"hex": "6ff8e9",
+"repr": "b'o\\xf8\\xe9'"
+},
+{
+"hex": "f065f5",
+"repr": "b'\\xf0e\\xf5'"
+},
+{
+"hex": "c4de",
+"repr": "b'\\xc4\\xde'"
+},
+{
+"hex": "158066980408b5b5c693",
+"repr": "b'\\x15\\x80f\\x98\\x04\\x08\\xb5\\xb5\\xc6\\x93'"
+},
+{
+"hex": "d441809f27",
+"repr": "b\"\\xd4A\\x80\\x9f'\""
+},
+{
+"hex": "5498c3",
+"repr": "b'T\\x98\\xc3'"
+},
+{
+"hex": "2b3f671414fa1522",
+"repr": "b'+?g\\x14\\x14\\xfa\\x15\"'"
+},
+{
+"hex": "a8f25532141785",
+"repr": "b'\\xa8\\xf2U2\\x14\\x17\\x85'"
+},
+{
+"hex": "4b5e7ee4cc",
+"repr": "b'K^~\\xe4\\xcc'"
+},
+{
+"hex": "214427",
+"repr": "b\"!D'\""
+},
+{
+"hex": "950dcc",
+"repr": "b'\\x95\\r\\xcc'"
+},
+{
+"hex": "2b9427a865b36ff917",
+"repr": "b\"+\\x94'\\xa8e\\xb3o\\xf9\\x17\""
+},
+{
+"hex": "3193101d",
+"repr": "b'1\\x93\\x10\\x1d'"
+},
+{
+"hex": "2138527c22",
+"repr": "b'!8R|\"'"
+},
+{
+"hex": "e76e7d27",
+"repr": "b\"\\xe7n}'\""
+},
+{
+"hex": "78ea52df674594141052",
+"repr": "b'x\\xeaR\\xdfgE\\x94\\x14\\x10R'"
+},
+{
+"hex": "39faa7a9e197851df9",
+"repr": "b'9\\xfa\\xa7\\xa9\\xe1\\x97\\x85\\x1d\\xf9'"
+},
+{
+"hex": "2564cf495c",
+"repr": "b'%d\\xcfI\\\\'"
+},
+{
+"hex": "9b93fef0e36320cb",
+"repr": "b'\\x9b\\x93\\xfe\\xf0\\xe3c \\xcb'"
+},
+{
+"hex": "d4914baf498cc227",
+"repr": "b\"\\xd4\\x91K\\xafI\\x8c\\xc2'\""
+},
+{
+"hex": "8943c9bcb2270d22",
+"repr": "b'\\x89C\\xc9\\xbc\\xb2\\'\\r\"'"
+},
+{
+"hex": "42a10be86b1d64ead2",
+"repr": "b'B\\xa1\\x0b\\xe8k\\x1dd\\xea\\xd2'"
+},
+{
+"hex": "6beb63e9",
+"repr": "b'k\\xebc\\xe9'"
+},
+{
+"hex": "4435e7",
+"repr": "b'D5\\xe7'"
+},
+{
+"hex": "5119ac96433dd69ede27",
+"repr": "b\"Q\\x19\\xac\\x96C=\\xd6\\x9e\\xde'\""
+},
+{
+"hex": "65",
+"repr": "b'e'"
+},
+{
+"hex": "",
+"repr": "b''"
+},
+{
+"hex": "2d0422",
+"repr": "b'-\\x04\"'"
+},
+{
+"hex": "b4197c5487752d",
+"repr": "b'\\xb4\\x19|T\\x87u-'"
+},
+{
+"hex": "825a7d46f7e6468ed87b27",
+"repr": "b\"\\x82Z}F\\xf7\\xe6F\\x8e\\xd8{'\""
+},
+{
+"hex": "7413412c",
+"repr": "b't\\x13A,'"
+},
+{
+"hex": "0795b043",
+"repr": "b'\\x07\\x95\\xb0C'"
+},
+{
+"hex": "cd0cb38b887b96e1dd",
+"repr": "b'\\xcd\\x0c\\xb3\\x8b\\x88{\\x96\\xe1\\xdd'"
+},
+{
+"hex": "99ade77b5f2b04",
+"repr": "b'\\x99\\xad\\xe7{_+\\x04'"
+},
+{
+"hex": "1a512137182722",
+"repr": "b'\\x1aQ!7\\x18\\'\"'"
+},
+{
+"hex": "",
+"repr": "b''"
+},
+{
+"hex": "7702",
+"repr": "b'w\\x02'"
+},
+{
+"hex": "bc5c37a76fc9",
+"repr": "b'\\xbc\\\\7\\xa7o\\xc9'"
+},
+{
+"hex": "",
+"repr": "b''"
+},
+{
+"hex": "10abe8c472eb1ed927",
+"repr": "b\"\\x10\\xab\\xe8\\xc4r\\xeb\\x1e\\xd9'\""
+},
+{
+"hex": "7025d45181",
+"repr": "b'p%\\xd4Q\\x81'"
+},
+{
+"hex": "eb0e544a3d22",
+"repr": "b'\\xeb\\x0eTJ=\"'"
+},
+{
+"hex": "b0dfd83f3472",
+"repr": "b'\\xb0\\xdf\\xd8?4r'"
+},
+{
+"hex": "4407c7",
+"repr": "b'D\\x07\\xc7'"
+},
+{
+"hex": "925627",
+"repr": "b\"\\x92V'\""
+},
+{
+"hex": "895cd422ad90",
+"repr": "b'\\x89\\\\\\xd4\"\\xad\\x90'"
+},
+{
+"hex": "3cac6faa61af",
+"repr": "b'<\\xaco\\xaaa\\xaf'"
+},
+{
+"hex": "f2996f281922",
+"repr": "b'\\xf2\\x99o(\\x19\"'"
+},
+{
+"hex": "bb5b09dae022",
+"repr": "b'\\xbb[\\t\\xda\\xe0\"'"
+},
+{
+"hex": "ce146d2731dda70d9a27",
+"repr": "b\"\\xce\\x14m'1\\xdd\\xa7\\r\\x9a'\""
+},
+{
+"hex": "81",
+"repr": "b'\\x81'"
+},
+{
+"hex": "4c3d2bf1f2ab7723",
+"repr": "b'L=+\\xf1\\xf2\\xabw#'"
+},
+{
+"hex": "88677e",
+"repr": "b'\\x88g~'"
+},
+{
+"hex": "3ef2",
+"repr": "b'>\\xf2'"
+},
+{
+"hex": "0c7527",
+"repr": "b\"\\x0cu'\""
+},
+{
+"hex": "d24490f78822eb083c8022",
+"repr": "b'\\xd2D\\x90\\xf7\\x88\"\\xeb\\x08<\\x80\"'"
+},
+{
+"hex": "54371abd9940bb78",
+"repr": "b'T7\\x1a\\xbd\\x99@\\xbbx'"
+},
+{
+"hex": "b4e993e3aba08053",
+"repr": "b'\\xb4\\xe9\\x93\\xe3\\xab\\xa0\\x80S'"
+},
+{
+"hex": "18f910aa79",
+"repr": "b'\\x18\\xf9\\x10\\xaay'"
+},
+{
+"hex": "6e96671927",
+"repr": "b\"n\\x96g\\x19'\""
+},
+{
+"hex": "af48bad11696773f5ebb",
+"repr": "b'\\xafH\\xba\\xd1\\x16\\x96w?^\\xbb'"
+},
+{
+"hex": "2a300bbc",
+"repr": "b'*0\\x0b\\xbc'"
+},
+{
+"hex": "04c31a13a9a3a038da2d22",
+"repr": "b'\\x04\\xc3\\x1a\\x13\\xa9\\xa3\\xa08\\xda-\"'"
+},
+{
+"hex": "2be841",
+"repr": "b'+\\xe8A'"
+},
+{
+"hex": "744ec739e724b0e4879027",
+"repr": "b\"tN\\xc79\\xe7$\\xb0\\xe4\\x87\\x90'\""
+},
+{
+"hex": "dc06c297aed25c49",
+"repr": "b'\\xdc\\x06\\xc2\\x97\\xae\\xd2\\\\I'"
+},
+{
+"hex": "33ced899f15877",
+"repr": "b'3\\xce\\xd8\\x99\\xf1Xw'"
+},
+{
+"hex": "7fefae9fc08a45",
+"repr": "b'\\x7f\\xef\\xae\\x9f\\xc0\\x8aE'"
+},
+{
+"hex": "25376b4ffc769c67",
+"repr": "b'%7kO\\xfcv\\x9cg'"
+},
+{
+"hex": "168adb37a9f82722",
+"repr": "b'\\x16\\x8a\\xdb7\\xa9\\xf8\\'\"'"
+},
+{
+"hex": "0cb1c3e3c0f5ed00b3",
+"repr": "b'\\x0c\\xb1\\xc3\\xe3\\xc0\\xf5\\xed\\x00\\xb3'"
+},
+{
+"hex": "e6b239",
+"repr": "b'\\xe6\\xb29'"
+},
+{
+"hex": "71553033",
+"repr": "b'qU03'"
+},
+{
+"hex": "65cd7b88c9f9",
+"repr": "b'e\\xcd{\\x88\\xc9\\xf9'"
+},
+{
+"hex": "947bfd3a27",
+"repr": "b\"\\x94{\\xfd:'\""
+},
+{
+"hex": "1f42c17ed9ec",
+"repr": "b'\\x1fB\\xc1~\\xd9\\xec'"
+},
+{
+"hex": "dd8578fad0ddd122",
+"repr": "b'\\xdd\\x85x\\xfa\\xd0\\xdd\\xd1\"'"
+},
+{
+"hex": "55d515cbb97c",
+"repr": "b'U\\xd5\\x15\\xcb\\xb9|'"
+},
+{
+"hex": "7ab711c7",
+"repr": "b'z\\xb7\\x11\\xc7'"
+},
+{
+"hex": "6f613c9f3aea9727",
+"repr": "b\"oa<\\x9f:\\xea\\x97'\""
+},
+{
+"hex": "0e3cd5df6ef7243b1737",
+"repr": "b'\\x0e<\\xd5\\xdfn\\xf7$;\\x177'"
+},
+{
+"hex": "4e54ae",
+"repr": "b'NT\\xae'"
+},
+{
+"hex": "c63af2cf4266",
+"repr": "b'\\xc6:\\xf2\\xcfBf'"
+},
+{
+"hex": "c222",
+"repr": "b'\\xc2\"'"
+},
+{
+"hex": "27",
+"repr": "b\"'\""
+},
+{
+"hex": "2ff0282b1e410a",
+"repr": "b'/\\xf0(+\\x1eA\\n'"
+},
+{
+"hex": "cc567f746791",
+"repr": "b'\\xccV\\x7ftg\\x91'"
+},
+{
+"hex": "32daebc12af4c1",
+"repr": "b'2\\xda\\xeb\\xc1*\\xf4\\xc1'"
+},
+{
+"hex": "",
+"repr": "b''"
+},
+{
+"hex": "58a1b24a007fd424c327",
+"repr": "b\"X\\xa1\\xb2J\\x00\\x7f\\xd4$\\xc3'\""
+},
+{
+"hex": "5e6a1f75ab74316df20c22",
+"repr": "b'^j\\x1fu\\xabt1m\\xf2\\x0c\"'"
+},
+{
+"hex": "77513aa7cbd1",
+"repr": "b'wQ:\\xa7\\xcb\\xd1'"
+},
+{
+"hex": "ba",
+"repr": "b'\\xba'"
+},
+{
+"hex": "bd77375d",
+"repr": "b'\\xbdw7]'"
+},
+{
+"hex": "08e753ed69af90599927",
+"repr": "b\"\\x08\\xe7S\\xedi\\xaf\\x90Y\\x99'\""
+},
+{
+"hex": "8f697c08d15bce85f5",
+"repr": "b'\\x8fi|\\x08\\xd1[\\xce\\x85\\xf5'"
+},
+{
+"hex": "c59dd943e91671",
+"repr": "b'\\xc5\\x9d\\xd9C\\xe9\\x16q'"
+},
+{
+"hex": "71e55c1e402c22",
+"repr": "b'q\\xe5\\\\\\x1e@,\"'"
+},
+{
+"hex": "921552ba0fe978e96d12",
+"repr": "b'\\x92\\x15R\\xba\\x0f\\xe9x\\xe9m\\x12'"
+},
+{
+"hex": "54828e2fc757349b27",
+"repr": "b\"T\\x82\\x8e/\\xc7W4\\x9b'\""
+},
+{
+"hex": "0a",
+"repr": "b'\\n'"
+},
+{
+"hex": "c11a7868f932",
+"repr": "b'\\xc1\\x1axh\\xf92'"
+},
+{
+"hex": "cf0d",
+"repr": "b'\\xcf\\r'"
+},
+{
+"hex": "21a64f767c",
+"repr": "b'!\\xa6Ov|'"
+},
+{
+"hex": "b8332722",
+"repr": "b'\\xb83\\'\"'"
+},
+{
+"hex": "a9ba6d9d1c2d",
+"repr": "b'\\xa9\\xbam\\x9d\\x1c-'"
+},
+{
+"hex": "6aa904e66864120799",
+"repr": "b'j\\xa9\\x04\\xe6hd\\x12\\x07\\x99'"
+},
+{
+"hex": "9a0a56bf8e06ef724ec8",
+"repr": "b'\\x9a\\nV\\xbf\\x8e\\x06\\xefrN\\xc8'"
+},
+{
+"hex": "0c6ce21f",
+"repr": "b'\\x0cl\\xe2\\x1f'"
+},
+{
+"hex": "060727",
+"repr": "b\"\\x06\\x07'\""
+},
+{
+"hex": "cd13928c2af0",
+"repr": "b'\\xcd\\x13\\x92\\x8c*\\xf0'"
+},
+{
+"hex": "29853f22",
+"repr": "b')\\x85?\"'"
+},
+{
+"hex": "bc8beeb08e27",
+"repr": "b\"\\xbc\\x8b\\xee\\xb0\\x8e'\""
+},
+{
+"hex": "b9c42d3a46",
+"repr": "b'\\xb9\\xc4-:F'"
+},
+{
+"hex": "27",
+"repr": "b\"'\""
+},
+{
+"hex": "d3",
+"repr": "b'\\xd3'"
+},
+{
+"hex": "4446cf",
+"repr": "b'DF\\xcf'"
+},
+{
+"hex": "eb85a1f23b",
+"repr": "b'\\xeb\\x85\\xa1\\xf2;'"
+},
+{
+"hex": "505aa622",
+"repr": "b'PZ\\xa6\"'"
+},
+{
+"hex": "27",
+"repr": "b\"'\""
+},
+{
+"hex": "",
+"repr": "b''"
+},
+{
+"hex": "7a9534",
+"repr": "b'z\\x954'"
+},
+{
+"hex": "c2361c06",
+"repr": "b'\\xc26\\x1c\\x06'"
+},
+{
+"hex": "e0745c2be91eddd35c",
+"repr": "b'\\xe0t\\\\+\\xe9\\x1e\\xdd\\xd3\\\\'"
+},
+{
+"hex": "501e8f542deae20d66e027",
+"repr": "b\"P\\x1e\\x8fT-\\xea\\xe2\\rf\\xe0'\""
+},
+{
+"hex": "a1594f26c9f2a709878e22",
+"repr": "b'\\xa1YO&\\xc9\\xf2\\xa7\\t\\x87\\x8e\"'"
+},
+{
+"hex": "71d993b1f677c9",
+"repr": "b'q\\xd9\\x93\\xb1\\xf6w\\xc9'"
+},
+{
+"hex": "",
+"repr": "b''"
+},
+{
+"hex": "aa24a795",
+"repr": "b'\\xaa$\\xa7\\x95'"
+},
+{
+"hex": "27",
+"repr": "b\"'\""
+},
+{
+"hex": "d3bf0480e1",
+"repr": "b'\\xd3\\xbf\\x04\\x80\\xe1'"
+},
+{
+"hex": "3888a59bd615c71f",
+"repr": "b'8\\x88\\xa5\\x9b\\xd6\\x15\\xc7\\x1f'"
+},
+{
+"hex": "957af61b7cda4623f2c822",
+"repr": "b'\\x95z\\xf6\\x1b|\\xdaF#\\xf2\\xc8\"'"
+},
+{
+"hex": "92e96993b86ab4efb0",
+"repr": "b'\\x92\\xe9i\\x93\\xb8j\\xb4\\xef\\xb0'"
+},
+{
+"hex": "979607c8dcb0f127",
+"repr": "b\"\\x97\\x96\\x07\\xc8\\xdc\\xb0\\xf1'\""
+},
+{
+"hex": "9fdf22c2a35468779c6e",
+"repr": "b'\\x9f\\xdf\"\\xc2\\xa3Thw\\x9cn'"
+},
+{
+"hex": "314945b5",
+"repr": "b'1IE\\xb5'"
+},
+{
+"hex": "a69a32",
+"repr": "b'\\xa6\\x9a2'"
+},
+{
+"hex": "fbfa0b80e663",
+"repr": "b'\\xfb\\xfa\\x0b\\x80\\xe6c'"
+},
+{
+"hex": "7331c33a2f08aebc782722",
+"repr": "b's1\\xc3:/\\x08\\xae\\xbcx\\'\"'"
+},
+{
+"hex": "",
+"repr": "b''"
+},
+{
+"hex": "054b15",
+"repr": "b'\\x05K\\x15'"
+},
+{
+"hex": "20bff7a38786",
+"repr": "b' \\xbf\\xf7\\xa3\\x87\\x86'"
+},
+{
+"hex": "805f3da83125",
+"repr": "b'\\x80_=\\xa81%'"
+},
+{
+"hex": "bb16779cf7fd4dae27",
+"repr": "b\"\\xbb\\x16w\\x9c\\xf7\\xfdM\\xae'\""
+},
+{
+"hex": "d95f774b3cd36c",
+"repr": "b'\\xd9_wK<\\xd3l'"
+},
+{
+"hex": "c97822",
+"repr": "b'\\xc9x\"'"
+},
+{
+"hex": "c9eee6a3a6",
+"repr": "b'\\xc9\\xee\\xe6\\xa3\\xa6'"
+},
+{
+"hex": "67d548",
+"repr": "b'g\\xd5H'"
+},
+{
+"hex": "426ac227",
+"repr": "b\"Bj\\xc2'\""
+},
+{
+"hex": "ffe82f436b",
+"repr": "b'\\xff\\xe8/Ck'"
+},
+{
+"hex": "",
+"repr": "b''"
+},
+{
+"hex": "fadac6bbe8329aa89601",
+"repr": "b'\\xfa\\xda\\xc6\\xbb\\xe82\\x9a\\xa8\\x96\\x01'"
+},
+{
+"hex": "9525488c28d30325246122",
+"repr": "b'\\x95%H\\x8c(\\xd3\\x03%$a\"'"
+},
+{
+"hex": "1bdc27",
+"repr": "b\"\\x1b\\xdc'\""
+},
+{
+"hex": "af7f107148",
+"repr": "b'\\xaf\\x7f\\x10qH'"
+},
+{
+"hex": "53d02f3914",
+"repr": "b'S\\xd0/9\\x14'"
+},
+{
+"hex": "64a0d6941f3c5473",
+"repr": "b'd\\xa0\\xd6\\x94\\x1f<Ts'"
+},
+{
+"hex": "83c1037fb4",
+"repr": "b'\\x83\\xc1\\x03\\x7f\\xb4'"
+},
+{
+"hex": "8e3fb43b21e49f27",
+"repr": "b\"\\x8e?\\xb4;!\\xe4\\x9f'\""
+},
+{
+"hex": "5f02d222",
+"repr": "b'_\\x02\\xd2\"'"
+},
+{
+"hex": "f1",
+"repr": "b'\\xf1'"
+},
+{
+"hex": "a086",
+"repr": "b'\\xa0\\x86'"
+},
+{
+"hex": "8c",
+"repr": "b'\\x8c'"
+}
+],
+"nested": [
+{
+"value": null,
+"repr": "None"
+},
+{
+"value": true,
+"repr": "True"
+},
+{
+"value": false,
+"repr": "False"
+},
+{
+"value": 0,
+"repr": "0"
+},
+{
+"value": -7,
+"repr": "-7"
+},
+{
+"value": [],
+"repr": "[]"
+},
+{
+"value": {},
+"repr": "{}"
+},
+{
+"value": [
+1,
+"a",
+null
+],
+"repr": "[1, 'a', None]"
+},
+{
+"value": {
+"k": [
+true,
+{
+"x": "it's"
+}
+],
+"n": null
+},
+"repr": "{'k': [True, {'x': \"it's\"}], 'n': None}"
+},
+{
+"value": {
+"contract": [
+{
+"type": "TransferContract",
+"parameter": {
+"value": {
+"amount": 1500000
+}
+}
+}
+]
+},
+"repr": "{'contract': [{'type': 'TransferContract', 'parameter': {'value': {'amount': 1500000}}}]}"
+}
+]
+}

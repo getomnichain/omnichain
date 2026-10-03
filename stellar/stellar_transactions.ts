@@ -1,8 +1,11 @@
 import {
   Account,
-  FeeBumpTransaction,
   Memo,
+  MemoHash,
+  MemoID,
   MemoNone,
+  MemoReturn,
+  MemoText,
   MuxedAccount,
   StrKey,
   Transaction,
@@ -13,6 +16,7 @@ import { Decimal } from 'decimal.js';
 
 import type { Chain } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { pyBytesRepr, pyStr } from '../python_repr.ts';
 import { NetworkType } from '../network_type.ts';
 import { AbstractBroadcastTransactionResponse, AbstractSignedTransaction } from '../signed_transaction.ts';
 import {
@@ -33,6 +37,49 @@ import type { StellarChain } from './stellar_chain.ts';
 
 export function isInvokeHostFunctionOperation(operation: xdr.Operation): boolean {
   return operation.body().switch().name === 'invokeHostFunction';
+}
+
+function pyMemoStr(memo: Memo): string {
+  const valueBytes = (): Uint8Array => (typeof memo.value === 'string' ? Buffer.from(memo.value, 'utf8') : (memo.value as Buffer));
+  switch (memo.type) {
+    case MemoText:
+      return `<TextMemo [memo=${pyBytesRepr(valueBytes())}]>`;
+    case MemoID:
+      return `<IdMemo [memo=${String(memo.value)}]>`;
+    case MemoHash:
+      return `<HashMemo [memo=${pyBytesRepr(valueBytes())}]>`;
+    case MemoReturn:
+      return `<ReturnHashMemo [memo=${pyBytesRepr(valueBytes())}]>`;
+    default:
+      return '<NoneMemo>';
+  }
+}
+
+const STELLAR_AMOUNT_UPPER_LIMIT = '922337203685.4775807';
+const STELLAR_AMOUNT_MAX_DECIMALS = 7;
+
+export function stellarOperationAmount(value: Decimal, argumentName: string, opts: { allowZero?: boolean } = {}): string {
+  const amount = new Decimal(value.toString());
+  const text = amount.toFixed();
+  if (amount.decimalPlaces() > STELLAR_AMOUNT_MAX_DECIMALS) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `Value of argument "${argumentName}" must have at most ${STELLAR_AMOUNT_MAX_DECIMALS} digits after the decimal: ${text}`,
+    );
+  }
+  if (amount.lt(0) || amount.gt(STELLAR_AMOUNT_UPPER_LIMIT)) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `Value of argument "${argumentName}" must represent a positive number and the max valid value is ${STELLAR_AMOUNT_UPPER_LIMIT}: ${text}`,
+    );
+  }
+  if (amount.isZero() && opts.allowZero !== true) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `Value of argument "${argumentName}" must be greater than zero: the Stellar network rejects a zero ${argumentName}`,
+    );
+  }
+  return text;
 }
 
 export function toClassicStellarAccountId(address: string): string {
@@ -84,7 +131,7 @@ export class StellarChangeTrustPrerequisiteResponse extends AbstractHandledPrere
   }
 
   toString(): string {
-    return `StellarChangeTrustPrerequisiteResponse[skipped=${this.skipped}, tx_hash=${this.txHash}]`;
+    return `StellarChangeTrustPrerequisiteResponse[skipped=${pyStr(this.skipped)}, tx_hash=${pyStr(this.txHash)}]`;
   }
 }
 
@@ -139,7 +186,7 @@ export class StellarUnsignedTransaction extends UnsignedTransaction {
       if (this.memo !== null && this.memo.type !== MemoNone) {
         throw new ChainError(
           ChainErrorKinds.InvalidArgument,
-          `Soroban Transactions (Operation InvokeHostFunction) does not support memo, received ${this.memo.type}:${String(this.memo.value)}`,
+          `Soroban Transactions (Operation InvokeHostFunction) does not support memo, received ${pyMemoStr(this.memo)}`,
           { chainId: this.chainId },
         );
       }
@@ -212,7 +259,7 @@ export class StellarUnsignedTransaction extends UnsignedTransaction {
   }
 
   toString(): string {
-    return `StellarUnsignedTransaction[source_account_id:${this.sourceAccountId}, operations:${this.operations.length}, base_fee:${this.baseFee}, memo:${this.memo?.type ?? null}]`;
+    return `StellarUnsignedTransaction[source_account_id:${this.sourceAccountId}, operations:${this.operations.length}, base_fee:${pyStr(this.baseFee)}, memo:${this.memo === null ? 'None' : pyMemoStr(this.memo)}]`;
   }
 }
 
@@ -249,7 +296,7 @@ export class StellarSignedTransaction extends AbstractSignedTransaction {
   }
 
   get txHash(): string {
-    return TransactionBuilder.fromXDR(this.signedXdr, this.networkPassphrase).hash().toString('hex');
+    return parseSignedStellarEnvelope(this.signedXdr, this.networkPassphrase).hash().toString('hex');
   }
 
   toJson(): JsonDict {
@@ -300,7 +347,7 @@ export class StellarBroadcastTransactionResponse extends AbstractBroadcastTransa
   }
 
   toString(): string {
-    return `StellarBroadcastTransactionResponse[tx_hash:${this.txHash}, broadcast_error:${this.broadcastError?.message ?? null}]`;
+    return `StellarBroadcastTransactionResponse[tx_hash:${this.txHash}, broadcast_error:${pyStr(this.broadcastError)}]`;
   }
 }
 
@@ -393,6 +440,11 @@ export interface StellarTrustLine {
   limit: Decimal;
 }
 
-export function parseSignedStellarEnvelope(signedXdr: string, networkPassphrase: string): Transaction | FeeBumpTransaction {
-  return TransactionBuilder.fromXDR(signedXdr, networkPassphrase);
+export function parseSignedStellarEnvelope(signedXdr: string, networkPassphrase: string): Transaction {
+  const envelope = xdr.TransactionEnvelope.fromXDR(signedXdr, 'base64');
+  const envelopeType = envelope.switch();
+  if (envelopeType !== xdr.EnvelopeType.envelopeTypeTxV0() && envelopeType !== xdr.EnvelopeType.envelopeTypeTx()) {
+    throw new ChainError(ChainErrorKinds.InvalidArgument, `Unexpected EnvelopeType: ${envelopeType.value}.`);
+  }
+  return new Transaction(envelope, networkPassphrase);
 }

@@ -3,6 +3,7 @@ import { Decimal } from 'decimal.js';
 
 import { AbstractAssetBalance } from '../asset_balance.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { pyStr } from '../python_repr.ts';
 import { Token } from '../token.ts';
 
 export interface StellarAssetInit {
@@ -14,7 +15,10 @@ export interface StellarAssetInit {
   decimals?: number | null;
 }
 
+const STELLAR_ASSET_CODE_REGEX = /^[a-zA-Z0-9]{1,12}$/;
+
 export class StellarAsset extends Token {
+  protected static override readonly allowsEmptySymbol = true;
   static readonly NATIVE_CODE = 'XLM';
   static readonly DECIMALS = 7;
   static readonly TRUST_LINE_MAX_LIMIT = '922337203685.4775807';
@@ -48,11 +52,14 @@ export class StellarAsset extends Token {
       if (decimals !== null && decimals !== StellarAsset.DECIMALS) {
         throw invalid(init.chainId, `Invalid stellar asset decimals for SAC asset: ${decimals}`);
       }
+      if (!STELLAR_ASSET_CODE_REGEX.test(code)) {
+        throw invalid(init.chainId, 'Asset code is invalid (maximum alphanumeric, 12 characters at max).');
+      }
       const sacContractId = new StellarSdkAsset(code, issuer).contractId(init.networkPassphrase);
       if (contractId !== null && contractId !== sacContractId) {
         throw invalid(
           init.chainId,
-          `Invalid contract id for SAC asset code ${code} issued ${issuer}, contract id ${contractId}, Expected ${sacContractId}`,
+          `Invalid contract id for SAC asset code ${code} issued ${issuer}, contract id ${contractId}, Expected ${contractId}`,
         );
       }
       decimals = StellarAsset.DECIMALS;
@@ -111,7 +118,7 @@ export class StellarAsset extends Token {
   }
 
   toString(): string {
-    return `StellarAsset[chainId:${this.chainId}, code:${this.code}, issuer:${this.issuer}, contract_id: ${this.contractId}, decimals:${this.decimals}]`;
+    return `StellarAsset[chainId:${this.chainId}, code:${this.code}, issuer:${pyStr(this.issuer)}, contract_id: ${this.contractId}, decimals:${this.decimals}]`;
   }
 }
 

@@ -7,6 +7,7 @@ import { mnemonicToSeedSep5 } from '../bip39.ts';
 import type { Chain } from '../chain.base.ts';
 import { ChainType, WalletFamily } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { pyTypeRepr } from '../python_repr.ts';
 import { AbstractTransactionPrerequisite } from '../transaction_prerequisite.ts';
 import { UnsignedTransaction } from '../unsigned_transaction.ts';
 import { AbstractBip32StyleSingleAccountWallet, AbstractSignedMessage } from '../wallet.base.ts';
@@ -17,6 +18,7 @@ import {
   StellarChangeTrustPrerequisiteResponse,
   StellarSignedTransaction,
   StellarUnsignedTransaction,
+  stellarOperationAmount,
 } from './stellar_transactions.ts';
 
 const STELLAR_DERIVATION_PATH_REGEX = /^m\/44'\/148'\/(\d+)'$/;
@@ -46,8 +48,8 @@ export function deriveSep5Ed25519Seed(bip39Seed: Uint8Array, index: number): Buf
 }
 
 export class StellarWallet extends AbstractBip32StyleSingleAccountWallet {
-  readonly secretSeed: string;
-  private readonly keypair: Keypair;
+  readonly #secretSeed: string;
+  readonly #keypair: Keypair;
   private readonly _address: string;
 
   constructor(secretSeed: string) {
@@ -55,9 +57,13 @@ export class StellarWallet extends AbstractBip32StyleSingleAccountWallet {
     if (!StrKey.isValidEd25519SecretSeed(secretSeed)) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, 'Invalid Stellar secret seed');
     }
-    this.secretSeed = secretSeed;
-    this.keypair = Keypair.fromSecret(secretSeed);
-    this._address = this.keypair.publicKey();
+    this.#secretSeed = secretSeed;
+    this.#keypair = Keypair.fromSecret(secretSeed);
+    this._address = this.#keypair.publicKey();
+  }
+
+  get secretSeed(): string {
+    return this.#secretSeed;
   }
 
   static chainType(): ChainType {
@@ -81,7 +87,7 @@ export class StellarWallet extends AbstractBip32StyleSingleAccountWallet {
   }
 
   get publicKey(): string {
-    return this.keypair.publicKey();
+    return this.#keypair.publicKey();
   }
 
   static fromSecret(secretSeed: string): StellarWallet {
@@ -141,7 +147,7 @@ export class StellarWallet extends AbstractBip32StyleSingleAccountWallet {
     }
     const changeTrustOp = Operation.changeTrust({
       asset: new StellarSdkAsset(code, issuer),
-      limit: new Decimal(limit.toString()).toFixed(),
+      limit: stellarOperationAmount(limit, 'limit', { allowZero: true }),
     });
     const unsignedTx = new StellarUnsignedTransaction({
       chainId: chain.chainId,
@@ -192,7 +198,7 @@ export class StellarWallet extends AbstractBip32StyleSingleAccountWallet {
         if (currentLimit.limit.lt(prerequisite.limit)) {
           throw new ChainError(
             ChainErrorKinds.InvalidArgument,
-            `Prerequisite not handled and does not belong to Stellar wallet ${this.address}, so it cannot be handled. Prerequisite ${String(prerequisite)}`,
+            `Prerequisite not handled and does not belong to Stellar wallet ${this.address}, so it cannot behandled. Prerequisite ${String(prerequisite)} of type ${pyTypeRepr(prerequisite)}`,
             { chainId: stellarChain.chainId },
           );
         }
@@ -215,7 +221,7 @@ export class StellarWallet extends AbstractBip32StyleSingleAccountWallet {
 
     throw new ChainError(
       ChainErrorKinds.FeatureNotSupported,
-      `Unsupported prerequisite ${String(prerequisite)} of type ${prerequisite?.constructor?.name ?? typeof prerequisite}, expected StellarChangeTrustTransactionPrerequisite.`,
+      `Unsupported prerequisite ${String(prerequisite)} of type ${pyTypeRepr(prerequisite)}, expected StellarChangeTrustTransactionPrerequisite.`,
     );
   }
 
@@ -228,7 +234,7 @@ export class StellarWallet extends AbstractBip32StyleSingleAccountWallet {
     }
     const stellarChain = assertStellarChain(chain);
     const envelope = await transaction.buildTransactionEnvelope(stellarChain);
-    envelope.sign(this.keypair);
+    envelope.sign(this.#keypair);
     return new StellarSignedTransaction({
       chainId: stellarChain.chainId,
       signedXdr: envelope.toXDR(),
@@ -245,7 +251,7 @@ export class StellarWallet extends AbstractBip32StyleSingleAccountWallet {
   }
 
   signMessage(message: string): StellarSignedMessage {
-    return new StellarSignedMessage(this.keypair.sign(stellarMessageHash(message)).toString('hex'));
+    return new StellarSignedMessage(this.#keypair.sign(stellarMessageHash(message)).toString('hex'));
   }
 
   verifySignature(message: string, signedMessage: AbstractSignedMessage): boolean {

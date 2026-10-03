@@ -1,7 +1,6 @@
-import { StrKey } from '@stellar/stellar-sdk';
-
 import { Address } from '../address.ts';
 import { NetworkType } from '../network_type.ts';
+import { isValidStellarEd25519PublicKey, isValidStellarMed25519PublicKey } from './stellar_strkey.ts';
 
 export class StellarAddress extends Address {
   constructor(raw: string) {
@@ -9,7 +8,7 @@ export class StellarAddress extends Address {
     if (typeof raw !== 'string') {
       throw new Error('Invalid Stellar address: not a string');
     }
-    if (!StrKey.isValidEd25519PublicKey(raw) && !StrKey.isValidMed25519PublicKey(raw)) {
+    if (!isValidStellarEd25519PublicKey(raw) && !isValidStellarMed25519PublicKey(raw)) {
       throw new Error(`Invalid Stellar wallet address "${raw}"`);
     }
   }

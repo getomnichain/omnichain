@@ -76,11 +76,18 @@ External signers call `transaction.buildTransactionEnvelope(chain)`, sign `envel
 | Python | TS | Why |
 |---|---|---|
 | Any Horizon error during status (429, 5xx) is reported as `NotFound` | Only a 404 is `NotFound`; other failures throw `ChainError(RpcError)` | A rate limit must not look like a dropped transaction |
-| Non-SAC `getAssetBalance` divides with a float | Exact decimal conversion | Avoids precision loss on 18-decimal tokens |
+| Non-SAC `getAssetBalance` divides with a float; other conversions use the 28-digit `Decimal` context | Exact decimal conversion everywhere | Avoids precision loss on 18-decimal tokens |
 | Invalid secret seed error message contains the seed | Message omits the seed | Secrets never go into error strings |
+| `secret_seed` / `_keypair` are plain attributes | `#private` fields; `wallet.secretSeed` still returns the seed | `JSON.stringify` / `util.inspect` of a wallet never print the seed |
+| A zero `Payment` amount or `dest_min` (100 % slippage) builds, and the network rejects it at submit | `ChainError(InvalidArgument)` at build time; other amount errors use stellar-sdk's texts | stellar-sdk JS cannot build a zero operation |
+| Soroban RPC response without an `events` object raises `AttributeError` | Falls back to Stellar Expert | Older RPC versions omit `events` |
 | `logger.info/warning` calls | No logging | The TS SDK has no logger |
 
-The TS `Chain` adapters (`getBalance`, `createTransferUnsignedTransaction`, `broadcast`, `verifyMessageSignature`, `getChainTipHeight`) wrap the methods above. `createTransferUnsignedTransaction` rejects `isFullBalance`, because Python ignores the flag and the TS request has no amount when it is set.
+The TS `Chain` adapters (`getBalance`, `createTransferUnsignedTransaction`, `broadcast`, `verifyMessageSignature`, `getChainTipHeight`) wrap the methods above.
+- `createTransferUnsignedTransaction` rejects `isFullBalance`, because Python ignores the flag and the TS request has no amount when it is set.
+- `broadcast` maps a Horizon `400` on submit to `ChainError(BroadcastRejected)` with the result codes. Timeouts and other failures are `RpcError`, because the transaction may still land.
+
+`addressFor` / `@IsAddress` validate `G…` / `M…` addresses without loading `@stellar/stellar-sdk`. `STELLAR_MAINNET_STABLECOINS_PEG` and `getWalletBalance` return an `AssetMap`, which looks assets up by value like a Python `dict`.
 
 ## Known upstream behaviour
 

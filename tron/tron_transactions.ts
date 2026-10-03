@@ -1,5 +1,6 @@
 import type { Chain } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { pyRepr, pyStr } from '../python_repr.ts';
 import { NetworkType } from '../network_type.ts';
 import { AbstractBroadcastTransactionResponse, AbstractSignedTransaction } from '../signed_transaction.ts';
 import {
@@ -59,7 +60,7 @@ export class TronUnsignedTransaction extends UnsignedTransaction {
   }
 
   toString(): string {
-    return `TronUnsignedTransaction[tx_id=${this.txId}, raw_data=${JSON.stringify(this.transaction.rawData)}]`;
+    return `TronUnsignedTransaction[tx_id=${this.txId}, raw_data=${pyRepr(this.transaction.rawData)}]`;
   }
 }
 
@@ -133,7 +134,7 @@ export class TronBroadcastTransactionResponse extends AbstractBroadcastTransacti
   }
 
   toString(): string {
-    return `TronBroadcastTransactionResponse[chain=${String(this.chain)}, tx_hash=${this.txHash}, broadcast_error=${this.broadcastError?.message ?? null}]`;
+    return `TronBroadcastTransactionResponse[chain=${String(this.chain)}, tx_hash=${this.txHash}, broadcast_error=${pyStr(this.broadcastError)}]`;
   }
 }
 
@@ -212,6 +213,6 @@ export class TronHandledApprovePrerequisiteResponse extends AbstractHandledPrere
   }
 
   toString(): string {
-    return `TronHandledApprovePrerequisiteResponse[skipped=${this.skipped}, tx_hash=${this.txHash}]`;
+    return `TronHandledApprovePrerequisiteResponse[skipped=${pyStr(this.skipped)}, tx_hash=${pyStr(this.txHash)}]`;
   }
 }

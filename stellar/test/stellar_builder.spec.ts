@@ -78,7 +78,6 @@ function fakeChain(overrides: Partial<Fakes> = {}): { chain: StellarChain; fakes
     chainAgnosticStellarIdentifier: 'pubnet',
   });
   const horizon = {
-    fetchBaseFee: async () => fakes.baseFee,
     loadAccount: async (id: string) => new Account(id, String(fakes.accounts[id]?.sequence ?? '100')),
     accounts: () => ({ accountId: (id: string) => ({ call: async () => fakes.accounts[id] }) }),
     submitTransaction: async (tx: Transaction) => {
@@ -87,7 +86,9 @@ function fakeChain(overrides: Partial<Fakes> = {}): { chain: StellarChain; fakes
       return { hash: tx.hash().toString('hex') };
     },
     strictSendPaths: () => ({ call: async () => ({ records: fakes.strictSendRecords }) }),
-    ledgers: () => ({ order: () => ({ limit: () => ({ call: async () => ({ records: [{ sequence: 64747332 }] }) }) }) }),
+    ledgers: () => ({
+      order: () => ({ limit: () => ({ call: async () => ({ records: [{ sequence: 64747332, base_fee_in_stroops: fakes.baseFee }] }) }) }),
+    }),
   };
   const soroban = {
     prepareTransaction: async (tx: Transaction) => {
@@ -241,7 +242,9 @@ describe('StellarUnsignedTransaction.buildTransactionEnvelope', () => {
     const twoOps = new StellarUnsignedTransaction({ chainId: chain.chainId, sourceAccountId: SENDER.address, operations: [invoke, invoke] });
     await expect(twoOps.buildTransactionEnvelope(chain)).rejects.toThrow(/exactly 1 operation/);
     const withMemo = new StellarUnsignedTransaction({ chainId: chain.chainId, sourceAccountId: SENDER.address, operations: [invoke], memo: Memo.text('x') });
-    await expect(withMemo.buildTransactionEnvelope(chain)).rejects.toThrow(/does not support memo/);
+    await expect(withMemo.buildTransactionEnvelope(chain)).rejects.toThrow(
+      "Soroban Transactions (Operation InvokeHostFunction) does not support memo, received <TextMemo [memo=b'x']>",
+    );
     const noneMemo = new StellarUnsignedTransaction({ chainId: chain.chainId, sourceAccountId: SENDER.address, operations: [invoke], memo: Memo.none() });
     await expect(noneMemo.buildTransactionEnvelope(chain)).resolves.toBeInstanceOf(Transaction);
     const other = new StellarUnsignedTransaction({ chainId: -3501, sourceAccountId: SENDER.address, operations: [invoke] });
@@ -463,11 +466,17 @@ describe('Signing, broadcasting and trustline handling', () => {
     expect(ok.txHash).toBe(signed.txHash);
     expect(fakes.submitted).toHaveLength(1);
 
-    fakes.submitError = new BadResponseError('Transaction Failed', { status: 400, data: { extras: { result_codes: { transaction: 'tx_bad_seq' } } } });
+    fakes.submitError = new BadResponseError('Transaction submission failed. Server responded: 400 Bad Request', {
+      status: 400,
+      extras: { result_codes: { transaction: 'tx_bad_seq' } },
+    });
     const failed = await chain.broadcastSignedTransaction(signed);
     expect(failed.txHash).toBe(signed.txHash);
     expect(failed.isBroadcastConfirmed).toBe(false);
-    await expect(chain.broadcast(signed.signedXdr)).rejects.toMatchObject({ kind: ChainErrorKinds.BroadcastRejected });
+    await expect(chain.broadcast(signed.signedXdr)).rejects.toMatchObject({
+      kind: ChainErrorKinds.BroadcastRejected,
+      message: expect.stringContaining('{"transaction":"tx_bad_seq"}'),
+    });
     fakes.submitError = new Error('socket hang up');
     await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError });
     fakes.submitError = null;

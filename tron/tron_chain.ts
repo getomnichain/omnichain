@@ -12,6 +12,7 @@ import {
 import { CHAIN_ID_TRON_MAINNET } from '../chain_ids.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds, isChainError } from '../errors.ts';
+import { pyRepr, pyTypeRepr } from '../python_repr.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
 import { AbstractSignedTransaction } from '../signed_transaction.ts';
@@ -198,7 +199,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
   readonly chainAgnosticNamespace: string | null = null;
   readonly defaultRpcUrl: string;
   rpcUrl: string | null;
-  private trongridApiKey: string | null;
+  #trongridApiKey: string | null;
   private _client: TronClient | null = null;
   private _chainParameters: Promise<TronChainParameters> | null = null;
   private readonly _nativeAsset: TronAsset;
@@ -208,7 +209,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     super(init.chainId, init.name, NetworkType.TRON, 3.0, 'TRX', init.explorerUrl);
     this.defaultRpcUrl = init.defaultRpcUrl;
     this.rpcUrl = init.rpcUrl ?? null;
-    this.trongridApiKey = init.trongridApiKey ?? null;
+    this.#trongridApiKey = init.trongridApiKey ?? null;
     this._nativeAsset = new TronAsset(init.chainId, 'TRX', null, TronAsset.NATIVE_DECIMALS);
     registerNonEvmChain(init.chainId, NetworkType.TRON);
   }
@@ -216,13 +217,13 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
   get client(): TronClient {
     if (this._client === null) {
       const env = readEnv();
-      if (this.trongridApiKey === null && env?.TRONGRID_API_KEY !== undefined) {
-        this.trongridApiKey = env.TRONGRID_API_KEY;
+      if (this.#trongridApiKey === null && env?.TRONGRID_API_KEY !== undefined) {
+        this.#trongridApiKey = env.TRONGRID_API_KEY;
       }
       this.rpcUrl = this.rpcUrl || this._loadRpcUrl();
       this._client = new TronClient({
         endpointUri: this.rpcUrl,
-        apiKey: this.trongridApiKey ?? undefined,
+        apiKey: this.#trongridApiKey ?? undefined,
       });
     }
     return this._client;
@@ -833,7 +834,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     if (!(signedMessage instanceof TronSignedMessage)) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        `TronChain expected a TronSignedMessage, got ${signedMessage?.constructor?.name ?? typeof signedMessage}`,
+        `TronChain expected a TronSignedMessage, got ${pyTypeRepr(signedMessage)}`,
       );
     }
     try {
@@ -916,7 +917,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
 
   async verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean> {
     try {
-      const signature = TronSignature.fromHex(req.signature);
+      const signature = TronSignature.fromHex(req.signature.startsWith('0x') ? req.signature.slice(2) : req.signature);
       const recovered = signature.recoverPublicKeyFromMsg(new TextEncoder().encode(req.message));
       return recovered.toBase58CheckAddress() === toBase58CheckAddress(req.signer);
     } catch {
@@ -994,15 +995,4 @@ export function pyTruthy(value: unknown): boolean {
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === 'object') return Object.keys(value as object).length > 0;
   return true;
-}
-
-export function pyRepr(value: unknown): string {
-  if (value === null || value === undefined) return 'None';
-  if (value === true) return 'True';
-  if (value === false) return 'False';
-  if (typeof value === 'string') {
-    if (value.includes("'") && !value.includes('"')) return `"${value}"`;
-    return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
-  }
-  return String(value);
 }

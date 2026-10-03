@@ -1,11 +1,15 @@
 import { Decimal } from 'decimal.js';
 
+import { bytesFromHex } from '../bytes_from_hex.ts';
 import { ChainError, ChainErrorKind, ChainErrorKinds, sanitizeMessage } from '../errors.ts';
+import { pyRepr, pyStr } from '../python_repr.ts';
 import { minorUnitsToHrString } from '../transaction_status.ts';
 import { toBase58CheckAddress } from './tron_keys.ts';
 
 export const TRON_DEFAULT_FEE_LIMIT_SUN = 10_000_000;
 export const TRON_DEFAULT_TIMEOUT_MS = 10_000;
+export const TRONPY_USER_AGENT = 'Tronpy/0.6.2';
+const TRONPY_SINGLE_MESSAGE_ERROR_CODES = new Set(['SIGERROR', 'TAPOS_ERROR', 'TRANSACTION_EXPIRATION_ERROR', 'CONTRACT_VALIDATE_ERROR']);
 
 export type TronJson = Record<string, unknown>;
 
@@ -51,18 +55,18 @@ export class TronClient {
   readonly useApiKey: boolean;
   readonly timeoutMs: number;
   readonly feeLimitSun = TRON_DEFAULT_FEE_LIMIT_SUN;
-  private readonly apiKey: string | undefined;
+  readonly #apiKey: string | undefined;
 
   constructor(init: TronClientInit) {
     this.endpointUri = init.endpointUri;
     this.useApiKey = this.endpointUri.includes('trongrid') && init.apiKey !== undefined;
-    this.apiKey = init.apiKey;
+    this.#apiKey = init.apiKey;
     this.timeoutMs = init.timeoutMs ?? TRON_DEFAULT_TIMEOUT_MS;
   }
 
   async makeRequest(method: string, params: TronJson = {}): Promise<TronJson> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (this.useApiKey && this.apiKey !== undefined) headers['Tron-Pro-Api-Key'] = this.apiKey;
+    const headers: Record<string, string> = { 'User-Agent': TRONPY_USER_AGENT, 'Content-Type': 'application/json' };
+    if (this.useApiKey && this.#apiKey !== undefined) headers['Tron-Pro-Api-Key'] = this.#apiKey;
     const url = new URL(method, this.endpointUri).toString();
     let response: Response;
     try {
@@ -104,15 +108,18 @@ export class TronClient {
   handleApiError(payload: TronJson): void {
     if (payload.result === true) return;
     if ('Error' in payload) {
-      throw new TronApiError(ChainErrorKinds.RpcError, String(payload.Error), null);
+      throw new TronApiError(ChainErrorKinds.RpcError, pyStr(payload.Error), null);
     }
     if ('code' in payload) {
       const code = String(payload.code);
       const message = decodeApiMessage(payload);
       if (code === 'TOO_BIG_TRANSACTION_ERROR') {
-        throw new TronApiError(ChainErrorKinds.TransactionTooLarge, `${code}: ${message}`, code);
+        throw new TronApiError(ChainErrorKinds.TransactionTooLarge, pyStr(message), code);
       }
-      throw new TronApiError(ChainErrorKinds.BroadcastRejected, `${code}: ${message}`, code);
+      if (TRONPY_SINGLE_MESSAGE_ERROR_CODES.has(code)) {
+        throw new TronApiError(ChainErrorKinds.BroadcastRejected, pyStr(message), code);
+      }
+      throw new TronApiError(ChainErrorKinds.BroadcastRejected, `(${pyRepr(message)}, ${pyRepr(payload.code)})`, code);
     }
     if ('result' in payload && payload.result !== null && typeof payload.result === 'object' && !Array.isArray(payload.result)) {
       this.handleApiError(payload.result as TronJson);
@@ -141,19 +148,23 @@ export class TronClient {
   async getLatestSolidBlockId(): Promise<string> {
     try {
       const info = await this.makeRequest('wallet/getnodeinfo');
-      const solidity = String(info.solidityBlock);
+      const solidity = requireStringField(info, 'solidityBlock', 'wallet/getnodeinfo');
       const marker = solidity.indexOf(',ID:');
       return marker === -1 ? solidity : solidity.slice(marker + ',ID:'.length);
     } catch {
       const block = await this.getLatestSolidBlock();
-      return String(block.blockID);
+      return requireStringField(block, 'blockID', 'walletsolidity/getnowblock');
     }
   }
 
   async getLatestBlockNumber(): Promise<number> {
     const info = await this.makeRequest('wallet/getnodeinfo');
-    const block = String(info.block);
-    return Number.parseInt(block.split(',ID:', 1)[0].replace('Num:', ''), 10);
+    const block = requireStringField(info, 'block', 'wallet/getnodeinfo');
+    const number = block.split(',ID:', 1)[0].replace('Num:', '');
+    if (!/^\s*[+-]?\d+\s*$/.test(number)) {
+      throw new ChainError(ChainErrorKinds.RpcError, `Tron wallet/getnodeinfo returned a malformed block field`);
+    }
+    return Number.parseInt(number, 10);
   }
 
   async getTransaction(txId: string): Promise<TronJson> {
@@ -211,8 +222,8 @@ export class TronClient {
     this.handleApiError(ret);
     const result = (ret.result ?? {}) as TronJson;
     if (result !== null && typeof result === 'object' && 'message' in result) {
-      let message = String(result.message);
-      const constantResult = (ret.constant_result as string[] | undefined) ?? [];
+      let message = pyStr(result.message);
+      const constantResult = (ret.constant_result as unknown[] | undefined) ?? [];
       const revertString = decodeRevertString(constantResult[0]);
       if (revertString !== null) message = `${message}: ${revertString}`;
       throw new TronTvmError(message);
@@ -241,25 +252,36 @@ export class TronClient {
   }
 }
 
-function decodeApiMessage(payload: TronJson): string {
+function decodeApiMessage(payload: TronJson): unknown {
   const rawMessage = payload.message;
-  if (typeof rawMessage === 'string' && /^([0-9a-fA-F]{2})*$/.test(rawMessage)) {
-    try {
-      return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.from(rawMessage, 'hex'));
-    } catch {
-      return rawMessage;
-    }
+  try {
+    if (typeof rawMessage !== 'string') throw new TypeError('fromhex() argument must be str');
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytesFromHex(rawMessage));
+  } catch {
+    return rawMessage === undefined ? pyRepr(payload) : rawMessage;
   }
-  return rawMessage === undefined ? JSON.stringify(payload) : String(rawMessage);
 }
 
-function decodeRevertString(resultHex: string | undefined): string | null {
-  if (resultHex === undefined || resultHex.length <= (4 + 32) * 2) return null;
+function decodeRevertString(resultHex: unknown): string | null {
+  if (typeof resultHex !== 'string' || resultHex.length <= (4 + 32) * 2) return null;
   try {
-    const body = Buffer.from(resultHex, 'hex').subarray(4 + 32);
-    const length = Number(BigInt(`0x${body.subarray(0, 32).toString('hex')}`));
-    return body.subarray(32, 32 + length).toString('utf8');
+    const body = bytesFromHex(resultHex).subarray(4 + 32);
+    if (body.length < 32) return null;
+    const length = BigInt(`0x${Buffer.from(body.subarray(0, 32)).toString('hex')}`);
+    const paddedLength = ((length + 31n) / 32n) * 32n;
+    if (BigInt(body.length) < 32n + paddedLength) return null;
+    const data = body.subarray(32, 32 + Number(length));
+    if (body.subarray(32 + Number(length), 32 + Number(paddedLength)).some((byte) => byte !== 0)) return null;
+    return new TextDecoder('utf-8', { fatal: true }).decode(data);
   } catch {
     return null;
   }
+}
+
+function requireStringField(payload: TronJson, field: string, method: string): string {
+  const value = payload[field];
+  if (typeof value !== 'string') {
+    throw new ChainError(ChainErrorKinds.RpcError, `Tron ${method} response has no ${field}`);
+  }
+  return value;
 }

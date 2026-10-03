@@ -1,5 +1,6 @@
 import { AbiCoder, ParamType, keccak256, toUtf8Bytes } from 'ethers';
 
+import { bytesFromHex } from '../bytes_from_hex.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { TronClient, TronJson } from './tron_client.ts';
 import { TronTransactionBuilder, TronTrx } from './tron_transaction_builder.ts';
@@ -9,7 +10,7 @@ export const TRON_ZERO_OWNER_ADDRESS = '4100000000000000000000000000000000000000
 
 export interface TronAbiParameter {
   name?: string;
-  type: string;
+  type?: string;
   components?: TronAbiParameter[];
 }
 
@@ -23,6 +24,7 @@ export interface TronAbiEntry {
 }
 
 const abiCoder = AbiCoder.defaultAbiCoder();
+const TRC_TOKEN_TYPE = /(^|[(,])trcToken(?=$|[[),])/;
 
 export class TronContractMethod {
   readonly abi: TronAbiEntry;
@@ -80,7 +82,10 @@ export class TronContractMethod {
 
   async call(...args: unknown[]): Promise<unknown> {
     const parameter = this.prepareParameter(args);
-    const stateMutability = (this.abi.stateMutability ?? '').toLowerCase();
+    if (typeof this.abi.stateMutability !== 'string') {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, "'NoneType' object has no attribute 'lower'");
+    }
+    const stateMutability = this.abi.stateMutability.toLowerCase();
     if (stateMutability === 'view' || stateMutability === 'pure') {
       const ret = await this.contract.client.triggerConstSmartContractFunction(
         this.ownerAddress,
@@ -107,20 +112,23 @@ export class TronContractMethod {
       }
       return '';
     }
+    if (args.length === 0) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `wrong number of arguments, require ${this.inputs.length}`);
+    }
     if (args.length !== this.inputs.length) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
         `wrong number of arguments, require ${this.inputs.length} got ${args.length}`,
       );
     }
-    const types = this.inputs.map((input) => ParamType.from(formatAbiType(input)));
+    const types = tronpyParamTypes(this.inputs.map(formatAbiType), 'Encoder');
     const values = this.inputs.map((input, i) => toAbiValue(input, args[i]));
     return abiCoder.encode(types, values).slice(2);
   }
 
   parseOutput(raw: string): unknown {
-    const types = this.outputs.map((output) => ParamType.from(formatAbiType(output)));
-    const decoded = abiCoder.decode(types, `0x${raw}`);
+    const types = tronpyParamTypes(this.outputs.map(formatAbiType), 'Decoder');
+    const decoded = abiCoder.decode(types, bytesFromHex(raw));
     const values = this.outputs.map((output, i) => fromAbiValue(output, decoded[i]));
     if (this.outputs.length === 1) return values[0];
     if (this.outputs.length === 0) return null;
@@ -214,13 +222,24 @@ export class TronContract {
 }
 
 function formatAbiType(entry: TronAbiParameter): string {
-  if (entry.type.startsWith('tuple')) {
+  const type = entry.type ?? '';
+  if (type.startsWith('tuple')) {
     if (entry.components === undefined) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, 'ABIEncoderV2 used, ABI should be set by hand');
     }
-    return `(${entry.components.map(formatAbiType).join(',')})${entry.type.slice(5)}`;
+    return `(${entry.components.map(formatAbiType).join(',')})${type.slice(5)}`;
   }
-  return entry.type === 'trcToken' ? 'uint256' : entry.type;
+  return type;
+}
+
+function tronpyParamTypes(types: string[], coder: 'Encoder' | 'Decoder'): ParamType[] {
+  if (types.some((type) => TRC_TOKEN_TYPE.test(type))) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `Cannot create UnsignedInteger${coder} for type 'trcToken': expected type with base 'uint'`,
+    );
+  }
+  return types.map((type) => ParamType.from(type));
 }
 
 function toAbiValue(param: TronAbiParameter, value: unknown): unknown {

@@ -1,7 +1,6 @@
 import { jest } from '@jest/globals';
 import { Decimal } from 'decimal.js';
 
-import { addressFor } from '../../address.factory.ts';
 import { CHAIN_ID_TRON_MAINNET } from '../../chain_ids.ts';
 import { ChainErrorKinds } from '../../errors.ts';
 import { FeePriority } from '../../priority.ts';
@@ -21,6 +20,7 @@ const RECEIVER = 'TSeJkUh4Qv67VNFwY8LaAxERygNdy6NQZK';
 const SPENDER = 'TLrpNTBuCpGMrB9TyVwgEhNVRhtWEQPHh4';
 const BLOCK_ID = '0000000004a3b2c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5';
 const TXID = 'aa'.repeat(32);
+const WRONG_PREFIX_T_ADDRESS = 'TmhM7heCdKGPVk6xNWkeM2SKwE7N78cAjP';
 
 interface Call {
   method: string;
@@ -268,7 +268,7 @@ describe('TronWallet signing and TronChain broadcast', () => {
     reply = { code: 'DUP_TRANSACTION_ERROR', message: Buffer.from('dup transaction').toString('hex') };
     const dup = await chain.broadcastSignedTransaction(signed);
     expect(dup.txHash).toBe(TXID);
-    expect(dup.broadcastError?.message).toBe('DUP_TRANSACTION_ERROR: dup transaction');
+    expect(dup.broadcastError?.message).toBe("('dup transaction', 'DUP_TRANSACTION_ERROR')");
     expect(await chain.broadcast(signed.toJsonStr())).toBe(TXID);
     expect(await chain.broadcast(JSON.stringify(signed.signedTransaction.toJson()))).toBe(TXID);
 
@@ -415,7 +415,7 @@ describe('TronChain reads and TS Chain adapters', () => {
     expect(await chain.verifyMessageSignature({ message: 'Hello World!', signer: SENDER.address, signature: 'zz' })).toBe(false);
   });
 
-  it('address validation: base58 only for validate*, all tronpy forms for format*/addressFor', () => {
+  it('address validation: base58 only for validate*, all tronpy forms for format*', () => {
     const hex = toHexAddress(RECEIVER);
     expect(TronChain.formatWalletAddress(hex)).toBe(RECEIVER);
     expect(TronChain.formatWalletAddress(`0x${hex.slice(2)}`)).toBe(RECEIVER);
@@ -423,8 +423,8 @@ describe('TronChain reads and TS Chain adapters', () => {
     expect(() => TronChain.validateWalletAddress('0x1234567890abcdef1234567890abcdef12345678')).toThrow();
     expect(() => TronChain.validateWalletAddress('not-a-real-tron-address')).toThrow();
     TronChain.validateWalletAddress('TNMk8bLuv8oWgJxsM6RKruAYJirRLRMoBh');
-    expect(addressFor(CHAIN_ID_TRON_MAINNET, hex).canonical()).toBe(RECEIVER);
-    expect(() => addressFor(CHAIN_ID_TRON_MAINNET, 'TNMk8bLuv8oWgJxsM6RKruAYJirRLRMoBX')).toThrow();
+    TronChain.validateWalletAddress('TNMk8bLuv8oWgJxsM6RKruAYJirRLRMoBh \n');
+    TronChain.validateWalletAddress(WRONG_PREFIX_T_ADDRESS);
     expect(() => new TronAsset(CHAIN_ID_TRON_MAINNET, 'USDT', '0x1234567890abcdef1234567890abcdef12345678', 6)).toThrow();
     expect(() => new TronAsset(CHAIN_ID_TRON_MAINNET, 'TRRX', null, 6)).toThrow(/expected "TRX"/);
     expect(() => new TronAsset(CHAIN_ID_TRON_MAINNET, 'TRX', null, 18)).toThrow(/decimals/);

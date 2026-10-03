@@ -12,6 +12,7 @@ function registryKey(chainId: number, symbol: string, identifier: string | undef
 }
 
 export class TronAsset extends Token {
+  protected static override readonly allowsEmptySymbol = true;
   static readonly NATIVE_DECIMALS = 6;
 
   readonly contractAddress: string | null;
@@ -58,7 +59,7 @@ export class TronAsset extends Token {
   }
 
   toString(): string {
-    return `TronAsset[${this.chainId}.${this.symbol}--${this.contractAddress},decimals=${this.decimals}]`;
+    return `TronAsset[${this.chainId}.${this.symbol}--${this.contractAddress ?? 'None'},decimals=${this.decimals}]`;
   }
 }
 

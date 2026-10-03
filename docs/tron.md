@@ -69,8 +69,20 @@ const response = await TronMainnet.broadcastSignedTransaction(signed);
 | Any exception from `gettransactioninfobyid` (429, 5xx) is reported as `NotFound`; a failed `gettransactionbyid` is swallowed | Only "not found" maps to `NotFound`; transport and API errors throw `ChainError` | A rate limit must not look like a dropped transaction |
 | `print()` debugging in `simulate_transaction` / `get_transaction_status` | Removed | Library code must not write to stdout |
 | tronpy falls back to its own shared TronGrid keys | Anonymous access without a configured key | Those keys belong to the tronpy project |
+| On TronGrid `403 "Exceed the user daily usage"` with a single key, tronpy sleeps 0.9 s and retries forever | `ChainError(RpcError)` | A library call must not hang |
+| `private_key_hex` / `_private_key` are plain attributes | `#private` fields; `wallet.privateKeyHex` still returns the key | `JSON.stringify` / `util.inspect` never print the key or the TronGrid API key |
+| `is_base58check_address` raises `ValueError` on a bad checksum | Returns `false`; callers raise their own error | TS predicates do not throw |
 | `logger.warning` for non-NORMAL `FeePriority` | No logging | The TS SDK has no logger |
+
+Hex input (keys, signatures, txIDs, node messages) is parsed exactly like Python's `bytes.fromhex`: ASCII whitespace is skipped, `0x` is not hex, and errors report only a position. The TS `verifyMessageSignature` adapter additionally accepts TronWeb's `0x`-prefixed signatures.
+
+`addressFor` / `@IsAddress` accept only a canonical `T…` address (base58check, prefix `0x41`). `TronChain.formatWalletAddress` keeps tronpy's lenient hex / `0x` forms. `TRON_MAINNET_STABLECOINS_PEG` is an `AssetMap`, which looks assets up by value like a Python `dict`.
 
 ## Known upstream behaviour
 
 - `TronTransactionFees` validates against the *current* `getEnergyFee`. A transaction executed under a different energy price fails that check. Shasta's price has changed since some historical transactions, so their status lookups fail in both SDKs.
+- tronpy 0.6.2 with eth_abi 5 cannot encode or decode the `trcToken` ABI type. The selector keeps `trcToken`, and encoding raises the same `Cannot create UnsignedIntegerEncoder for type 'trcToken'` error in both SDKs.
+
+## Known limitation
+
+- TronGrid JSON integers above 2^53 lose precision in `JSON.parse` before they reach `BigInt`. Python's ints do not. Balances and amounts below 9,007,199,254 TRX (or 2^53 base units of a token) are exact.

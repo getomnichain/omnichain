@@ -34,18 +34,22 @@ export interface TronDerivationPathArgs {
 }
 
 export class TronWallet extends AbstractBip32StyleSingleAccountWallet {
-  readonly privateKeyHex: string;
   readonly publicKey: TronPublicKey;
-  private readonly privateKey: TronPrivateKey;
+  readonly #privateKeyHex: string;
+  readonly #privateKey: TronPrivateKey;
   private readonly _address: string;
 
   constructor(privateKeyStr: string) {
     super();
     const normalized = privateKeyStr.startsWith('0x') ? privateKeyStr.slice(2) : privateKeyStr;
-    this.privateKey = TronPrivateKey.fromHex(normalized);
-    this.privateKeyHex = normalized;
-    this.publicKey = this.privateKey.publicKey;
+    this.#privateKey = TronPrivateKey.fromHex(normalized);
+    this.#privateKeyHex = normalized;
+    this.publicKey = this.#privateKey.publicKey;
     this._address = TronWallet.deriveAddressFromPrivateKey(privateKeyStr);
+  }
+
+  get privateKeyHex(): string {
+    return this.#privateKeyHex;
   }
 
   static chainType(): ChainType {
@@ -160,7 +164,7 @@ export class TronWallet extends AbstractBip32StyleSingleAccountWallet {
   async _broadcastApprove(contract: TronContract, spenderContractAddress: string, amount: bigint, feeLimitSun: number): Promise<string> {
     const builder = (await contract.buildCall('approve', spenderContractAddress, amount)).withOwner(this.address).feeLimit(feeLimitSun);
     const transaction = await builder.build();
-    const signed = transaction.sign(this.privateKey);
+    const signed = transaction.sign(this.#privateKey);
     const result = await signed.broadcast();
     return (result.txid as string | undefined) || signed.txid;
   }
@@ -177,12 +181,12 @@ export class TronWallet extends AbstractBip32StyleSingleAccountWallet {
         { chainId: tronChain.chainId },
       );
     }
-    const signed = transaction.transaction.sign(this.privateKey);
+    const signed = transaction.transaction.sign(this.#privateKey);
     return new TronSignedTransaction({ chainId: transaction.chainId, signedTransaction: signed });
   }
 
   signMessage(message: string): TronSignedMessage {
-    return new TronSignedMessage(this.privateKey.signMsg(new TextEncoder().encode(message)).hex());
+    return new TronSignedMessage(this.#privateKey.signMsg(new TextEncoder().encode(message)).hex());
   }
 
   verifySignature(message: string, signedMessage: AbstractSignedMessage): boolean {

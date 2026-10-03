@@ -1,3 +1,4 @@
+import { AssetMap } from '../asset_map.ts';
 import { FiatCurrency } from '../chain_type.ts';
 import { StellarAsset } from './stellar_asset.ts';
 import { StellarMainnet, StellarTestnet } from './stellar_chains.ts';
@@ -23,7 +24,7 @@ export const STELLAR_TESTNET_USDC = StellarTestnet.createSacToken('USDC', 'GBBD4
 
 export const STELLAR_TESTNET_EURC = StellarTestnet.createSacToken('EURC', 'GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO');
 
-export const STELLAR_MAINNET_STABLECOINS_PEG: ReadonlyMap<StellarAsset, FiatCurrency> = new Map<StellarAsset, FiatCurrency>([
+export const STELLAR_MAINNET_STABLECOINS_PEG: ReadonlyMap<StellarAsset, FiatCurrency> = new AssetMap<StellarAsset, FiatCurrency>([
   [STELLAR_USDC, FiatCurrency.USD],
   [STELLAR_EURC, FiatCurrency.EUR],
 ]);
