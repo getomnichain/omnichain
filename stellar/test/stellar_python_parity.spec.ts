@@ -8,6 +8,7 @@ import {
   Keypair,
   Networks,
   Operation,
+  Transaction,
   TransactionBuilder,
   nativeToScVal,
   xdr,
@@ -130,6 +131,46 @@ describe('Horizon over real HTTP (stellar-sdk http client, not hand-built errors
   beforeEach(() => {
     horizon.requests.length = 0;
   });
+
+  it('Horizon and Soroban use stellar-sdk Python AiohttpClient limits: GET 11 s, POST 33 s, 10 redirects, no environment proxy', async () => {
+    const chain = chainOn(horizon.url);
+    const applied = async (client: StellarChain['asyncHorizonServer']['httpClient'], method: string) => {
+      let config = { method, headers: {} } as Record<string, unknown>;
+      for (const handler of client.interceptors.request.handlers) {
+        if (handler !== null) config = (await handler.fulfilled(config as never)) as Record<string, unknown>;
+      }
+      return config;
+    };
+    expect(await applied(chain.asyncHorizonServer.httpClient, 'get')).toMatchObject({ timeout: 11_000, proxy: false, maxRedirects: 10 });
+    expect(await applied(chain.asyncHorizonServer.httpClient, 'post')).toMatchObject({ timeout: 33_000, proxy: false, maxRedirects: 10 });
+    expect(await applied(chain.asyncSorobanServer.httpClient, 'post')).toMatchObject({ timeout: 33_000, proxy: false, maxRedirects: 10 });
+
+    const saved = { ...process.env };
+    process.env.HTTP_PROXY = 'http://127.0.0.1:9';
+    process.env.http_proxy = 'http://127.0.0.1:9';
+    delete process.env.NO_PROXY;
+    delete process.env.no_proxy;
+    try {
+      horizon.ledgers = { status: 200, body: ledgersPage([{ sequence: 1, base_fee_in_stroops: 250 }]) };
+      await expect(chainOn(horizon.url).getBaseFee()).resolves.toBe(250);
+    } finally {
+      process.env = saved;
+    }
+  });
+
+  it('a stalled Horizon GET gives up after 11 s, as Python does', async () => {
+    const stalled = createServer(() => undefined);
+    await new Promise<void>((resolve) => stalled.listen(0, '127.0.0.1', resolve));
+    const started = Date.now();
+    try {
+      await expect(chainOn(`http://127.0.0.1:${(stalled.address() as AddressInfo).port}`).getBaseFee()).rejects.toBeDefined();
+      expect(Date.now() - started).toBeGreaterThanOrEqual(10_900);
+      expect(Date.now() - started).toBeLessThan(14_000);
+    } finally {
+      stalled.closeAllConnections();
+      await new Promise<void>((resolve) => stalled.close(() => resolve()));
+    }
+  }, 20_000);
 
   it('getBaseFee reads base_fee_in_stroops of the latest ledger, like Python fetch_base_fee', async () => {
     horizon.ledgers = { status: 200, body: ledgersPage([{ sequence: 1, base_fee_in_stroops: 250 }]) };
@@ -257,7 +298,7 @@ describe('wallet secrets and Python hex parsing', () => {
   it('the secret seed is readable through the accessor but never serialized or inspected', () => {
     expect(SENDER.secretSeed.startsWith('S')).toBe(true);
     expect(JSON.stringify(SENDER)).not.toContain(SENDER.secretSeed);
-    expect(inspect(SENDER, { depth: 10, showHidden: true })).not.toContain(SENDER.secretSeed);
+    expect(inspect(SENDER, { depth: 10, showHidden: true, getters: true })).not.toContain(SENDER.secretSeed);
     expect(Object.keys(SENDER)).not.toContain('secretSeed');
   });
 
@@ -390,5 +431,48 @@ describe('round-2 parity: registry, __str__ texts', () => {
 
   it('an invalid account uses MuxedAccount.from_account text', () => {
     expect(() => StellarChain.toClassicAccountId('bad')).toThrow(/^This is not a valid account: bad$/);
+  });
+});
+
+describe('round-3 parity: SAC codes are kept exactly as given, as stellar-sdk Python does', () => {
+  const cases: [string, string, string][] = [
+    ['xlm', 'CDXMHF6IJGAGWW5RBYP63E4Z6WPVLO5NU5P6K4XAOPAHIJBFQEDLTMWU', 'AAAAAXhsbQAAAAAAO5kROA7+mIugqJAOsc/kTzZvfb6Ua+0HckD39iTfFcU='],
+    ['Xlm', 'CCGFJGFJJBZT25G5MU4QR4IGZNJGW6ZLD373OH47ZT7AJDKU72SOZCG5', 'AAAAAVhsbQAAAAAAO5kROA7+mIugqJAOsc/kTzZvfb6Ua+0HckD39iTfFcU='],
+  ];
+
+  it.each(cases)('%s: contract id and asset XDR match Python', (code, contractId, assetXdr) => {
+    const asset = StellarMainnet.createSacToken(code, USDC_ISSUER);
+    expect(asset.code).toBe(code);
+    expect(asset.contractId).toBe(contractId);
+    expect(asset.toSdkAsset().toXDRObject().toXDR('base64')).toBe(assetXdr);
+  });
+
+  it('ensureMinimumTrustLine signs a ChangeTrust for the exact code', async () => {
+    const chain = chainOn('http://127.0.0.1:9');
+    let submitted: Transaction | null = null;
+    Object.defineProperty(chain, 'asyncHorizonServer', {
+      get: () => ({
+        loadAccount: async (id: string) => new Account(id, '100'),
+        accounts: () => ({ accountId: () => ({ call: async () => ({ balances: [] }) }) }),
+        ledgers: () => ({ order: () => ({ limit: () => ({ call: async () => ({ records: [{ base_fee_in_stroops: 100 }] }) }) }) }),
+        submitTransaction: async (tx: Transaction) => {
+          submitted = tx;
+          return { hash: tx.hash().toString('hex') };
+        },
+      }),
+    });
+    await RECEIVER.ensureMinimumTrustLine(chain, 'xlm', USDC_ISSUER, new Decimal(StellarAsset.TRUST_LINE_MAX_LIMIT));
+    const line = (submitted as unknown as Transaction).toEnvelope().v1().tx().operations()[0].body().changeTrustOp().line();
+    expect(Buffer.from(line.alphaNum4().assetCode()).toString('hex')).toBe('786c6d00');
+  });
+
+  it('predicted balance changes read operation assets from the XDR, so the code stays exact', () => {
+    const tx = new TransactionBuilder(new Account(SENDER.address, '1'), { fee: '100', networkPassphrase: Networks.PUBLIC })
+      .addOperation(Operation.payment({ destination: RECEIVER.address, asset: StellarMainnet.createSacToken('xlm', USDC_ISSUER).toSdkAsset(), amount: '1' }))
+      .setTimeout(0)
+      .build();
+    const [entry] = [...(StellarMainnet._balanceChangesFromOperations(tx).get(RECEIVER.address)?.values() ?? [])];
+    expect((entry.token as StellarAsset).code).toBe('xlm');
+    expect((entry.token as StellarAsset).contractId).toBe('CDXMHF6IJGAGWW5RBYP63E4Z6WPVLO5NU5P6K4XAOPAHIJBFQEDLTMWU');
   });
 });

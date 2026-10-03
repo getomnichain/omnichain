@@ -80,7 +80,7 @@ External signers call `transaction.buildTransactionEnvelope(chain)`, sign `envel
 | Any Horizon error during status (429, 5xx) is reported as `NotFound` | Only a 404 is `NotFound`; other failures throw `ChainError(RpcError)` | A rate limit must not look like a dropped transaction |
 | Non-SAC `getAssetBalance` divides with a float; other conversions use the 28-digit `Decimal` context | Exact decimal conversion everywhere | Avoids precision loss on 18-decimal tokens |
 | Invalid secret seed error message contains the seed | Message omits the seed | Secrets never go into error strings |
-| `secret_seed` / `_keypair` are plain attributes | `#private` fields; `wallet.secretSeed` still returns the seed | `JSON.stringify` / `util.inspect` of a wallet never print the seed |
+| `secret_seed` / `_keypair` are plain attributes | `#private` fields; `wallet.secretSeed` still returns the seed | `JSON.stringify` / `util.inspect` (getters included) of a wallet never print the seed |
 | A zero `Payment` amount or `dest_min` (100 % slippage) builds, and the network rejects it at submit | `ChainError(InvalidArgument)` at build time; other amount errors use stellar-sdk's texts | stellar-sdk JS cannot build a zero operation |
 | Soroban RPC response without an `events` object raises `AttributeError` | Falls back to Stellar Expert | Older RPC versions omit `events` |
 | stellar-sdk rejects an amount by its `Decimal` exponent (`Decimal('1.00000000')`, `'1E+8'`) | The value's decimal places are checked | `decimal.js` normalises trailing zeros and exponents |
@@ -89,7 +89,9 @@ External signers call `transaction.buildTransactionEnvelope(chain)`, sign `envel
 The TS `Chain` adapters (`getBalance`, `createTransferUnsignedTransaction`, `broadcast`, `verifyMessageSignature`, `getChainTipHeight`) wrap the methods above.
 - `createTransferUnsignedTransaction` rejects `isFullBalance`, because Python ignores the flag and the TS request has no amount when it is set.
 - `createTransferUnsignedTransaction` can only return a transaction, so it refuses a transfer whose trustline prerequisite is still pending: the receiver has no trustline for the asset, or its limit is below the maximum, which is the check Python's `ensure_minimum_trust_line` makes. Use `createTransferTransaction` and handle the prerequisite with the receiver's wallet.
-- `broadcast` maps a Horizon `400` on submit to `ChainError(BroadcastRejected)` with the result codes, and so does a SEP-29 memo-required refusal, which stellar-sdk raises before sending anything. Timeouts and other failures are `RpcError`, because the transaction may still land.
+- `broadcast` maps a Horizon `400` on submit to `ChainError(BroadcastRejected)` with the result codes, and so does a SEP-29 memo-required refusal, which stellar-sdk raises before sending anything. Timeouts and other failures are `RpcError`, because the transaction may still land. A `200` without `hash` is Python's `KeyError('hash')`: `broadcastSignedTransaction` returns it as `broadcastError` and `broadcast` throws `RpcError`.
+- Horizon and Soroban requests use stellar-sdk Python's `AiohttpClient` limits: 11 s for GET, 33 s for POST, at most 10 redirects, and no proxy from the environment. The Stellar Expert call uses aiohttp's 300 s default.
+- Credit asset codes are kept exactly as given, as in stellar-sdk Python. The JS `Asset` constructor uppercases `xlm`, so assets are built with the exact code, and predicted balance changes read operation assets from the XDR.
 
 `addressFor` / `@IsAddress` validate `G…` / `M…` addresses without loading `@stellar/stellar-sdk`. `STELLAR_MAINNET_STABLECOINS_PEG` and `getWalletBalance` return an `AssetMap`, which looks assets up by value like a Python `dict`.
 

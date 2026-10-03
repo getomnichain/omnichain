@@ -35,7 +35,7 @@ import {
 } from '../chain.base.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
-import { pyDecodeUtf8, pyEncodeUtf8, PyStringContainer, pyContains, pyStringContainer } from '../python_builtins.ts';
+import { pyDecodeUtf8, pyEncodeUtf8, pyItem, PyStringContainer, pyContains, pyStringContainer } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
@@ -50,7 +50,7 @@ import {
   minorUnitsToHrString,
 } from '../transaction_status.ts';
 import { AbstractSignedMessage, SignedTransactionBroadcaster } from '../wallet.base.ts';
-import { StellarAsset } from './stellar_asset.ts';
+import { StellarAsset, stellarSdkAsset, stellarSdkAssetFromXdr } from './stellar_asset.ts';
 import { STELLAR_MIN_BASE_FEE_STROOPS, StellarGasPricing } from './stellar_gas_pricing.ts';
 import { StellarTransactionStatus } from './stellar_transaction_status.ts';
 import {
@@ -220,6 +220,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     if (this._horizonServer === null) {
       this.horizonUrl = this.horizonUrl || this._loadHorizonUrl();
       this._horizonServer = new Horizon.Server(this.horizonUrl, { allowHttp: this.horizonUrl.startsWith('http://') });
+      applyAiohttpClientLimits(this._horizonServer.httpClient);
     }
     return this._horizonServer;
   }
@@ -228,6 +229,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     if (this._sorobanServer === null) {
       this.sorobanRpcUrl = this.sorobanRpcUrl || this._loadSorobanRpcUrl();
       this._sorobanServer = new rpc.Server(this.sorobanRpcUrl, { allowHttp: this.sorobanRpcUrl.startsWith('http://') });
+      applyAiohttpClientLimits(this._sorobanServer.httpClient);
     }
     return this._sorobanServer;
   }
@@ -733,7 +735,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
 
     const bestRecord = records[0];
     const path = bestRecord.path.map((p) =>
-      p.asset_type === 'native' ? this._nativeAsset.toSdkAsset() : new StellarSdkAsset(p.asset_code, p.asset_issuer),
+      p.asset_type === 'native' ? this._nativeAsset.toSdkAsset() : stellarSdkAsset(p.asset_code, p.asset_issuer),
     );
     const destinationAmount = new PythonDecimal(bestRecord.destination_amount);
     const minimumReceiveValue = destinationAmount
@@ -792,25 +794,30 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       AssetBalanceChange.upsert(balanceChanges, account, stellarAsset, AssetBalanceChange.fromHr(deltaHr, stellarAsset.decimals));
     };
 
-    for (const op of tx.operations) {
+    const rawOperations = transactionXdrOperations(tx);
+    for (const [index, op] of tx.operations.entries()) {
       const opSource = op.source ? StellarChain._muxedToClassic(op.source) : txSourceClassic;
+      const body = rawOperations[index].body();
       if (op.type === 'payment') {
+        const asset = stellarSdkAssetFromXdr(body.paymentOp().asset());
         const amountHr = new Decimal(op.amount);
         const destination = StellarChain._muxedToClassic(op.destination);
-        record(opSource, op.asset, amountHr.neg());
-        record(destination, op.asset, amountHr);
+        record(opSource, asset, amountHr.neg());
+        record(destination, asset, amountHr);
       } else if (op.type === 'pathPaymentStrictSend') {
+        const raw = body.pathPaymentStrictSendOp();
         const sendAmountHr = new Decimal(op.sendAmount);
         const destMin = new Decimal(op.destMin);
         const destination = StellarChain._muxedToClassic(op.destination);
-        record(opSource, op.sendAsset, sendAmountHr.neg());
-        record(destination, op.destAsset, destMin);
+        record(opSource, stellarSdkAssetFromXdr(raw.sendAsset()), sendAmountHr.neg());
+        record(destination, stellarSdkAssetFromXdr(raw.destAsset()), destMin);
       } else if (op.type === 'pathPaymentStrictReceive') {
+        const raw = body.pathPaymentStrictReceiveOp();
         const sendMax = new Decimal(op.sendMax);
         const destAmount = new Decimal(op.destAmount);
         const destination = StellarChain._muxedToClassic(op.destination);
-        record(opSource, op.sendAsset, sendMax.neg());
-        record(destination, op.destAsset, destAmount);
+        record(opSource, stellarSdkAssetFromXdr(raw.sendAsset()), sendMax.neg());
+        record(destination, stellarSdkAssetFromXdr(raw.destAsset()), destAmount);
       }
     }
 
@@ -819,7 +826,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
 
   async _getTransactionDataFromStellarExpert(pagingToken: string): Promise<StellarExpertTransactionInfo> {
     const url = `${this.stellarExpertApiUrl}/tx/${pagingToken}`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+    const response = await fetch(url, { signal: AbortSignal.timeout(AIOHTTP_DEFAULT_TOTAL_TIMEOUT_MS) });
     return parseStellarExpertTransactionInfo(await response.json());
   }
 
@@ -1251,7 +1258,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const envelope = parseSignedStellarEnvelope(signedTransaction.signedXdr, this.networkPassphrase);
     try {
       const response = await this.asyncHorizonServer.submitTransaction(envelope);
-      return new StellarBroadcastTransactionResponse({ chain: this, txHash: response.hash });
+      return new StellarBroadcastTransactionResponse({ chain: this, txHash: pyItem(response, 'hash') as string });
     } catch (err) {
       return new StellarBroadcastTransactionResponse({
         chain: this,
@@ -1484,6 +1491,23 @@ interface HorizonProblem {
 }
 
 const HORIZON_TRANSACTION_REJECTED_STATUS = 400;
+
+const STELLAR_SDK_GET_TIMEOUT_MS = 11_000;
+const STELLAR_SDK_POST_TIMEOUT_MS = 33_000;
+const AIOHTTP_DEFAULT_TOTAL_TIMEOUT_MS = 300_000;
+const AIOHTTP_MAX_REDIRECTS = 10;
+
+function applyAiohttpClientLimits(client: Horizon.Server['httpClient']): void {
+  client.interceptors.request.use((config) => {
+    const total = String(config.method).toLowerCase() === 'post' ? STELLAR_SDK_POST_TIMEOUT_MS : STELLAR_SDK_GET_TIMEOUT_MS;
+    return Object.assign(config, { timeout: total, signal: AbortSignal.timeout(total), proxy: false, maxRedirects: AIOHTTP_MAX_REDIRECTS });
+  });
+}
+
+function transactionXdrOperations(tx: Transaction): xdr.Operation[] {
+  const envelope = tx.toEnvelope();
+  return envelope.switch().name === 'envelopeTypeTxV0' ? envelope.v0().tx().operations() : envelope.v1().tx().operations();
+}
 
 function horizonSubmissionRejection(error: Error): HorizonProblem | null {
   const response = (error as { response?: unknown }).response;

@@ -53,6 +53,7 @@ interface Fakes {
   accounts: Record<string, Record<string, unknown>>;
   submitted: Transaction[];
   submitError: Error | null;
+  submitReply: unknown;
   prepared: Transaction[];
   simulation: Record<string, unknown> | null;
   strictSendRecords: Record<string, unknown>[];
@@ -64,6 +65,7 @@ function fakeChain(overrides: Partial<Fakes> = {}): { chain: StellarChain; fakes
     accounts: {},
     submitted: [],
     submitError: null,
+    submitReply: null,
     prepared: [],
     simulation: null,
     strictSendRecords: [],
@@ -85,7 +87,7 @@ function fakeChain(overrides: Partial<Fakes> = {}): { chain: StellarChain; fakes
     submitTransaction: async (tx: Transaction) => {
       if (fakes.submitError) throw fakes.submitError;
       fakes.submitted.push(tx);
-      return { hash: tx.hash().toString('hex') };
+      return fakes.submitReply ?? { hash: tx.hash().toString('hex') };
     },
     strictSendPaths: () => ({ call: async () => ({ records: fakes.strictSendRecords }) }),
     ledgers: () => ({
@@ -489,6 +491,14 @@ describe('Signing, broadcasting and trustline handling', () => {
     await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError });
     fakes.submitError = null;
     expect(await chain.broadcast(Buffer.from(signed.signedXdr, 'base64'))).toBe(signed.txHash);
+
+    for (const reply of [{}, '<html>maintenance</html>']) {
+      fakes.submitReply = reply;
+      const noHash = await chain.broadcastSignedTransaction(signed);
+      expect(noHash.txHash).toBe(signed.txHash);
+      expect(noHash.broadcastError?.message).toBe("'hash'");
+      await expect(chain.broadcast(signed.signedXdr)).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError, meta: { txHash: signed.txHash } });
+    }
   });
 
   it('ensureMinimumTrustLine skips when the limit is high enough and submits ChangeTrust otherwise', async () => {

@@ -8,7 +8,8 @@ import { inspect } from 'node:util';
 import { AbiCoder, keccak256, toUtf8Bytes } from 'ethers';
 
 import { FiatCurrency } from '../../chain_type.ts';
-import { CHAIN_ID_TRON_MAINNET } from '../../chain_ids.ts';
+import { CHAIN_ID_TRON_MAINNET, isEvm } from '../../chain_ids.ts';
+import { NetworkType, tryNetworkTypeOf } from '../../network_type.ts';
 import { ChainErrorKinds } from '../../errors.ts';
 import { TronAsset } from '../tron_asset.ts';
 import { TRON_MAINNET_STABLECOINS_PEG, TRON_TRX } from '../tron_assets.ts';
@@ -134,6 +135,21 @@ describe('TronClient over real HTTP mirrors tronpy AsyncHTTPProvider / AsyncTron
     });
   });
 
+  it('a 200 body that is not JSON never reaches the error text, so an echoed API key cannot leak', async () => {
+    node.rawRoutes['/wallet/getnodeinfo'] = (res) => {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<html>{"tron-pro-api-key":"SECRET-KEY-must-not-leak"}</html>');
+    };
+    const client = new TronClient({ endpointUri: `${node.url}trongrid/`, apiKey: 'SECRET-KEY-must-not-leak' });
+    const failure = await client.getNodeInfo().then(
+      () => null,
+      (err: Error) => err,
+    );
+    expect(failure).toMatchObject({ kind: ChainErrorKinds.RpcError });
+    expect(failure?.message).not.toContain('SECRET-KEY');
+    expect(failure?.message).not.toContain('<html>');
+  });
+
   it('never follows a redirect (httpx default) and never forwards the API key elsewhere', async () => {
     const elsewhere = await startNode();
     try {
@@ -248,10 +264,11 @@ describe('TronGrid API errors carry tronpy\'s exception text', () => {
     expect(() => client.handleApiError(payloads[name])).toThrow(new Error(expected[1]));
   });
 
-  it('keeps the node code for classification: TOO_BIG is TransactionTooLarge, the rest BroadcastRejected', () => {
+  it('keeps the node code; only the broadcast adapter decides whether a code means "not accepted"', () => {
     expect(() => client.handleApiError(payloads.too_big)).toThrow(expect.objectContaining({ kind: ChainErrorKinds.TransactionTooLarge }));
-    expect(() => client.handleApiError(payloads.dup)).toThrow(
-      expect.objectContaining({ kind: ChainErrorKinds.BroadcastRejected, code: 'DUP_TRANSACTION_ERROR' }),
+    expect(() => client.handleApiError(payloads.dup)).toThrow(expect.objectContaining({ kind: ChainErrorKinds.RpcError, code: 'DUP_TRANSACTION_ERROR' }));
+    expect(() => client.handleApiError({ result: { code: 'CONTRACT_VALIDATE_ERROR', message: '' } })).toThrow(
+      expect.objectContaining({ kind: ChainErrorKinds.RpcError, code: 'CONTRACT_VALIDATE_ERROR' }),
     );
   });
 });
@@ -283,10 +300,10 @@ describe('Tron keys and wallet: Python hex parsing and no secret exposure', () =
     void chain.client;
     for (const value of [WALLET, key]) {
       expect(JSON.stringify(value)).not.toContain(secret);
-      expect(inspect(value, { depth: 10, showHidden: true })).not.toContain(secret);
+      expect(inspect(value, { depth: 10, showHidden: true, getters: true })).not.toContain(secret);
     }
     expect(JSON.stringify(chain)).not.toContain('api-key-must-not-leak');
-    expect(inspect(chain, { depth: 10, showHidden: true })).not.toContain('api-key-must-not-leak');
+    expect(inspect(chain, { depth: 10, showHidden: true, getters: true })).not.toContain('api-key-must-not-leak');
     expect(WALLET.privateKeyHex).toBe(secret);
   });
 
@@ -442,5 +459,19 @@ describe('round-2 parity: Tron __str__ texts and int(s, 16)', () => {
     expect(TronAddressUtils.isHex(' 0x_1F ')).toBe(true);
     expect(TronAddressUtils.isHex('1__f')).toBe(false);
     expect(TronAddressUtils.isHex('\u0663')).toBe(true);
+  });
+});
+
+describe('round-3 parity: TronChain construction', () => {
+  it.each([3448148188, 1, 999999])('constructs for chain id %i like Python, keeping Python is_evm classification', (chainId) => {
+    const chain = new TronChain({ name: `Tron ${chainId}`, chainId, defaultRpcUrl: 'https://nile.trongrid.io', explorerUrl: 'https://nile.tronscan.org' });
+    expect(chain.chainId).toBe(chainId);
+    expect(chain.nativeAsset.chainId).toBe(chainId);
+    expect(isEvm(chainId)).toBe(true);
+    expect(tryNetworkTypeOf(chainId)).toBe(NetworkType.EVM);
+  });
+
+  it('the preset Tron ids stay registered as TRON', () => {
+    expect(tryNetworkTypeOf(CHAIN_ID_TRON_MAINNET)).toBe(NetworkType.TRON);
   });
 });

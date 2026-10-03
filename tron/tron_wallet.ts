@@ -53,6 +53,10 @@ export class TronWallet extends AbstractBip32StyleSingleAccountWallet {
     return this.#privateKeyHex;
   }
 
+  [Symbol.for('nodejs.util.inspect.custom')](): string {
+    return `TronWallet { address: '${this._address}' }`;
+  }
+
   static chainType(): ChainType {
     return ChainType.TRON;
   }

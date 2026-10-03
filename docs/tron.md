@@ -48,7 +48,8 @@ const response = await TronMainnet.broadcastSignedTransaction(signed);
 ```
 
 - Signatures are tronpy's: RFC 6979 recoverable `r || s || recid` over the txID, appended to the transaction's signature list (like tronpy, signing mutates the transaction). Messages use the TIP-191 `"\x19TRON Signed Message:\n"` keccak hash.
-- `broadcastSignedTransaction` never throws: node rejections such as `DUP_TRANSACTION_ERROR`, `SERVER_BUSY` or `BLOCK_UNSOLIDIFIED` come back as `broadcastError` with the txID kept. The TS `Chain.broadcast` adapter accepts the signed JSON and throws for every rejection. `DUP_TRANSACTION_ERROR` is thrown as `RpcError`, not `BroadcastRejected`: the node may already hold the transaction, so check its status before re-signing, as Python's warning says.
+- `broadcastSignedTransaction` never throws: node rejections such as `DUP_TRANSACTION_ERROR`, `SERVER_BUSY` or `BLOCK_UNSOLIDIFIED` come back as `broadcastError` with the txID kept. A reply without `txid` is Python's `KeyError('txid')`. The TS `Chain.broadcast` adapter accepts the signed JSON and throws. It throws `BroadcastRejected` only for the codes java-tron returns before accepting the transaction (`SIGERROR`, `TAPOS_ERROR`, `CONTRACT_VALIDATE_ERROR`, `CONTRACT_EXE_ERROR`, `BANDWITH_ERROR`, `TRANSACTION_EXPIRATION_ERROR`) and `TransactionTooLarge` for `TOO_BIG_TRANSACTION_ERROR`. Everything else, including `DUP_TRANSACTION_ERROR`, `SERVER_BUSY`, `OTHER_ERROR`, unknown codes and a reply without `txid`, is `RpcError`: the transaction may be on-chain, so check its status and re-broadcast the same signed bytes rather than re-signing, as Python's warning says.
+- `TronChain` constructs for any chain id (Nile, private networks), as Python does. An id outside the preset Tron ids keeps Python's `is_evm` classification in the network-type registry.
 - External signers sign `transaction.txId` and attach the signature with `transaction.transaction.setSignature([...])`.
 - `TronWallet.handleTransactionPrerequisite` handles `TronApproveTransactionPrerequisite`. It reads the current allowance, skips if it is enough, and otherwise approves (25 TRX fee limit). For USDT-style tokens it first resets the allowance to 0 and waits three blocks; these are tokens in `ZERO_RESET_APPROVAL_TRC20_ADDRESSES` or prerequisites with `requiresZeroResetFirst`.
 
@@ -72,7 +73,7 @@ const response = await TronMainnet.broadcastSignedTransaction(signed);
 | `print()` debugging in `simulate_transaction` / `get_transaction_status` | Removed | Library code must not write to stdout |
 | tronpy falls back to its own shared TronGrid keys | Anonymous access without a configured key | Those keys belong to the tronpy project |
 | On TronGrid `403 "Exceed the user daily usage"`, tronpy raises `ApiError('rate limit! please add more API keys')` and drops the key for the rest of the process | Same text as `ChainError(RpcError)`; the key is kept for later requests | One rate-limit window must not disable the client permanently |
-| `private_key_hex` / `_private_key` are plain attributes | `#private` fields; `wallet.privateKeyHex` still returns the key | `JSON.stringify` / `util.inspect` never print the key or the TronGrid API key |
+| `private_key_hex` / `_private_key` are plain attributes | `#private` fields; `wallet.privateKeyHex` still returns the key | `JSON.stringify` / `util.inspect` (getters included) never print the key or the TronGrid API key, and a non-JSON TronGrid reply never reaches an error text |
 | `is_base58check_address` raises `ValueError` on a bad checksum | Returns `false`; callers raise their own error | TS predicates do not throw |
 | `logger.warning` for non-NORMAL `FeePriority` | No logging | The TS SDK has no logger |
 

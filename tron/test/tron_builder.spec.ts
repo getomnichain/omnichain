@@ -277,6 +277,50 @@ describe('TronWallet signing and TronChain broadcast', () => {
     await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind: ChainErrorKinds.BroadcastRejected });
     await expect(chain.broadcast('not json')).rejects.toMatchObject({ kind: ChainErrorKinds.InvalidArgument });
   });
+
+  it('the broadcast adapter calls a reply "rejected" only when the node did not accept the transaction; everything else may have landed', async () => {
+    let reply: TronJson = { result: true, txid: TXID };
+    const { chain } = stubChain((method) => (method === 'wallet/broadcasttransaction' ? reply : undefined));
+    const { transaction } = await chain.createTransferTransaction({
+      asset: chain.nativeAsset,
+      amountHr: new Decimal('1'),
+      senderAddress: SENDER.address,
+      receiverAddress: RECEIVER,
+    });
+    const signed = await SENDER.signTransaction(transaction, chain);
+    const expectKind = async (next: TronJson, kind: string) => {
+      reply = next;
+      await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind, meta: { txHash: TXID } });
+    };
+
+    for (const code of ['SIGERROR', 'TAPOS_ERROR', 'CONTRACT_VALIDATE_ERROR', 'CONTRACT_EXE_ERROR', 'BANDWITH_ERROR', 'TRANSACTION_EXPIRATION_ERROR']) {
+      await expectKind({ code, message: '' }, ChainErrorKinds.BroadcastRejected);
+    }
+    await expectKind({ code: 'TOO_BIG_TRANSACTION_ERROR', message: '' }, ChainErrorKinds.TransactionTooLarge);
+    for (const code of [
+      'DUP_TRANSACTION_ERROR',
+      'SERVER_BUSY',
+      'NO_CONNECTION',
+      'NOT_ENOUGH_EFFECTIVE_CONNECTION',
+      'BLOCK_UNSOLIDIFIED',
+      'OTHER_ERROR',
+      'SOME_NEW_CODE',
+    ]) {
+      await expectKind({ code, message: '' }, ChainErrorKinds.RpcError);
+    }
+    await expectKind({ Error: 'class java.lang.NullPointerException : null' }, ChainErrorKinds.RpcError);
+    await expectKind({}, ChainErrorKinds.RpcError);
+
+    reply = { result: true };
+    const noTxid = await chain.broadcastSignedTransaction(signed);
+    expect(noTxid.txHash).toBe(TXID);
+    expect(noTxid.broadcastError?.message).toBe("'txid'");
+    await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({
+      kind: ChainErrorKinds.RpcError,
+      message: "Tron broadcast failed: 'txid'",
+      meta: { txHash: TXID },
+    });
+  });
 });
 
 describe('TronWallet.handleTransactionPrerequisite (TRC-20 approve)', () => {

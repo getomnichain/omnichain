@@ -101,7 +101,7 @@ export class TronClient {
     } catch {
       throw new ChainError(
         ChainErrorKinds.RpcError,
-        sanitizeMessage(`Tron ${method} returned a non-JSON body: ${Buffer.from(body).toString('utf8').slice(0, 300)}`, this.endpointUri),
+        sanitizeMessage(`Tron ${method} returned a body that is not valid JSON (HTTP ${response.status})`, this.endpointUri),
       );
     }
   }
@@ -118,9 +118,9 @@ export class TronClient {
         throw new TronApiError(ChainErrorKinds.TransactionTooLarge, pyStr(message), code);
       }
       if (TRONPY_SINGLE_MESSAGE_ERROR_CODES.has(code)) {
-        throw new TronApiError(ChainErrorKinds.BroadcastRejected, pyStr(message), code);
+        throw new TronApiError(ChainErrorKinds.RpcError, pyStr(message), code);
       }
-      throw new TronApiError(ChainErrorKinds.BroadcastRejected, `(${pyRepr(message)}, ${pyRepr(payload.code)})`, code);
+      throw new TronApiError(ChainErrorKinds.RpcError, `(${pyRepr(message)}, ${pyRepr(payload.code)})`, code);
     }
     if ('result' in payload && payload.result !== null && typeof payload.result === 'object' && !Array.isArray(payload.result)) {
       this.handleApiError(payload.result as TronJson);

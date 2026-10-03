@@ -56,7 +56,7 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
   - `pyRepr` / `pyStr` / `pyTypeRepr` / `pyFloatRepr`, so error and `toString` texts match Python's;
   - `pyJsonDumps`: `toJsonStr` output is byte-identical to omnichain-py's `to_json_str` and accepts its `json.dumps` options;
   - `tronAbiEncodeSingle` / `tronAbiDecodeSingle`, a port of tronpy's `trx_abi` (strict eth_abi decoding with Tron addresses).
-- **Tests** — 803 new tests:
+- **Tests** — 815 new tests:
   - Python's wallet vectors;
   - mainnet status cases replayed offline from recorded RPC responses;
   - Python JSON payload fixtures;
@@ -79,7 +79,8 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
 - The TS `Chain` adapters wrap the Python-parity methods: `getBalance`, `createTransferUnsignedTransaction`, `broadcast`, `verifyMessageSignature`, `getChainTipHeight`, and batch `getTransactionStatus`.
   - Stellar's adapter rejects `isFullBalance`, because Python ignores it and the TS request then has no amount;
   - Stellar's adapter refuses a transfer whose trustline prerequisite is still pending (same check as Python's `ensure_minimum_trust_line`), because it can only return the transaction;
-  - Tron's `broadcast` adapter throws `DUP_TRANSACTION_ERROR` as `RpcError` (Python returns it as `broadcast_error`); check the transaction's status before re-signing.
+  - Tron's `broadcast` adapter throws `BroadcastRejected` only for codes java-tron returns before accepting the transaction (`SIGERROR`, `TAPOS_ERROR`, `CONTRACT_VALIDATE_ERROR`, `CONTRACT_EXE_ERROR`, `BANDWITH_ERROR`, `TRANSACTION_EXPIRATION_ERROR`). Everything else that Python returns as `broadcast_error`, `DUP_TRANSACTION_ERROR` and a reply without `txid` included, is `RpcError`: check the transaction's status before re-signing;
+  - Stellar's `broadcast` adapter throws `RpcError` for a Horizon `200` without `hash` (Python's `KeyError('hash')`);
   - `wait` / `confirmations` options are rejected, as on UTXO.
 
 ### Known issues shared with omnichain-py

@@ -11,10 +11,10 @@ import {
 } from '../chain.base.ts';
 import { CHAIN_ID_TRON_MAINNET } from '../chain_ids.ts';
 import { ChainType } from '../chain_type.ts';
-import { ChainError, ChainErrorKinds, isChainError } from '../errors.ts';
+import { ChainError, ChainErrorKind, ChainErrorKinds, isChainError } from '../errors.ts';
 import { isPyInt, pyDecodeUtf8, pyEncodeUtf8, pyInt, pyItem } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
-import { NetworkType, registerNonEvmChain } from '../network_type.ts';
+import { NetworkType, networkTypeRegistrations, registerNonEvmChain } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
 import { AbstractSignedTransaction } from '../signed_transaction.ts';
 import { coerceJsonDict, JSON_TRANSACTION_TYPE_KEY, JsonTransactionInput } from '../transaction_json.ts';
@@ -213,7 +213,8 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     this.rpcUrl = init.rpcUrl ?? null;
     this.#trongridApiKey = init.trongridApiKey ?? null;
     this._nativeAsset = new TronAsset(init.chainId, 'TRX', null, TronAsset.NATIVE_DECIMALS);
-    registerNonEvmChain(init.chainId, NetworkType.TRON);
+    const classifiedAsEvmLikePython = init.chainId > 0 && !networkTypeRegistrations().has(init.chainId);
+    if (!classifiedAsEvmLikePython) registerNonEvmChain(init.chainId, NetworkType.TRON);
   }
 
   get client(): TronClient {
@@ -901,13 +902,12 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     const response = await this.broadcastSignedTransaction(signedTransaction);
     const error = response.broadcastError;
     if (error === null) return response.txHash;
-    if (error instanceof TronApiError && error.code === 'DUP_TRANSACTION_ERROR') {
-      throw new ChainError(ChainErrorKinds.RpcError, `Tron broadcast failed: ${error.message}`, { chainId: this.chainId, txHash: response.txHash }, error);
-    }
-    if (error instanceof ChainError) {
-      throw new ChainError(error.kind, error.message, { chainId: this.chainId, txHash: response.txHash }, error);
-    }
-    throw new ChainError(ChainErrorKinds.RpcError, `Tron broadcast failed: ${error.message}`, { chainId: this.chainId, txHash: response.txHash }, error);
+    throw new ChainError(
+      tronBroadcastErrorKind(error),
+      `Tron broadcast failed: ${error.message}`,
+      { chainId: this.chainId, txHash: response.txHash },
+      error,
+    );
   }
 
   async getChainTipHeight(): Promise<number> {
@@ -938,6 +938,21 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
       );
     }
   }
+}
+
+const TRON_NOT_ACCEPTED_BROADCAST_CODES = new Set([
+  'SIGERROR',
+  'TAPOS_ERROR',
+  'CONTRACT_VALIDATE_ERROR',
+  'CONTRACT_EXE_ERROR',
+  'BANDWITH_ERROR',
+  'TRANSACTION_EXPIRATION_ERROR',
+]);
+
+function tronBroadcastErrorKind(error: Error): ChainErrorKind {
+  if (!(error instanceof TronApiError) || error.code === null) return ChainErrorKinds.RpcError;
+  if (error.code === 'TOO_BIG_TRANSACTION_ERROR') return ChainErrorKinds.TransactionTooLarge;
+  return TRON_NOT_ACCEPTED_BROADCAST_CODES.has(error.code) ? ChainErrorKinds.BroadcastRejected : ChainErrorKinds.RpcError;
 }
 
 function parseTronSignedInput(signed: string | Uint8Array, chainId: number): TronSignedTransaction {

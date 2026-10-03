@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 
-import { Asset as StellarSdkAsset, Keypair, Operation, StrKey } from '@stellar/stellar-sdk';
+import { Keypair, Operation, StrKey } from '@stellar/stellar-sdk';
 import { Decimal } from 'decimal.js';
 
 import { mnemonicToSeedSep5 } from '../bip39.ts';
@@ -11,6 +11,7 @@ import { pyTypeRepr } from '../python_repr.ts';
 import { AbstractTransactionPrerequisite } from '../transaction_prerequisite.ts';
 import { UnsignedTransaction } from '../unsigned_transaction.ts';
 import { AbstractBip32StyleSingleAccountWallet, AbstractSignedMessage } from '../wallet.base.ts';
+import { stellarSdkAsset } from './stellar_asset.ts';
 import { StellarChain, StellarSignedMessage, stellarMessageHash } from './stellar_chain.ts';
 import {
   StellarBroadcastTransactionResponse,
@@ -64,6 +65,10 @@ export class StellarWallet extends AbstractBip32StyleSingleAccountWallet {
 
   get secretSeed(): string {
     return this.#secretSeed;
+  }
+
+  [Symbol.for('nodejs.util.inspect.custom')](): string {
+    return `StellarWallet { address: '${this._address}' }`;
   }
 
   static chainType(): ChainType {
@@ -148,7 +153,7 @@ export class StellarWallet extends AbstractBip32StyleSingleAccountWallet {
       return null;
     }
     const changeTrustOp = Operation.changeTrust({
-      asset: new StellarSdkAsset(code, issuer),
+      asset: stellarSdkAsset(code, issuer),
       limit: stellarOperationAmount(limit, 'limit', { allowZero: true }),
     });
     const unsignedTx = new StellarUnsignedTransaction({
@@ -170,7 +175,7 @@ export class StellarWallet extends AbstractBip32StyleSingleAccountWallet {
         { chainId: chain.chainId, address: this.address },
       );
     }
-    const changeTrustOp = Operation.changeTrust({ asset: new StellarSdkAsset(code, issuer), limit: '0' });
+    const changeTrustOp = Operation.changeTrust({ asset: stellarSdkAsset(code, issuer), limit: '0' });
     const unsignedTx = new StellarUnsignedTransaction({
       chainId: chain.chainId,
       sourceAccountId: this.address,

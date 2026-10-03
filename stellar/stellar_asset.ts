@@ -1,4 +1,4 @@
-import { Asset as StellarSdkAsset, Networks, StrKey } from '@stellar/stellar-sdk';
+import { Asset as StellarSdkAsset, Networks, StrKey, xdr } from '@stellar/stellar-sdk';
 import { Decimal } from 'decimal.js';
 
 import { AbstractAssetBalance } from '../asset_balance.ts';
@@ -6,6 +6,19 @@ import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { getRegisteredAsset, registerAsset, searchRegisteredAsset } from '../asset_registry.ts';
 import { pyStr } from '../python_repr.ts';
 import { Token } from '../token.ts';
+
+export function stellarSdkAsset(code: string, issuer: string): StellarSdkAsset {
+  const asset = new StellarSdkAsset(code, issuer);
+  asset.code = code;
+  return asset;
+}
+
+export function stellarSdkAssetFromXdr(xdrAsset: xdr.Asset): StellarSdkAsset {
+  if (xdrAsset.switch().name === 'assetTypeNative') return StellarSdkAsset.native();
+  const credit = xdrAsset.switch().name === 'assetTypeCreditAlphanum4' ? xdrAsset.alphaNum4() : xdrAsset.alphaNum12();
+  const code = Buffer.from(credit.assetCode()).toString('utf8').replace(/\0+$/, '');
+  return stellarSdkAsset(code, StrKey.encodeEd25519PublicKey(credit.issuer().ed25519()));
+}
 
 export interface StellarAssetInit {
   chainId: number;
@@ -56,7 +69,7 @@ export class StellarAsset extends Token {
       if (!STELLAR_ASSET_CODE_REGEX.test(code)) {
         throw invalid(init.chainId, 'Asset code is invalid (maximum alphanumeric, 12 characters at max).');
       }
-      const sacContractId = new StellarSdkAsset(code, issuer).contractId(init.networkPassphrase);
+      const sacContractId = stellarSdkAsset(code, issuer).contractId(init.networkPassphrase);
       if (contractId !== null && contractId !== sacContractId) {
         throw invalid(
           init.chainId,
@@ -124,7 +137,7 @@ export class StellarAsset extends Token {
         identifier: this.contractId,
       });
     }
-    return new StellarSdkAsset(this.code, this.issuer);
+    return stellarSdkAsset(this.code, this.issuer);
   }
 
   toString(): string {
