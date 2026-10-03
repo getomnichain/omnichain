@@ -15,6 +15,8 @@ repos: [omnichain]
 
 The TypeScript SDK must support Stellar and Tron the same way it already supports Solana and the EVM chains. A user of the SDK must be able to create a chain instance, build and sign a transfer, broadcast it, read back its status with balance changes, and simulate it before sending — without having to drop into chain-specific libraries. This closes the last gap between the Python and TypeScript reference SDKs and unblocks every intent, deposit, and solver flow that will later touch XLM, USDC-on-Stellar, TRX, and USDT-on-Tron.
 
+The TypeScript Stellar and Tron code must behave **exactly like the Python version**. The same inputs must give the same outputs, the same errors, the same RPC calls and the same wire formats. Requirement R0 governs every other requirement in this card.
+
 ---
 
 # Scope
@@ -39,6 +41,58 @@ The TypeScript SDK must support Stellar and Tron the same way it already support
 ---
 
 # Requirements
+
+## R0. Exact parity with omnichain-py (governing requirement)
+
+The TS Stellar and Tron families are a port of omnichain-py at commit `5c9d512`, together with the library code that Python delegates to (tronpy 0.6.2, stellar-sdk 13.0.0, bip-utils 2.9.3). They are **not** a re-design.
+
+- **Must match Python:**
+  - every public class, method, constant and default value;
+  - every validation and error case;
+  - every RPC endpoint and its parameters;
+  - every balance-change rule;
+  - every wire format: unsigned/signed transaction JSON, `raw_data`, XDR, signatures, derivation paths.
+- **Allowed TS differences:**
+  - method names are camelCased;
+  - Python keyword arguments become one options object with the same names and defaults;
+  - Python exceptions become `ChainError` with a matching kind.
+- **Allowed TS-only code:** only what the TS `Chain` base forces, implemented as thin adapters over the Python-parity methods: `getBalance`, `createTransferUnsignedTransaction`, `broadcast`, `verifyMessageSignature`, `getChainTipHeight`, and the batch / `wait` handling of `getTransactionStatus`.
+- **Approved deviations** are exactly the ones in Part C "Deviations from the plan". Any other behavioural difference is a defect.
+- **Instruction to reviewers:** compare every changed TS file against its Python counterpart in the table below and report each mismatch. Check signatures, defaults, branches, RPC calls, outputs, error messages and edge cases. A mismatch not listed in Part C is **Critical**. Deviations listed in Part C are approved and must not be reported.
+
+The Python reference sources are copied verbatim, for the reviewer, under `code-review/cards/omnichain-stellar-tron-parity/python_reference/`:
+- `omnichain-py/…` is `src/omnichain/…` plus the Stellar/Tron tests;
+- `tronpy/…` is tronpy 0.6.2;
+- `stellar_sdk/…` is stellar-sdk 13.0.0.
+
+| Python source | TS port |
+|---|---|
+| `omnichain-py/base/base.py` (AbstractAsset, AbstractAssetBalance, ChainType, FeePriority, AbstractGasPricing, prerequisites, JSON transaction contract, AbstractUnsignedTransaction, UnsignedTransactionWithPrerequisites, AbstractSignedTransaction, AbstractBroadcastTransactionResponse, AssetBalanceChange, TransactionStatusType, TransactionSimulationStatusType, AbstractTransactionSimulationResult, AbstractTransactionStatus, AbstractChain, AbstractSignedMessage, WalletFamily, AbstractWallet, AbstractBip32StyleSingleAccountWallet, FiatCurrency) | `chain_type.ts`, `asset_balance.ts`, `transaction_prerequisite.ts`, `transaction_json.ts`, `unsigned_transaction.ts`, `signed_transaction.ts`, `transaction_simulation.ts`, `wallet.base.ts`. Pre-existing TS ports: `token.ts`, `transaction_status.ts`, `chain.base.ts`, `abstract_gas_pricing.ts`, `priority.ts` |
+| `omnichain-py/chain_ids.py` | `chain_ids.ts` (unchanged; Stellar/Tron ids already present) |
+| `omnichain-py/impl/stellar/chains.py` | `stellar/stellar_chains.ts` |
+| `omnichain-py/impl/stellar/assets.py` | `stellar/stellar_assets.ts` |
+| `omnichain-py/impl/stellar/base.py` — StellarGasPricing, STELLAR_MIN_BASE_FEE_STROOPS | `stellar/stellar_gas_pricing.ts` |
+| … StellarAsset, StellarNativeAssetBalance, StellarTokenAssetBalance | `stellar/stellar_asset.ts` |
+| … StellarChangeTrustLineTransactionPrerequisite, StellarChangeTrustPrerequisiteResponse, StellarUnsignedTransaction, StellarSignedTransaction, StellarBroadcastTransactionResponse, StellarTransactionFees, StellarTransactionSimulationResult, StellarSorobanTransferEvent, StellarExpertTransactionInfo, StellarTrustLine | `stellar/stellar_transactions.ts` |
+| … StellarTransactionStatus | `stellar/stellar_transaction_status.ts` |
+| … StellarChain, StellarSignedMessage | `stellar/stellar_chain.ts` |
+| … StellarWallet | `stellar/stellar_wallet.ts` |
+| `stellar_sdk/keypair.py` (SEP-53 `sign_message` / `verify_message`) | `stellar/stellar_chain.ts` `stellarMessageHash` |
+| `stellar_sdk/sep/mnemonic.py` (SEP-5) | `bip39.ts` `mnemonicToSeedSep5`, `stellar/stellar_wallet.ts` `deriveSep5Ed25519Seed` |
+| `omnichain-py/impl/tron/chains.py` | `tron/tron_chains.ts` |
+| `omnichain-py/impl/tron/assets.py` | `tron/tron_assets.ts` |
+| `omnichain-py/impl/tron/base.py` — TRC20_ABI, TRC20_TRANSFER_TOPIC, DEFAULT_* fee limits, ZERO_RESET_APPROVAL_TRC20_ADDRESSES, TronAddressUtils, TronChain, TronSignedMessage | `tron/tron_chain.ts` |
+| … TronGasPricing | `tron/tron_gas_pricing.ts` |
+| … TronAsset, TronAssetBalance (+ the AbstractAsset registry lookups Tron uses) | `tron/tron_asset.ts` |
+| … TronApproveTransactionPrerequisite, TronHandledApprovePrerequisiteResponse, `_tron_transaction_from_json`, TronUnsignedTransaction, TronSignedTransaction, TronBroadcastTransactionResponse, TronTransactionSimulationResult | `tron/tron_transactions.ts` |
+| … TronTransactionFees, TronTransactionStatus | `tron/tron_transaction_status.ts` |
+| … TronWallet | `tron/tron_wallet.ts` (BIP-39 via `bip39.ts` `mnemonicToSeedBip39`, bip-utils semantics) |
+| `omnichain-py/impl/tron/helpers/transaction.py` | `tron/tron_canonical_transaction.ts` |
+| `tronpy/keys/__init__.py` | `tron/tron_keys.ts` |
+| `tronpy/providers/async_http.py`, `tronpy/async_tron.py` (AsyncTron query methods, `_handle_api_error`) | `tron/tron_client.ts` |
+| `tronpy/async_tron.py` (AsyncTransaction, AsyncTransactionBuilder, AsyncTrx.transfer) | `tron/tron_transaction_builder.ts` |
+| `tronpy/contract.py`, `tronpy/async_contract.py`, `tronpy/abi.py` (ContractMethod, Tron address ABI codec) | `tron/tron_contract.ts` |
+| `omnichain-py/tests/stellar/*`, `omnichain-py/tests/tron/*`, `omnichain-py/tests/test_transaction_json_serialization.py` | `stellar/test/*`, `tron/test/*`, `test/transaction_json_interop.spec.ts` (Python vectors, recorded mainnet responses and Python JSON payloads) |
 
 ## R1. Stellar chain family — wired instances and assets
 
@@ -205,6 +259,10 @@ Must expose, with the exact behaviour documented in `omnichain-py` `impl/tron/ba
 
 # Acceptance Criteria
 
+- **AC0 (R0)** For every Python class, method and constant in the R0 table, the TS port exists and behaves the same for the same inputs. The only exceptions are the Part C deviations. This covers arguments, defaults, validation, RPC calls with their parameters, return values, raised errors and wire formats. Same-input runs of both SDKs give identical results:
+  - status output for the mainnet transactions in Python's integration tests;
+  - addresses and signatures from Python's unit-test mnemonic;
+  - the JSON payloads.
 - **AC1 (R1)** `import { StellarMainnet, StellarTestnet } from '@getomnichain/omnichain/stellar'` returns pre-wired chains whose `chainId`, `blockTimeSeconds`, Horizon URL, Soroban RPC URL, explorer, and chain-agnostic identifier match the Python `impl/stellar/chains.py` values documented in R1.
 - **AC2 (R2)** `new StellarAsset({ code: 'USDC', issuer: 'GA5ZSE…', chainId: -3500, networkPassphrase })` constructs with `decimals = 7` and `contractId` deterministically derived; passing `code: 'USDC'` without an issuer and without the native constant throws.
 - **AC3 (R2)** `chain.createNonSacToken('CCT4ZY…')` returns a `StellarAsset` whose `decimals` and `symbol` come from `decimals()` / `symbol()` host-function reads, cached per contract id.
@@ -257,6 +315,7 @@ Must expose, with the exact behaviour documented in `omnichain-py` `impl/tron/ba
 
 ## References
 
+- `code-review/cards/omnichain-stellar-tron-parity/python_reference/` — verbatim copies of every Python source listed in R0, for side-by-side review. They are not tracked in git; they were copied from `/root/dev/akash/omnichain-py` at `5c9d512` and from the tronpy 0.6.2 / stellar-sdk 13.0.0 wheels.
 - `omnichain-py` `src/omnichain/impl/stellar/base.py` — authoritative Stellar reference.
 - `omnichain-py` `src/omnichain/impl/tron/base.py` and `impl/tron/helpers/transaction.py` — authoritative Tron reference.
 - `omnichain-py` `src/omnichain/chain_ids.py` — chain id constants.
@@ -298,6 +357,7 @@ Decisions taken with the requester (sepehr) on 2026-10-03, before coding. They o
   - `StellarWallet` errors never echo the secret seed.
   - `signAndBroadcastTransaction` drops the `broad_cast` spelling slip.
   - Tron's TS `broadcast` adapter treats `DUP_TRANSACTION_ERROR` as success, like Solana's "already processed".
+- **Shared base additions (overrides the "no change to shared bases" non-goal).** The Python base types listed in R0 are added as new modules. `UnsignedTransaction` gains Python's JSON contract: `toJson` / `toJsonStr` throwing `FeatureNotSupported` where not implemented, plus a polymorphic `fromJson`. `NetworkType` gains `STELLAR`, and `addressFor` parses Tron and Stellar addresses. All of this is additive; the EVM / Solana / UTXO / TON behaviour is unchanged.
 - **Version 0.6.0** (Q3 resolved by the requester).
 - **Q2** stays as Python has it: Stellar Expert is the fallback source. Today's Soroban RPC exposes diagnostic events at the top level rather than under `events`, so in practice both SDKs use Stellar Expert for Soroban history.
 
