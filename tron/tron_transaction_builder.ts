@@ -116,7 +116,9 @@ export class TronTransaction {
 
   async broadcast(): Promise<TronJson & { txid: string }> {
     const payload = await this.requireClient().broadcast(this.toJson());
-    pyItem(payload, 'txid');
+    if (!('txid' in payload)) {
+      throw new ChainError(ChainErrorKinds.RpcError, pyRepr('txid'));
+    }
     return payload as TronJson & { txid: string };
   }
 

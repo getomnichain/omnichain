@@ -240,6 +240,24 @@ describe('StellarUnsignedTransaction.buildTransactionEnvelope', () => {
     expect(fakes.prepared).toHaveLength(1);
   });
 
+  it('a Soroban JSON-RPC error response becomes a ChainError carrying its message, as Python raises SorobanRpcErrorResponse', async () => {
+    const { chain } = fakeChain();
+    const rpcError = { code: -32602, message: 'invalid parameters' };
+    Object.assign(chain.asyncSorobanServer, {
+      simulateTransaction: async () => Promise.reject(rpcError),
+      prepareTransaction: async () => Promise.reject(rpcError),
+      getAccount: async () => Promise.reject(rpcError),
+    });
+    const expected = { kind: ChainErrorKinds.RpcError, message: expect.stringContaining('invalid parameters') };
+    await expect(chain.resolveAsset(STELLAR_BNUSD.contractId)).rejects.toMatchObject(expected);
+    await expect(chain._callHostFunction({ contractId: STELLAR_BNUSD.contractId, functionName: 'decimals', parameters: [], accountId: SENDER.address })).rejects.toMatchObject(expected);
+    const unsigned = chain.buildUnsignedTransaction({
+      sourceAddress: SENDER.address,
+      operations: [chain.buildTokenTransferOperation({ asset: sac(chain), senderAddress: SENDER.address, receiverAddress: CONTRACT, amountHr: new Decimal(1) })],
+    });
+    await expect(unsigned.buildTransactionEnvelope(chain)).rejects.toMatchObject(expected);
+  });
+
   it('enforces Soroban rules: single InvokeHostFunction and no memo; rejects another chain', async () => {
     const { chain } = fakeChain();
     const invoke = chain.buildTokenTransferOperation({ asset: sac(chain), senderAddress: SENDER.address, receiverAddress: CONTRACT, amountHr: new Decimal(1) });
@@ -497,6 +515,7 @@ describe('Signing, broadcasting and trustline handling', () => {
       const noHash = await chain.broadcastSignedTransaction(signed);
       expect(noHash.txHash).toBe(signed.txHash);
       expect(noHash.broadcastError?.message).toBe("'hash'");
+      expect(noHash.broadcastError).toMatchObject({ kind: ChainErrorKinds.RpcError });
       await expect(chain.broadcast(signed.signedXdr)).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError, meta: { txHash: signed.txHash } });
     }
   });

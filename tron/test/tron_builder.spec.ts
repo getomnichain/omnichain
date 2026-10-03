@@ -293,11 +293,13 @@ describe('TronWallet signing and TronChain broadcast', () => {
       await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind, meta: { txHash: TXID } });
     };
 
-    for (const code of ['SIGERROR', 'TAPOS_ERROR', 'CONTRACT_VALIDATE_ERROR', 'CONTRACT_EXE_ERROR', 'BANDWITH_ERROR', 'TRANSACTION_EXPIRATION_ERROR']) {
+    for (const code of ['SIGERROR', 'CONTRACT_VALIDATE_ERROR', 'CONTRACT_EXE_ERROR', 'BANDWITH_ERROR']) {
       await expectKind({ code, message: '' }, ChainErrorKinds.BroadcastRejected);
     }
     await expectKind({ code: 'TOO_BIG_TRANSACTION_ERROR', message: '' }, ChainErrorKinds.TransactionTooLarge);
     for (const code of [
+      'TRANSACTION_EXPIRATION_ERROR',
+      'TAPOS_ERROR',
       'DUP_TRANSACTION_ERROR',
       'SERVER_BUSY',
       'NO_CONNECTION',
@@ -315,6 +317,7 @@ describe('TronWallet signing and TronChain broadcast', () => {
     const noTxid = await chain.broadcastSignedTransaction(signed);
     expect(noTxid.txHash).toBe(TXID);
     expect(noTxid.broadcastError?.message).toBe("'txid'");
+    expect(noTxid.broadcastError).toMatchObject({ kind: ChainErrorKinds.RpcError });
     await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({
       kind: ChainErrorKinds.RpcError,
       message: "Tron broadcast failed: 'txid'",
@@ -342,6 +345,35 @@ describe('TronWallet.handleTransactionPrerequisite (TRC-20 approve)', () => {
   function approveData(tx: TronJson): string {
     return (((((tx.raw_data as TronJson).contract as TronJson[])[0].parameter as TronJson).value as TronJson).data as string);
   }
+
+  it('approve broadcast failures use the broadcast classification and carry the txHash', async () => {
+    let reply: TronJson = { result: true };
+    const { chain } = stubChain((method) => {
+      if (method === 'wallet/triggerconstantcontract') return allowanceReply(0n);
+      if (method === 'wallet/broadcasttransaction') return reply;
+      return undefined;
+    });
+    const prerequisite = new TronApproveTransactionPrerequisite({
+      chainId: chain.chainId,
+      asset: chain.getTrc20Asset('USDC', 'TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8', 6),
+      walletAddress: SENDER.address,
+      spenderContractAddress: SPENDER,
+      amount: 1_000n,
+    });
+    const cases: [TronJson, string][] = [
+      [{ code: 'SIGERROR', message: '' }, ChainErrorKinds.BroadcastRejected],
+      [{ code: 'CONTRACT_VALIDATE_ERROR', message: '' }, ChainErrorKinds.BroadcastRejected],
+      [{ code: 'TRANSACTION_EXPIRATION_ERROR', message: '' }, ChainErrorKinds.RpcError],
+      [{ result: true }, ChainErrorKinds.RpcError],
+    ];
+    for (const [next, kind] of cases) {
+      reply = next;
+      await expect(SENDER.handleTransactionPrerequisite(prerequisite, chain)).rejects.toMatchObject({
+        kind,
+        meta: { txHash: expect.stringMatching(/^[0-9a-f]{64}$/) },
+      });
+    }
+  });
 
   it('skips when the current allowance already covers the amount', async () => {
     const { chain, broadcasts } = approveChain(1_000n);

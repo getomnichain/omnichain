@@ -9,12 +9,12 @@ import {
   VerifyMessageSignatureRequest,
   resolveTransferAmount,
 } from '../chain.base.ts';
-import { CHAIN_ID_TRON_MAINNET } from '../chain_ids.ts';
+import { CHAIN_FAMILY_TRON, CHAIN_ID_TRON_MAINNET } from '../chain_ids.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKind, ChainErrorKinds, isChainError } from '../errors.ts';
 import { isPyInt, pyDecodeUtf8, pyEncodeUtf8, pyInt, pyItem } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
-import { NetworkType, networkTypeRegistrations, registerNonEvmChain } from '../network_type.ts';
+import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
 import { AbstractSignedTransaction } from '../signed_transaction.ts';
 import { coerceJsonDict, JSON_TRANSACTION_TYPE_KEY, JsonTransactionInput } from '../transaction_json.ts';
@@ -213,8 +213,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     this.rpcUrl = init.rpcUrl ?? null;
     this.#trongridApiKey = init.trongridApiKey ?? null;
     this._nativeAsset = new TronAsset(init.chainId, 'TRX', null, TronAsset.NATIVE_DECIMALS);
-    const classifiedAsEvmLikePython = init.chainId > 0 && !networkTypeRegistrations().has(init.chainId);
-    if (!classifiedAsEvmLikePython) registerNonEvmChain(init.chainId, NetworkType.TRON);
+    if (CHAIN_FAMILY_TRON.has(init.chainId)) registerNonEvmChain(init.chainId, NetworkType.TRON);
   }
 
   get client(): TronClient {
@@ -940,16 +939,9 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
   }
 }
 
-const TRON_NOT_ACCEPTED_BROADCAST_CODES = new Set([
-  'SIGERROR',
-  'TAPOS_ERROR',
-  'CONTRACT_VALIDATE_ERROR',
-  'CONTRACT_EXE_ERROR',
-  'BANDWITH_ERROR',
-  'TRANSACTION_EXPIRATION_ERROR',
-]);
+const TRON_NOT_ACCEPTED_BROADCAST_CODES = new Set(['SIGERROR', 'CONTRACT_VALIDATE_ERROR', 'CONTRACT_EXE_ERROR', 'BANDWITH_ERROR']);
 
-function tronBroadcastErrorKind(error: Error): ChainErrorKind {
+export function tronBroadcastErrorKind(error: Error): ChainErrorKind {
   if (!(error instanceof TronApiError) || error.code === null) return ChainErrorKinds.RpcError;
   if (error.code === 'TOO_BIG_TRANSACTION_ERROR') return ChainErrorKinds.TransactionTooLarge;
   return TRON_NOT_ACCEPTED_BROADCAST_CODES.has(error.code) ? ChainErrorKinds.BroadcastRejected : ChainErrorKinds.RpcError;

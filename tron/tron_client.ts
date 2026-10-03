@@ -3,7 +3,7 @@ import { Decimal } from 'decimal.js';
 import { bytesFromHex } from '../bytes_from_hex.ts';
 import { ChainError, ChainErrorKind, ChainErrorKinds, sanitizeMessage } from '../errors.ts';
 import { pyDecodeUtf8 } from '../python_builtins.ts';
-import { pyRepr, pyStr } from '../python_repr.ts';
+import { pyRepr, pyStr, pyTypeName } from '../python_repr.ts';
 import { minorUnitsToHrString } from '../transaction_status.ts';
 import { toBase58CheckAddress } from './tron_keys.ts';
 
@@ -96,14 +96,19 @@ export class TronClient {
     if (response.status < 200 || response.status > 299) {
       throw new ChainError(ChainErrorKinds.RpcError, sanitizeMessage(httpxStatusErrorMessage(response, url), this.endpointUri.replace(/\/+$/, '')));
     }
+    let payload: unknown;
     try {
-      return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body)) as TronJson;
+      payload = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body));
     } catch {
       throw new ChainError(
         ChainErrorKinds.RpcError,
         sanitizeMessage(`Tron ${method} returned a body that is not valid JSON (HTTP ${response.status})`, this.endpointUri),
       );
     }
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new ChainError(ChainErrorKinds.RpcError, `'${pyTypeName(payload)}' object has no attribute 'get'`);
+    }
+    return payload as TronJson;
   }
 
   handleApiError(payload: TronJson): void {

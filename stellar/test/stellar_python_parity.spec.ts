@@ -16,6 +16,7 @@ import {
 import { Decimal } from 'decimal.js';
 
 import { AssetMap } from '../../asset_map.ts';
+import { NetworkType, networkTypeRegistrations, tryNetworkTypeOf } from '../../network_type.ts';
 import { FiatCurrency } from '../../chain_type.ts';
 import { CHAIN_ID_STELLAR_MAINNET } from '../../chain_ids.ts';
 import { ChainError, ChainErrorKinds } from '../../errors.ts';
@@ -474,5 +475,36 @@ describe('round-3 parity: SAC codes are kept exactly as given, as stellar-sdk Py
     const [entry] = [...(StellarMainnet._balanceChangesFromOperations(tx).get(RECEIVER.address)?.values() ?? [])];
     expect((entry.token as StellarAsset).code).toBe('xlm');
     expect((entry.token as StellarAsset).contractId).toBe('CDXMHF6IJGAGWW5RBYP63E4Z6WPVLO5NU5P6K4XAOPAHIJBFQEDLTMWU');
+  });
+});
+
+describe('round-4 parity: StellarChain construction', () => {
+  it.each([1, 56, 999999, 3448148188, 0, -1, -9999])('constructs for chain id %i like Python and leaves the network-type registry untouched', (chainId) => {
+    const before = [networkTypeRegistrations().get(chainId), tryNetworkTypeOf(chainId)];
+    const chain = new StellarChain({
+      name: `Stellar ${chainId}`,
+      defaultHorizonUrl: 'https://horizon.invalid',
+      defaultSorobanRpcUrl: 'https://soroban.invalid',
+      explorerUrl: 'https://stellar.expert/explorer/public',
+      stellarExpertApiUrl: 'https://api.stellar.expert/explorer/public',
+      networkPassphrase: Networks.PUBLIC,
+      chainId,
+      chainAgnosticStellarIdentifier: 'pubnet',
+    });
+    expect(chain.chainId).toBe(chainId);
+    expect([networkTypeRegistrations().get(chainId), tryNetworkTypeOf(chainId)]).toEqual(before);
+  });
+
+  it('the preset Stellar ids stay registered as STELLAR', () => {
+    expect(tryNetworkTypeOf(CHAIN_ID_STELLAR_MAINNET)).toBe(NetworkType.STELLAR);
+  });
+});
+
+describe('round-4 parity: a passphrase with a lone surrogate is refused, as Python str.encode refuses it', () => {
+  it.each(['\\ud800', '\\udfff'])('%s', (escaped) => {
+    const passphrase = JSON.parse(`"${escaped}"`) as string;
+    expect(() => StellarWallet.fromMnemonic(MNEMONIC, { derivationPath: "m/44'/148'/0'", passphrase })).toThrow(
+      new ChainError(ChainErrorKinds.InvalidArgument, `'utf-8' codec can't encode character '${escaped}' in position 8: surrogates not allowed`),
+    );
   });
 });

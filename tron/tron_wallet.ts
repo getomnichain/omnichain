@@ -13,8 +13,10 @@ import {
   TronChain,
   TronSignedMessage,
   ZERO_RESET_APPROVAL_TRC20_ADDRESSES,
+  tronBroadcastErrorKind,
   zeroResetApprovalKey,
 } from './tron_chain.ts';
+import type { TronJson } from './tron_client.ts';
 import { TronContract } from './tron_contract.ts';
 import { TronPrivateKey, TronPublicKey } from './tron_keys.ts';
 import {
@@ -171,7 +173,13 @@ export class TronWallet extends AbstractBip32StyleSingleAccountWallet {
     const builder = (await contract.buildCall('approve', spenderContractAddress, amount)).withOwner(this.address).feeLimit(feeLimitSun);
     const transaction = await builder.build();
     const signed = transaction.sign(this.#privateKey);
-    const result = await signed.broadcast();
+    let result: TronJson;
+    try {
+      result = await signed.broadcast();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      throw new ChainError(tronBroadcastErrorKind(error), `Tron broadcast failed: ${error.message}`, { txHash: signed.txid }, error);
+    }
     return (result.txid as string | undefined) || signed.txid;
   }
 

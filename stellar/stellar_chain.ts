@@ -35,8 +35,9 @@ import {
 } from '../chain.base.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
-import { pyDecodeUtf8, pyEncodeUtf8, pyItem, PyStringContainer, pyContains, pyStringContainer } from '../python_builtins.ts';
+import { pyDecodeUtf8, pyEncodeUtf8, PyStringContainer, pyContains, pyStringContainer } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
+import { CHAIN_FAMILY_STELLAR } from '../chain_ids.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
 import { AbstractSignedTransaction } from '../signed_transaction.ts';
@@ -66,6 +67,7 @@ import {
   parseSignedStellarEnvelope,
   parseStellarExpertTransactionInfo,
   stellarOperationAmount,
+  sorobanRpcErrorResponse,
   stellarTextMemo,
   toClassicStellarAccountId,
 } from './stellar_transactions.ts';
@@ -213,7 +215,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     this.sorobanRpcUrl = init.sorobanRpcUrl ?? null;
     this.defaultHorizonUrl = init.defaultHorizonUrl;
     this.defaultSorobanRpcUrl = init.defaultSorobanRpcUrl;
-    registerNonEvmChain(init.chainId, NetworkType.STELLAR);
+    if (CHAIN_FAMILY_STELLAR.has(init.chainId)) registerNonEvmChain(init.chainId, NetworkType.STELLAR);
   }
 
   get asyncHorizonServer(): Horizon.Server {
@@ -471,7 +473,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const account =
       req.accountId === undefined || req.accountId === null
         ? new Account(this._randomCallAccountId, '0')
-        : await this.asyncSorobanServer.getAccount(req.accountId);
+        : await this.soroban(this.asyncSorobanServer.getAccount(req.accountId));
     const tx = new TransactionBuilder(account, { fee: '300', networkPassphrase: this.networkPassphrase })
       .addOperation(
         Operation.invokeContractFunction({
@@ -482,7 +484,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       )
       .setTimeout(300)
       .build();
-    const sim = await this.asyncSorobanServer.simulateTransaction(tx);
+    const sim = await this.soroban(this.asyncSorobanServer.simulateTransaction(tx));
     if (rpc.Api.isSimulationError(sim)) {
       throw new ChainError(
         ChainErrorKinds.SimulationFailed,
@@ -1184,7 +1186,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const envelope = await transaction.buildTransactionEnvelope(this);
 
     if (transaction.isSorobanInvokeContractTransaction) {
-      const sim = await this.asyncSorobanServer.simulateTransaction(envelope);
+      const sim = await this.soroban(this.asyncSorobanServer.simulateTransaction(envelope));
       if (rpc.Api.isSimulationError(sim) && sim.error) {
         return new StellarTransactionSimulationResult({
           chainId: this.chainId,
@@ -1258,7 +1260,10 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const envelope = parseSignedStellarEnvelope(signedTransaction.signedXdr, this.networkPassphrase);
     try {
       const response = await this.asyncHorizonServer.submitTransaction(envelope);
-      return new StellarBroadcastTransactionResponse({ chain: this, txHash: pyItem(response, 'hash') as string });
+      if (response === null || typeof response !== 'object' || !('hash' in response)) {
+        throw new ChainError(ChainErrorKinds.RpcError, pyRepr('hash'), { chainId: this.chainId, txHash: signedTransaction.txHash });
+      }
+      return new StellarBroadcastTransactionResponse({ chain: this, txHash: response.hash });
     } catch (err) {
       return new StellarBroadcastTransactionResponse({
         chain: this,
@@ -1451,6 +1456,14 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       if (value) return value;
     }
     return fallback;
+  }
+
+  private async soroban<T>(call: Promise<T>): Promise<T> {
+    try {
+      return await call;
+    } catch (err) {
+      throw sorobanRpcErrorResponse(err, this.chainId);
+    }
   }
 
   private rpcError(message: string, err: unknown, txHash: string, rpcUrl: string | null): ChainError {

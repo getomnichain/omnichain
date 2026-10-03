@@ -70,6 +70,12 @@ export function stellarTextMemo(text: string): Memo {
   return Memo.text(text);
 }
 
+export function sorobanRpcErrorResponse(err: unknown, chainId: number): unknown {
+  if (err instanceof Error || err === null || typeof err !== 'object' || !('code' in err)) return err;
+  const message = (err as { message?: unknown }).message;
+  return new ChainError(ChainErrorKinds.RpcError, message === undefined || message === null ? 'None' : String(message), { chainId }, err);
+}
+
 function prepareTransactionError(err: unknown, chainId: number): ChainError {
   const simulationFailed = err instanceof Error && err.constructor === Error && !('response' in err) && !('code' in err);
   if (simulationFailed) {
@@ -242,7 +248,7 @@ export class StellarUnsignedTransaction extends UnsignedTransaction {
       try {
         tx = await chain.asyncSorobanServer.prepareTransaction(tx);
       } catch (err) {
-        throw prepareTransactionError(err, chain.chainId);
+        throw prepareTransactionError(sorobanRpcErrorResponse(err, chain.chainId), chain.chainId);
       }
     }
     return tx;

@@ -3,6 +3,7 @@ import { createHash, pbkdf2Sync } from 'node:crypto';
 import { Wordlist, wordlists } from 'ethers';
 
 import { ChainError, ChainErrorKinds } from './errors.ts';
+import { pyEncodeUtf8 } from './python_builtins.ts';
 
 const BIP39_PBKDF2_ROUNDS = 2048;
 const BIP39_SEED_BYTES = 64;
@@ -48,7 +49,7 @@ function checksumMatches(indexes: number[]): boolean {
 }
 
 function pbkdf2Seed(mnemonic: string, salt: string): Uint8Array {
-  return new Uint8Array(pbkdf2Sync(Buffer.from(mnemonic, 'utf8'), Buffer.from(salt, 'utf8'), BIP39_PBKDF2_ROUNDS, BIP39_SEED_BYTES, 'sha512'));
+  return new Uint8Array(pbkdf2Sync(pyEncodeUtf8(mnemonic), pyEncodeUtf8(salt), BIP39_PBKDF2_ROUNDS, BIP39_SEED_BYTES, 'sha512'));
 }
 
 export function isValidEnglishMnemonic(mnemonic: string): boolean {

@@ -8,8 +8,8 @@ import { inspect } from 'node:util';
 import { AbiCoder, keccak256, toUtf8Bytes } from 'ethers';
 
 import { FiatCurrency } from '../../chain_type.ts';
-import { CHAIN_ID_TRON_MAINNET, isEvm } from '../../chain_ids.ts';
-import { NetworkType, tryNetworkTypeOf } from '../../network_type.ts';
+import { CHAIN_ID_TRON_MAINNET } from '../../chain_ids.ts';
+import { NetworkType, networkTypeRegistrations, tryNetworkTypeOf } from '../../network_type.ts';
 import { ChainErrorKinds } from '../../errors.ts';
 import { TronAsset } from '../tron_asset.ts';
 import { TRON_MAINNET_STABLECOINS_PEG, TRON_TRX } from '../tron_assets.ts';
@@ -148,6 +148,28 @@ describe('TronClient over real HTTP mirrors tronpy AsyncHTTPProvider / AsyncTron
     expect(failure).toMatchObject({ kind: ChainErrorKinds.RpcError });
     expect(failure?.message).not.toContain('SECRET-KEY');
     expect(failure?.message).not.toContain('<html>');
+  });
+
+  it('a JSON reply that is not an object fails like Python\'s payload.get, without echoing the reply', async () => {
+    const client = new TronClient({ endpointUri: `${node.url}trongrid/`, apiKey: 'SECRET-KEY-must-not-leak' });
+    const replies: [string, string][] = [
+      ['"tron-pro-api-key: SECRET-KEY-must-not-leak"', 'str'],
+      ['[1]', 'list'],
+      ['null', 'NoneType'],
+      ['5', 'int'],
+      ['true', 'bool'],
+    ];
+    for (const [raw, typeName] of replies) {
+      node.rawRoutes['/wallet/getaccount'] = (res) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(raw);
+      };
+      const failure = await client.getAccountBalance('TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t').then(
+        () => null,
+        (err: Error) => err,
+      );
+      expect(failure).toMatchObject({ kind: ChainErrorKinds.RpcError, message: `'${typeName}' object has no attribute 'get'` });
+    }
   });
 
   it('never follows a redirect (httpx default) and never forwards the API key elsewhere', async () => {
@@ -463,15 +485,19 @@ describe('round-2 parity: Tron __str__ texts and int(s, 16)', () => {
 });
 
 describe('round-3 parity: TronChain construction', () => {
-  it.each([3448148188, 1, 999999])('constructs for chain id %i like Python, keeping Python is_evm classification', (chainId) => {
-    const chain = new TronChain({ name: `Tron ${chainId}`, chainId, defaultRpcUrl: 'https://nile.trongrid.io', explorerUrl: 'https://nile.tronscan.org' });
-    expect(chain.chainId).toBe(chainId);
-    expect(chain.nativeAsset.chainId).toBe(chainId);
-    expect(isEvm(chainId)).toBe(true);
-    expect(tryNetworkTypeOf(chainId)).toBe(NetworkType.EVM);
-  });
+  it.each([3448148188, 1, 56, 999999, 0, -1, -2, -1000, -3500])(
+    'constructs for chain id %i like Python and leaves the network-type registry untouched',
+    (chainId) => {
+      const before = [networkTypeRegistrations().get(chainId), tryNetworkTypeOf(chainId)];
+      const chain = new TronChain({ name: `Tron ${chainId}`, chainId, defaultRpcUrl: 'https://nile.trongrid.io', explorerUrl: 'https://nile.tronscan.org' });
+      expect(chain.chainId).toBe(chainId);
+      expect(chain.nativeAsset.chainId).toBe(chainId);
+      expect([networkTypeRegistrations().get(chainId), tryNetworkTypeOf(chainId)]).toEqual(before);
+    },
+  );
 
   it('the preset Tron ids stay registered as TRON', () => {
+    new TronChain({ name: 'Tron Mainnet', chainId: CHAIN_ID_TRON_MAINNET, defaultRpcUrl: 'https://api.trongrid.io', explorerUrl: 'https://tronscan.org' });
     expect(tryNetworkTypeOf(CHAIN_ID_TRON_MAINNET)).toBe(NetworkType.TRON);
   });
 });
