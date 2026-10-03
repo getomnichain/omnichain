@@ -11,6 +11,7 @@ import {
   Memo,
   Networks,
   NotFoundError,
+  SorobanDataBuilder,
   Operation,
   StrKey,
   Transaction,
@@ -56,6 +57,7 @@ interface Fakes {
   submitReply: unknown;
   prepared: Transaction[];
   simulation: Record<string, unknown> | null;
+  prepareSimulation: Record<string, unknown>;
   strictSendRecords: Record<string, unknown>[];
 }
 
@@ -68,6 +70,13 @@ function fakeChain(overrides: Partial<Fakes> = {}): { chain: StellarChain; fakes
     submitReply: null,
     prepared: [],
     simulation: null,
+    prepareSimulation: {
+      id: '1',
+      latestLedger: 1,
+      transactionData: new SorobanDataBuilder().build().toXDR('base64'),
+      minResourceFee: '0',
+      results: [{ auth: [], xdr: xdr.ScVal.scvVoid().toXDR('base64') }],
+    },
     strictSendRecords: [],
     ...overrides,
   };
@@ -84,25 +93,25 @@ function fakeChain(overrides: Partial<Fakes> = {}): { chain: StellarChain; fakes
   const horizon = {
     loadAccount: async (id: string) => new Account(id, String(fakes.accounts[id]?.sequence ?? '100')),
     accounts: () => ({ accountId: (id: string) => ({ call: async () => fakes.accounts[id] }) }),
-    submitTransaction: async (tx: Transaction) => {
-      if (fakes.submitError) throw fakes.submitError;
-      fakes.submitted.push(tx);
-      return fakes.submitReply ?? { hash: tx.hash().toString('hex') };
-    },
     strictSendPaths: () => ({ call: async () => ({ records: fakes.strictSendRecords }) }),
     ledgers: () => ({
       order: () => ({ limit: () => ({ call: async () => ({ records: [{ sequence: 64747332, base_fee_in_stroops: fakes.baseFee }] }) }) }),
     }),
   };
   const soroban = {
-    prepareTransaction: async (tx: Transaction) => {
+    _simulateTransaction: async (tx: Transaction) => {
       fakes.prepared.push(tx);
-      return tx;
+      return fakes.prepareSimulation;
     },
     simulateTransaction: async () => fakes.simulation,
   };
   Object.defineProperty(chain, 'asyncHorizonServer', { get: () => horizon });
   Object.defineProperty(chain, 'asyncSorobanServer', { get: () => soroban });
+  chain._submitTransaction = async (tx: Transaction) => {
+    if (fakes.submitError) throw fakes.submitError;
+    fakes.submitted.push(tx);
+    return fakes.submitReply ?? { hash: tx.hash().toString('hex') };
+  };
   return { chain, fakes };
 }
 
@@ -245,7 +254,7 @@ describe('StellarUnsignedTransaction.buildTransactionEnvelope', () => {
     const rpcError = { code: -32602, message: 'invalid parameters' };
     Object.assign(chain.asyncSorobanServer, {
       simulateTransaction: async () => Promise.reject(rpcError),
-      prepareTransaction: async () => Promise.reject(rpcError),
+      _simulateTransaction: async () => Promise.reject(rpcError),
       getAccount: async () => Promise.reject(rpcError),
     });
     const expected = { kind: ChainErrorKinds.RpcError, message: expect.stringContaining('invalid parameters') };

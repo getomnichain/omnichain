@@ -313,6 +313,11 @@ describe('TronWallet signing and TronChain broadcast', () => {
     await expectKind({ Error: 'class java.lang.NullPointerException : null' }, ChainErrorKinds.RpcError);
     await expectKind({}, ChainErrorKinds.RpcError);
 
+    const upperCaseJson = JSON.stringify(JSON.parse(signed.toJsonStr(), (key, value) => (key === 'txID' ? String(value).toUpperCase() : value)));
+    expect(upperCaseJson).toContain(TXID.toUpperCase());
+    reply = { result: true, txid: TXID };
+    expect(await chain.broadcast(upperCaseJson)).toBe(TXID);
+
     for (const [txid, parityHash] of [
       [{}, TXID],
       [[], TXID],

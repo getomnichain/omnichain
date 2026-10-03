@@ -133,6 +133,20 @@ describe('StellarChain.getTransactionStatus — omnichain-py mainnet cases repla
     }
   });
 
+  it.each(
+    (
+      JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'python_get_transaction_model.json'), 'utf8')) as {
+        name: string;
+        reply: unknown;
+        valid: boolean;
+      }[]
+    ).map((c) => [c.name, c.reply, c.valid] as const),
+  )('Soroban getTransaction reply "%s" is used only when Python\'s GetTransactionResponse model accepts it', async (_name, sorobanReply, valid) => {
+    const s = await replayChain({ sorobanReply }).getTransactionStatus('0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338');
+    expect(s.status).toBe('Success');
+    expect(change(s, 'GA7BRV2K3OM27NLVY2IJQGYZEQ7AEZSPR3Y3XA6COHPMOPOEUHQBDYBC', STELLAR_BNUSD.identifier)).toBe(valid ? null : '-0.000012');
+  });
+
   it('classic DEX path payment', async () => {
     const s = await replayChain().getTransactionStatus('b36db4cd7f5cd809307b0a376255a8784167f1e6b5173c1bc3ad432072181e8c');
     const wallet = 'GBLGCDLNVOCIBVT2GHRYBU3323CIFRVTKXM2KSMI2QVMBIJSPJVBLRUU';

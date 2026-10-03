@@ -2,6 +2,8 @@ import { keccak256, toUtf8Bytes } from 'ethers';
 
 import { bytesFromHex } from '../bytes_from_hex.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { pyTruthy } from '../python_builtins.ts';
+import { pyTypeName } from '../python_repr.ts';
 import { TronClient, TronJson } from './tron_client.ts';
 import { TronTransactionBuilder, TronTrx } from './tron_transaction_builder.ts';
 import { tronAbiDecodeSingle, tronAbiEncodeSingle } from './tron_abi.ts';
@@ -173,12 +175,21 @@ export class TronContract {
   }
 
   static fromContractInfo(address: string, info: TronJson, client: TronClient): TronContract {
-    const abi = ((info.abi as { entrys?: TronAbiEntry[] } | undefined)?.entrys ?? []) as TronAbiEntry[];
+    const abiInfo = 'abi' in info ? info.abi : {};
+    if (abiInfo === null || typeof abiInfo !== 'object' || Array.isArray(abiInfo)) {
+      throw new ChainError(ChainErrorKinds.RpcError, `'${pyTypeName(abiInfo)}' object has no attribute 'get'`);
+    }
+    const entrys = 'entrys' in abiInfo ? (abiInfo as { entrys: unknown }).entrys : [];
+    const bytecode = 'bytecode' in info ? info.bytecode : '';
+    if (typeof bytecode !== 'string') {
+      throw new ChainError(ChainErrorKinds.RpcError, 'bad bytes format');
+    }
+    bytesFromHex(bytecode);
     return new TronContract({
       address,
       client,
-      abi,
-      bytecode: (info.bytecode as string | undefined) ?? '',
+      abi: (pyTruthy(entrys) ? entrys : []) as TronAbiEntry[],
+      bytecode,
       name: (info.name as string | undefined) ?? '',
       originEnergyLimit: (info.origin_energy_limit as number | undefined) ?? 0,
       userResourcePercent: (info.consume_user_resource_percent as number | undefined) ?? 100,

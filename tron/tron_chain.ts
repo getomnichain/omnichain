@@ -12,7 +12,7 @@ import {
 import { CHAIN_ID_TRON_MAINNET } from '../chain_ids.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKind, ChainErrorKinds, isChainError } from '../errors.ts';
-import { isPyInt, pyDecodeUtf8, pyEncodeUtf8, pyInt, pyItem } from '../python_builtins.ts';
+import { isPyInt, pyDecodeUtf8, pyEncodeUtf8, pyInt, pyItem, pyTruthy } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
 import { NetworkType } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
@@ -900,14 +900,15 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     const response = await this.broadcastSignedTransaction(signedTransaction);
     const error = response.broadcastError;
     if (error === null) {
-      if (response.txHash !== signedTransaction.txHash) {
+      const signedHash = signedTransaction.txHash.toLowerCase();
+      if (typeof response.txHash !== 'string' || response.txHash.toLowerCase() !== signedHash) {
         throw new ChainError(
           ChainErrorKinds.RpcError,
           `Tron node answered txid ${pyRepr(response.txHash)} for the signed transaction ${signedTransaction.txHash}`,
           { chainId: this.chainId, txHash: signedTransaction.txHash },
         );
       }
-      return signedTransaction.txHash;
+      return signedHash;
     }
     throw new ChainError(
       tronBroadcastErrorKind(error),
@@ -1004,9 +1005,4 @@ function readEnv(): Record<string, string | undefined> | undefined {
   return (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
 }
 
-export function pyTruthy(value: unknown): boolean {
-  if (value === null || value === undefined || value === false || value === 0 || value === 0n || value === '') return false;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === 'object') return Object.keys(value as object).length > 0;
-  return true;
-}
+export { pyTruthy };

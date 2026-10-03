@@ -249,6 +249,23 @@ describe('TronClient over real HTTP mirrors tronpy AsyncHTTPProvider / AsyncTron
     expect((error as Error).message).toBe(tronpy.tvm[name][1]);
   });
 
+  it('a malformed getcontract reply fails like tronpy AsyncContract construction, after one RPC', async () => {
+    const cases: [TronJson, string][] = [
+      [{ bytecode: null }, 'bad bytes format'],
+      [{ bytecode: 'xyz' }, 'non-hexadecimal number found in fromhex() arg at position 0'],
+      [{ abi: [] }, "'list' object has no attribute 'get'"],
+      [{ abi: null }, "'NoneType' object has no attribute 'get'"],
+      [{ bytecode: 'xyz', abi: [] }, "'list' object has no attribute 'get'"],
+    ];
+    const chain = new TronChain({ name: 'Tron Local Node', chainId: CHAIN_ID_TRON_MAINNET, defaultRpcUrl: node.url, explorerUrl: 'https://tronscan.org' });
+    for (const [reply, message] of cases) {
+      node.requests.length = 0;
+      node.routes['/wallet/getcontract'] = () => reply;
+      await expect(chain.getAssetBalance(chain.getTrc20Asset('USDC', 'TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8', 6), WALLET.address)).rejects.toThrow(message);
+      expect(node.requests.map((r) => r.path)).toEqual(['/wallet/getcontract']);
+    }
+  });
+
   it('resolveAsset accepts a TRC-20 whose symbol() is empty, like Python', async () => {
     node.routes['/wallet/getcontract'] = (body) => ({ contract_address: body.value });
     node.routes['/wallet/triggerconstantcontract'] = (body) => ({

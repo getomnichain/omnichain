@@ -1,4 +1,5 @@
 import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { PYDANTIC_INT_STRING, PYDANTIC_TRIM } from '../python_pydantic.ts';
 
 export enum TronContractType {
   TransferContract = 'TransferContract',
@@ -184,8 +185,6 @@ export interface TronCanonicalTransaction extends Extra {
   visible: boolean | null;
 }
 
-const PYDANTIC_TRIM = /^[\t\n\v\f\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\t\n\v\f\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g;
-const PYDANTIC_INT_STRING = /^[+-]?\d+(_\d+)*(\.0+)?$/;
 
 class Validator {
   constructor(private readonly path: string) {}

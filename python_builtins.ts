@@ -1,5 +1,5 @@
 import { ChainError, ChainErrorKinds } from './errors.ts';
-import { pyRepr, pyStrRepr } from './python_repr.ts';
+import { pyRepr, pyStrRepr, pyTypeName } from './python_repr.ts';
 
 export function pyItem(container: unknown, key: string): unknown {
   if (container === null || typeof container !== 'object' || !(key in container)) {
@@ -44,7 +44,7 @@ export function pyEncodeUtf8(value: string): Uint8Array {
   return new TextEncoder().encode(value);
 }
 
-export function pyInt(value: string, base: 16): bigint {
+export function pyInt(value: string, base: 10 | 16): bigint {
   const parsed = parsePyInt(value, base);
   if (parsed === null) {
     throw new ChainError(ChainErrorKinds.InvalidArgument, `invalid literal for int() with base ${base}: ${pyStrRepr(value.slice(0, 200))}`);
@@ -52,13 +52,35 @@ export function pyInt(value: string, base: 16): bigint {
   return parsed;
 }
 
-export function isPyInt(value: string, base: 16): boolean {
+export function isPyInt(value: string, base: 10 | 16): boolean {
   return parsePyInt(value, base) !== null;
+}
+
+export function pyIntOf(value: unknown): bigint {
+  if (typeof value === 'boolean') return value ? 1n : 0n;
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'number') {
+    if (Number.isNaN(value)) throw new ChainError(ChainErrorKinds.InvalidArgument, 'cannot convert float NaN to integer');
+    if (!Number.isFinite(value)) throw new ChainError(ChainErrorKinds.InvalidArgument, 'cannot convert float infinity to integer');
+    return BigInt(Math.trunc(value));
+  }
+  if (typeof value === 'string') return pyInt(value, 10);
+  throw new ChainError(
+    ChainErrorKinds.InvalidArgument,
+    `int() argument must be a string, a bytes-like object or a real number, not '${pyTypeName(value)}'`,
+  );
+}
+
+export function pyTruthy(value: unknown): boolean {
+  if (value === null || value === undefined || value === false || value === 0 || value === 0n || value === '') return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as object).length > 0;
+  return true;
 }
 
 const PY_WHITESPACE = /^[\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g;
 
-function parsePyInt(value: string, base: 16): bigint | null {
+function parsePyInt(value: string, base: 10 | 16): bigint | null {
   let text = [...value.replace(PY_WHITESPACE, '')]
     .map((char) => (/^\p{Nd}$/u.test(char) ? String(digitValue(char)) : char))
     .join('');

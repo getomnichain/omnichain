@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { IncomingMessage, Server, ServerResponse, createServer } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { inspect } from 'node:util';
@@ -33,6 +36,8 @@ import {
   StellarSignedTransaction,
   StellarTransactionSimulationResult,
   StellarUnsignedTransaction,
+  SorobanRpcErrorResponse,
+  assembleSorobanTransaction,
   stellarOperationAmount,
 } from '../stellar_transactions.ts';
 import { StellarTransactionStatus } from '../stellar_transaction_status.ts';
@@ -133,7 +138,7 @@ describe('Horizon over real HTTP (stellar-sdk http client, not hand-built errors
     horizon.requests.length = 0;
   });
 
-  it('Horizon and Soroban use stellar-sdk Python AiohttpClient limits: GET 11 s, POST 33 s, 10 redirects, no environment proxy', async () => {
+  it('Horizon and Soroban use stellar-sdk Python AiohttpClient limits: GET 11 s, POST 33 s, at most 9 redirects (aiohttp max_redirects=10 raises on the 10th), no environment proxy', async () => {
     const chain = chainOn(horizon.url);
     const applied = async (client: StellarChain['asyncHorizonServer']['httpClient'], method: string) => {
       let config = { method, headers: {} } as Record<string, unknown>;
@@ -142,9 +147,9 @@ describe('Horizon over real HTTP (stellar-sdk http client, not hand-built errors
       }
       return config;
     };
-    expect(await applied(chain.asyncHorizonServer.httpClient, 'get')).toMatchObject({ timeout: 11_000, proxy: false, maxRedirects: 10 });
-    expect(await applied(chain.asyncHorizonServer.httpClient, 'post')).toMatchObject({ timeout: 33_000, proxy: false, maxRedirects: 10 });
-    expect(await applied(chain.asyncSorobanServer.httpClient, 'post')).toMatchObject({ timeout: 33_000, proxy: false, maxRedirects: 10 });
+    expect(await applied(chain.asyncHorizonServer.httpClient, 'get')).toMatchObject({ timeout: 11_000, proxy: false, maxRedirects: 9 });
+    expect(await applied(chain.asyncHorizonServer.httpClient, 'post')).toMatchObject({ timeout: 33_000, proxy: false, maxRedirects: 9 });
+    expect(await applied(chain.asyncSorobanServer.httpClient, 'post')).toMatchObject({ timeout: 33_000, proxy: false, maxRedirects: 9 });
 
     const saved = { ...process.env };
     process.env.HTTP_PROXY = 'http://127.0.0.1:9';
@@ -173,17 +178,26 @@ describe('Horizon over real HTTP (stellar-sdk http client, not hand-built errors
     }
   }, 20_000);
 
-  it('getBaseFee reads base_fee_in_stroops of the latest ledger, like Python fetch_base_fee', async () => {
-    horizon.ledgers = { status: 200, body: ledgersPage([{ sequence: 1, base_fee_in_stroops: 250 }]) };
-    await expect(chainOn(horizon.url).getBaseFee()).resolves.toBe(250);
+  it.each(
+    (
+      JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'python_handle_base_fee.json'), 'utf8')) as {
+        name: string;
+        body: unknown;
+        value?: number;
+        error?: string;
+      }[]
+    ).map((c) => [c.name, c] as const),
+  )('getBaseFee follows stellar-sdk Python _handle_base_fee: %s', async (_name, c) => {
+    horizon.ledgers = { status: 200, body: c.body };
+    const result = chainOn(horizon.url).getBaseFee();
+    if (c.error === undefined) {
+      await expect(result).resolves.toBe(c.value);
+    } else {
+      await expect(result).rejects.toMatchObject({ message: c.error });
+    }
     expect(horizon.requests).toEqual(['GET /ledgers?order=desc&limit=1']);
-
-    horizon.ledgers = { status: 200, body: ledgersPage([]) };
-    await expect(chainOn(horizon.url).getBaseFee()).resolves.toBe(100);
-
-    horizon.ledgers = { status: 200, body: { _links: {} } };
-    await expect(chainOn(horizon.url).getBaseFee()).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError });
   });
+
 
   it('a Horizon 400 on submit is BroadcastRejected with the result codes; 5xx stays RpcError', async () => {
     const chain = chainOn(horizon.url);
@@ -208,6 +222,13 @@ describe('Horizon over real HTTP (stellar-sdk http client, not hand-built errors
 
     const hash = new StellarSignedTransaction({ chainId: chain.chainId, signedXdr: xdr, networkPassphrase: Networks.PUBLIC }).txHash;
     horizon.submit = { status: 200, body: { hash } };
+    await expect(chain.broadcast(xdr)).resolves.toBe(hash);
+
+    horizon.submit = { status: 200, body: { hash, result_xdr: 'zzzz' } };
+    const signed = new StellarSignedTransaction({ chainId: chain.chainId, signedXdr: xdr, networkPassphrase: Networks.PUBLIC });
+    const accepted = await chain.broadcastSignedTransaction(signed);
+    expect(accepted.broadcastError).toBeNull();
+    expect(accepted.txHash).toBe(hash);
     await expect(chain.broadcast(xdr)).resolves.toBe(hash);
   });
 
@@ -382,15 +403,15 @@ describe('round-2 parity: Python-typed failures instead of raw SDK errors', () =
     });
     const unsigned = new StellarUnsignedTransaction({ chainId: chain.chainId, sourceAccountId: SENDER.address, operations: [invoke], baseFee: 100 });
     const horizon = { loadAccount: async (id: string) => new Account(id, '1') };
-    let prepareError: Error = new Error('host invocation failed');
+    let simulate: () => Promise<unknown> = async () => ({ id: '1', latestLedger: 1, error: 'host invocation failed' });
     Object.defineProperty(chain, 'asyncHorizonServer', { get: () => horizon });
-    Object.defineProperty(chain, 'asyncSorobanServer', { get: () => ({ prepareTransaction: async () => Promise.reject(prepareError) }) });
+    Object.defineProperty(chain, 'asyncSorobanServer', { get: () => ({ _simulateTransaction: () => simulate() }) });
     await expect(unsigned.buildTransactionEnvelope(chain)).rejects.toMatchObject({
       kind: ChainErrorKinds.SimulationFailed,
       message: 'Simulation transaction failed, the response contains error information.',
     });
-    prepareError = Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
-    await expect(unsigned.buildTransactionEnvelope(chain)).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError });
+    simulate = async () => Promise.reject(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
+    await expect(unsigned.buildTransactionEnvelope(chain)).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError, message: 'socket hang up' });
   });
 
   it('signing a message with a lone surrogate raises UnicodeEncodeError text; verification returns false', () => {
@@ -456,12 +477,12 @@ describe('round-3 parity: SAC codes are kept exactly as given, as stellar-sdk Py
         loadAccount: async (id: string) => new Account(id, '100'),
         accounts: () => ({ accountId: () => ({ call: async () => ({ balances: [] }) }) }),
         ledgers: () => ({ order: () => ({ limit: () => ({ call: async () => ({ records: [{ base_fee_in_stroops: 100 }] }) }) }) }),
-        submitTransaction: async (tx: Transaction) => {
-          submitted = tx;
-          return { hash: tx.hash().toString('hex') };
-        },
       }),
     });
+    chain._submitTransaction = async (tx: Transaction) => {
+      submitted = tx;
+      return { hash: tx.hash().toString('hex') };
+    };
     await RECEIVER.ensureMinimumTrustLine(chain, 'xlm', USDC_ISSUER, new Decimal(StellarAsset.TRUST_LINE_MAX_LIMIT));
     const line = (submitted as unknown as Transaction).toEnvelope().v1().tx().operations()[0].body().changeTrustOp().line();
     expect(Buffer.from(line.alphaNum4().assetCode()).toString('hex')).toBe('786c6d00');
@@ -537,7 +558,7 @@ describe('round-5 parity: every Soroban failure surfaces as ChainError(RpcError)
     [
       'a JSON-RPC error without code',
       (res) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { message: 'no code' } })),
-      'no code',
+      '',
     ],
     [
       'a JSON-RPC error',
@@ -563,6 +584,54 @@ describe('round-5 parity: every Soroban failure surfaces as ChainError(RpcError)
     }
   });
 
+  it('a JSON-RPC error keeps the server message unchanged and exposes code and data, like SorobanRpcErrorResponse', async () => {
+    const message = `invalid tx ${'A'.repeat(240)} ${'ab'.repeat(70)} https://rpc.example/?token=abc`;
+    const stub = await sorobanStub((res) =>
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32602, message, data: 'detail' } })),
+    );
+    try {
+      const failure = await chainWithSoroban(stub.url).resolveAsset(STELLAR_USDC.contractId).then(
+        () => null,
+        (err: unknown) => err,
+      );
+      expect(failure).toBeInstanceOf(SorobanRpcErrorResponse);
+      expect(failure).toMatchObject({ kind: ChainErrorKinds.RpcError, message, code: -32602, data: 'detail' });
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('an HTTP 500 carrying a JSON-RPC error body is SorobanRpcErrorResponse, as Python reads the body regardless of status', async () => {
+    const stub = await sorobanStub((res) =>
+      res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'internal' } })),
+    );
+    try {
+      const failure = await chainWithSoroban(stub.url).resolveAsset(STELLAR_USDC.contractId).then(
+        () => null,
+        (err: unknown) => err,
+      );
+      expect(failure).toBeInstanceOf(SorobanRpcErrorResponse);
+      expect(failure).toMatchObject({ message: 'internal', code: -32603 });
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('a simulation error or empty results fail at results[0] with Python\'s TypeError / IndexError text', async () => {
+    const replies: [unknown, string][] = [
+      [{ jsonrpc: '2.0', id: 1, result: { latestLedger: 1, error: 'HostError: trapped' } }, "'NoneType' object is not subscriptable"],
+      [{ jsonrpc: '2.0', id: 1, result: { latestLedger: 1, results: [] } }, 'list index out of range'],
+    ];
+    for (const [body, message] of replies) {
+      const stub = await sorobanStub((res) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body)));
+      try {
+        await expect(chainWithSoroban(stub.url).resolveAsset(STELLAR_USDC.contractId)).rejects.toMatchObject({ kind: ChainErrorKinds.SimulationFailed, message });
+      } finally {
+        await stub.close();
+      }
+    }
+  });
+
   it('a refused connection', async () => {
     const failure = await chainWithSoroban('http://127.0.0.1:9')
       .resolveAsset(STELLAR_USDC.contractId)
@@ -572,5 +641,24 @@ describe('round-5 parity: every Soroban failure surfaces as ChainError(RpcError)
       );
     expect(failure).toBeInstanceOf(ChainError);
     expect(failure).toMatchObject({ kind: ChainErrorKinds.RpcError, message: expect.stringContaining('ECONNREFUSED') });
+  });
+});
+
+describe('round-6 parity: Soroban prepare assembles the transaction like stellar-sdk Python _assemble_transaction', () => {
+  const fixture = JSON.parse(
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'python_assemble_transaction.json'), 'utf8'),
+  ) as { tx: string; cases: Record<string, { simulation: never; expected?: string; fee?: number; error?: string }> };
+  const tx = () => TransactionBuilder.fromXDR(fixture.tx, Networks.PUBLIC) as Transaction;
+
+  it.each(['min_above_resource', 'min_below_resource'])('%s: fee = classic fee + minResourceFee, byte-identical envelope', (name) => {
+    const assembled = assembleSorobanTransaction(tx(), fixture.cases[name].simulation, CHAIN_ID_STELLAR_MAINNET);
+    expect(assembled.fee).toBe(String(fixture.cases[name].fee));
+    expect(assembled.toXDR()).toBe(fixture.cases[name].expected);
+  });
+
+  it.each(['invalid_[]', 'invalid_None'])('%s: raises Python\'s ValueError text', (name) => {
+    expect(() => assembleSorobanTransaction(tx(), fixture.cases[name].simulation, CHAIN_ID_STELLAR_MAINNET)).toThrow(
+      new ChainError(ChainErrorKinds.InvalidArgument, (fixture.cases[name].error as string).replace('ValueError: ', '')),
+    );
   });
 });

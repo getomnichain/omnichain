@@ -10,14 +10,15 @@ import {
   StrKey,
   Transaction,
   TransactionBuilder,
+  rpc,
   xdr,
 } from '@stellar/stellar-sdk';
 import { Decimal } from 'decimal.js';
 
 import type { Chain } from '../chain.base.ts';
-import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
+import { ChainError, ChainErrorKinds, sanitizeCause } from '../errors.ts';
 import { pyEncodeUtf8 } from '../python_builtins.ts';
-import { pyBalanceChangesRepr, pyBytesRepr, pyStr } from '../python_repr.ts';
+import { pyBalanceChangesRepr, pyBytesRepr, pyRepr, pyStr } from '../python_repr.ts';
 import { NetworkType } from '../network_type.ts';
 import { AbstractBroadcastTransactionResponse, AbstractSignedTransaction } from '../signed_transaction.ts';
 import {
@@ -70,31 +71,108 @@ export function stellarTextMemo(text: string): Memo {
   return Memo.text(text);
 }
 
-export function sorobanRpcError(err: unknown, chainId: number, rpcUrl: string | null): ChainError {
-  if (err instanceof ChainError) return err;
-  let message: string;
-  if (err instanceof Error) {
-    message = err.message;
-  } else if (err !== null && typeof err === 'object' && 'message' in err) {
-    const rpcMessage = (err as { message?: unknown }).message;
-    message = rpcMessage === undefined || rpcMessage === null ? 'None' : String(rpcMessage);
-  } else {
-    message = String(err);
+export class SorobanRpcErrorResponse extends ChainError {
+  readonly code: unknown;
+  readonly data: unknown;
+
+  constructor(code: unknown, message: unknown, data: unknown, chainId: number) {
+    super(ChainErrorKinds.RpcError, message === undefined || message === null ? 'None' : String(message), { chainId });
+    this.name = 'SorobanRpcErrorResponse';
+    this.code = code;
+    this.data = data;
   }
-  return new ChainError(ChainErrorKinds.RpcError, sanitizeMessage(message, rpcUrl), { chainId }, sanitizeCause(err, rpcUrl));
 }
 
-function prepareTransactionError(err: unknown, chainId: number, rpcUrl: string | null): ChainError {
-  const simulationFailed = err instanceof Error && err.constructor === Error && !('response' in err) && !('code' in err);
-  if (simulationFailed) {
-    return new ChainError(
+function jsonRpcError(value: unknown): { code?: unknown; message?: unknown; data?: unknown } | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && 'message' in value
+    ? (value as { code?: unknown; message?: unknown; data?: unknown })
+    : null;
+}
+
+export function sorobanRpcError(err: unknown, chainId: number, rpcUrl: string | null): ChainError {
+  if (err instanceof ChainError) return err;
+  const bodyError = jsonRpcError((err as { response?: { data?: { error?: unknown } } } | null)?.response?.data?.error);
+  const rpcError = err instanceof Error ? bodyError : jsonRpcError(err);
+  if (rpcError !== null) return new SorobanRpcErrorResponse(rpcError.code, rpcError.message, rpcError.data, chainId);
+  if (err instanceof Error) return new ChainError(ChainErrorKinds.RpcError, err.message, { chainId }, sanitizeCause(err, rpcUrl));
+  return new ChainError(ChainErrorKinds.RpcError, String(err), { chainId });
+}
+
+export function sorobanJsonReply<T>(reply: unknown, method: string, chainId: number): T {
+  if (reply === null || typeof reply !== 'object' || Array.isArray(reply)) {
+    throw new ChainError(ChainErrorKinds.RpcError, `Soroban ${method} returned a reply that is not a JSON object`, { chainId });
+  }
+  return reply as T;
+}
+
+const SOROBAN_OPERATION_TYPES = new Set(['invokeHostFunction', 'extendFootprintTtl', 'restoreFootprint']);
+
+function simulationResultsRepr(results: rpc.Api.RawSimulateTransactionResponse['results']): string {
+  if (results === undefined || results === null) return 'None';
+  const items = results.map(
+    (r) => `SimulateHostFunctionResult(auth=${r.auth === undefined || r.auth === null ? 'None' : pyRepr(r.auth)}, xdr=${pyRepr(r.xdr)})`,
+  );
+  return `[${items.join(', ')}]`;
+}
+
+export async function prepareSorobanTransaction(tx: Transaction, chain: StellarChain): Promise<Transaction> {
+  let reply: unknown;
+  try {
+    reply = await chain.asyncSorobanServer._simulateTransaction(tx);
+  } catch (err) {
+    throw sorobanRpcError(err, chain.chainId, chain.sorobanRpcUrl);
+  }
+  const simulation = sorobanJsonReply<rpc.Api.RawSimulateTransactionResponse>(reply, 'simulateTransaction', chain.chainId);
+  if (simulation.error) {
+    throw new ChainError(
       ChainErrorKinds.SimulationFailed,
       'Simulation transaction failed, the response contains error information.',
-      { chainId },
-      err,
+      { chainId: chain.chainId },
     );
   }
-  return sorobanRpcError(err, chainId, rpcUrl);
+  return assembleSorobanTransaction(tx, simulation, chain.chainId);
+}
+
+export function assembleSorobanTransaction(tx: Transaction, simulation: rpc.Api.RawSimulateTransactionResponse, chainId: number): Transaction {
+  const envelope = tx.toEnvelope();
+  const transaction = envelope.v1().tx();
+  const operations = transaction.operations();
+  if (operations.length !== 1 || !SOROBAN_OPERATION_TYPES.has(operations[0].body().switch().name)) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      'Unsupported transaction: must contain exactly one operation of type RestoreFootprint, InvokeHostFunction or ExtendFootprintTTL',
+      { chainId },
+    );
+  }
+  if (simulation.transactionData === undefined || simulation.transactionData === null) {
+    throw new ChainError(ChainErrorKinds.RpcError, '', { chainId });
+  }
+  const sorobanData = xdr.SorobanTransactionData.fromXDR(simulation.transactionData, 'base64');
+  let fee = BigInt(transaction.fee());
+  if (transaction.ext().switch() === 1) {
+    fee -= transaction.ext().sorobanData().resourceFee().toBigInt();
+  }
+  if (simulation.minResourceFee === undefined || simulation.minResourceFee === null) {
+    throw new ChainError(ChainErrorKinds.RpcError, '', { chainId });
+  }
+  fee += BigInt(simulation.minResourceFee);
+  transaction.fee(Number(fee));
+  transaction.ext(new xdr.TransactionExt(1, sorobanData));
+
+  const operation = operations[0].body();
+  if (operation.switch().name === 'invokeHostFunction') {
+    const results = simulation.results;
+    if (!results || results.length !== 1) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `Simulation results invalid: ${simulationResultsRepr(results)}`, { chainId });
+    }
+    const invoke = operation.invokeHostFunctionOp();
+    const auth = results[0].auth ?? [];
+    if (invoke.auth().length === 0 && auth.length > 0) {
+      invoke.auth(auth.map((entry) => xdr.SorobanAuthorizationEntry.fromXDR(entry, 'base64')));
+    }
+  }
+  envelope.v1().signatures([]);
+  return new Transaction(envelope, tx.networkPassphrase);
 }
 
 const STELLAR_AMOUNT_UPPER_LIMIT = '922337203685.4775807';
@@ -248,11 +326,7 @@ export class StellarUnsignedTransaction extends UnsignedTransaction {
     let tx = builder.build();
 
     if (hasInvokeHostOp) {
-      try {
-        tx = await chain.asyncSorobanServer.prepareTransaction(tx);
-      } catch (err) {
-        throw prepareTransactionError(err, chain.chainId, chain.sorobanRpcUrl);
-      }
+      tx = await prepareSorobanTransaction(tx, chain);
     }
     return tx;
   }

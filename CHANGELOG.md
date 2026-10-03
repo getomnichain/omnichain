@@ -56,7 +56,7 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
   - `pyRepr` / `pyStr` / `pyTypeRepr` / `pyFloatRepr`, so error and `toString` texts match Python's;
   - `pyJsonDumps`: `toJsonStr` output is byte-identical to omnichain-py's `to_json_str` and accepts its `json.dumps` options;
   - `tronAbiEncodeSingle` / `tronAbiDecodeSingle`, a port of tronpy's `trx_abi` (strict eth_abi decoding with Tron addresses).
-- **Tests** — 840 new tests:
+- **Tests** — 878 new tests:
   - Python's wallet vectors;
   - mainnet status cases replayed offline from recorded RPC responses;
   - Python JSON payload fixtures;
@@ -96,6 +96,8 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
   - Tron's `broadcast` adapter throws `BroadcastRejected` only for codes java-tron returns before accepting the transaction (`SIGERROR`, `CONTRACT_VALIDATE_ERROR`, `CONTRACT_EXE_ERROR`, `BANDWITH_ERROR`). Everything else that Python returns as `broadcast_error`, `DUP_TRANSACTION_ERROR` and a reply without `txid` included, is `RpcError`: check the transaction's status before re-signing. `TRANSACTION_EXPIRATION_ERROR` and `TAPOS_ERROR` are `RpcError` too, because java-tron checks expiry before its duplicate check, so re-broadcasting a transaction that already landed returns them after the 60 s expiry;
   - Stellar's `broadcast` adapter throws `RpcError` for a Horizon `200` without `hash` (Python's `KeyError('hash')`);
   - `wait` / `confirmations` options are rejected, as on UTXO.
+- Soroban `prepare` assembles the transaction like stellar-sdk Python's `_assemble_transaction`: the signed fee is the classic fee plus the simulation's `minResourceFee`.
+- Horizon submit reads `hash` without decoding `result_xdr`, as Python does, so a landed transaction is never reported as failed because of an unknown result type.
 
 ### Known issues shared with omnichain-py
 

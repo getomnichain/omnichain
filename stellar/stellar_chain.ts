@@ -35,8 +35,9 @@ import {
 } from '../chain.base.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
-import { pyDecodeUtf8, pyEncodeUtf8, PyStringContainer, pyContains, pyStringContainer } from '../python_builtins.ts';
+import { pyDecodeUtf8, pyEncodeUtf8, PyStringContainer, pyContains, pyStringContainer, pyItem, pyIntOf, pyTruthy } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
+import { isPydanticLaxBool, isPydanticLaxInt, isPydanticStrList } from '../python_pydantic.ts';
 import { NetworkType } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
 import { AbstractSignedTransaction } from '../signed_transaction.ts';
@@ -66,6 +67,7 @@ import {
   parseSignedStellarEnvelope,
   parseStellarExpertTransactionInfo,
   stellarOperationAmount,
+  sorobanJsonReply,
   sorobanRpcError,
   stellarTextMemo,
   toClassicStellarAccountId,
@@ -340,22 +342,26 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
   }
 
   async getBaseFee(): Promise<number> {
-    const latestLedger = await this.asyncHorizonServer.ledgers().order('desc').limit(1).call();
-    const records = (latestLedger as { records?: Array<{ base_fee_in_stroops?: unknown }> }).records;
-    if (records === undefined) {
-      throw new ChainError(ChainErrorKinds.RpcError, `Horizon latest-ledger response on ${this.name} has no _embedded records`, {
-        chainId: this.chainId,
-      });
+    let latestLedger: Record<string, unknown>;
+    try {
+      latestLedger = (await this.asyncHorizonServer.ledgers().order('desc').limit(1).call()) as unknown as Record<string, unknown>;
+    } catch (err) {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(err instanceof Error ? err.message : String(err), this.horizonUrl),
+        { chainId: this.chainId },
+        sanitizeCause(err, this.horizonUrl),
+      );
     }
-    if (!records[0]) return HORIZON_DEFAULT_BASE_FEE_STROOPS;
-    const baseFee = Number(records[0].base_fee_in_stroops);
-    if (!Number.isSafeInteger(baseFee)) {
-      throw new ChainError(ChainErrorKinds.RpcError, `Horizon latest ledger on ${this.name} has no integer base_fee_in_stroops`, {
-        chainId: this.chainId,
-      });
-    }
-    return baseFee;
+    const embedded = Array.isArray(latestLedger.records) ? { records: latestLedger.records } : pyItem(latestLedger, '_embedded');
+    if (!pyTruthy(embedded)) return HORIZON_DEFAULT_BASE_FEE_STROOPS;
+    const records = pyItem(embedded, 'records');
+    if (!pyTruthy(records)) return HORIZON_DEFAULT_BASE_FEE_STROOPS;
+    const first = Array.isArray(records) ? records[0] : pyItem(records, '0');
+    if (!pyTruthy(first)) return HORIZON_DEFAULT_BASE_FEE_STROOPS;
+    return Number(pyIntOf(pyItem(first, 'base_fee_in_stroops')));
   }
+
 
   async _resolveGasPricing(gasPricing: GasPricingType): Promise<number> {
     if (isAbstractGasPricing(gasPricing)) {
@@ -385,9 +391,9 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     }
     const pending = (async () => {
       const decimalsResp = await this._callHostFunction({ contractId, functionName: 'decimals', parameters: [] });
-      const decimals = scvalToUint32(decimalsResp[0]);
+      const decimals = scvalToUint32(firstHostFunctionResult(decimalsResp));
       const symbolResp = await this._callHostFunction({ contractId, functionName: 'symbol', parameters: [] });
-      const symbol = scvalToUtf8String(symbolResp[0]);
+      const symbol = scvalToUtf8String(firstHostFunctionResult(symbolResp));
       return new StellarAsset({
         chainId: this.chainId,
         networkPassphrase: this.networkPassphrase,
@@ -427,9 +433,9 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       return this._nativeAsset;
     }
     const decimalsResults = await this._callHostFunction({ contractId: identifier, functionName: 'decimals', parameters: [] });
-    const decimals = scvalToUint32(decimalsResults[0]);
+    const decimals = scvalToUint32(firstHostFunctionResult(decimalsResults));
     const nameResults = await this._callHostFunction({ contractId: identifier, functionName: 'name', parameters: [] });
-    const name = scvalToUtf8String(nameResults[0]);
+    const name = scvalToUtf8String(firstHostFunctionResult(nameResults));
 
     let code: string;
     let issuer: string | null;
@@ -437,7 +443,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       return this._nativeAsset;
     } else if (!name.includes(':')) {
       const symbolResults = await this._callHostFunction({ contractId: identifier, functionName: 'symbol', parameters: [] });
-      code = scvalToUtf8String(symbolResults[0]);
+      code = scvalToUtf8String(firstHostFunctionResult(symbolResults));
       issuer = null;
     } else {
       const separator = name.indexOf(':');
@@ -461,7 +467,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     });
   }
 
-  async _callHostFunction(req: StellarCallHostFunctionRequest): Promise<xdr.ScVal[]> {
+  async _callHostFunction(req: StellarCallHostFunctionRequest): Promise<xdr.ScVal[] | null> {
     if (!StrKey.isValidContract(req.contractId)) {
       throw new ChainError(ChainErrorKinds.InvalidTokenIdentifier, '`contract_id` is invalid.', {
         chainId: this.chainId,
@@ -482,16 +488,14 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       )
       .setTimeout(300)
       .build();
-    const sim = await this.soroban(this.asyncSorobanServer.simulateTransaction(tx));
-    if (rpc.Api.isSimulationError(sim)) {
-      throw new ChainError(
-        ChainErrorKinds.SimulationFailed,
-        `Soroban simulation of ${req.functionName}() on ${req.contractId} failed: ${sim.error}`,
-        { chainId: this.chainId, identifier: req.contractId },
-      );
-    }
-    return sim.result === undefined ? [] : [sim.result.retval];
+    const sim = sorobanJsonReply<rpc.Api.RawSimulateTransactionResponse>(
+      await this.soroban(this.asyncSorobanServer._simulateTransaction(tx)),
+      'simulateTransaction',
+      this.chainId,
+    );
+    return sim.results === undefined || sim.results === null ? null : sim.results.map((r) => xdr.ScVal.fromXDR(r.xdr, 'base64'));
   }
+
 
   async _getAssetDecimalsInternal(_symbol: string, identifier: string | null | undefined): Promise<number> {
     try {
@@ -500,7 +504,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
         functionName: 'decimals',
         parameters: [],
       });
-      return decimalsResult[0].u32();
+      return firstHostFunctionResult(decimalsResult).u32();
     } catch {
       return StellarAsset.DECIMALS;
     }
@@ -519,6 +523,17 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       this.assetDecimalsByIdentifier.set(identifier, decimals);
     }
     return decimals;
+  }
+
+  async _submitTransaction(envelope: Transaction): Promise<unknown> {
+    const horizon = this.asyncHorizonServer;
+    await horizon.checkMemoRequired(envelope);
+    const response = await horizon.httpClient.post(
+      horizon.serverURL.clone().segment('transactions').toString(),
+      `tx=${encodeURIComponent(envelope.toEnvelope().toXDR().toString('base64'))}`,
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+    );
+    return response.data;
   }
 
   async _loadAccountData(accountId: string): Promise<Horizon.ServerApi.AccountRecord> {
@@ -565,7 +580,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       functionName: 'balance',
       parameters: [new Address(ownerClassicAddress).toScVal()],
     });
-    const balance = scvalToInt128(result[0]);
+    const balance = scvalToInt128(firstHostFunctionResult(result));
     return new Decimal(minorUnitsToHrString(balance, asset.decimals));
   }
 
@@ -980,7 +995,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
           memo,
         });
       } else if (stellarExpertResult !== null) {
-        const txEnv = new Transaction(stellarExpertResult.body, this.networkPassphrase);
+        const txEnv = parseSignedStellarEnvelope(stellarExpertResult.body, this.networkPassphrase);
         const txMeta = xdr.TransactionMeta.fromXDR(stellarExpertResult.meta, 'base64');
         const ops = txEnv.operations;
         if (!(ops.length === 1 && ops[0].type === 'invokeHostFunction')) {
@@ -1258,11 +1273,11 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     }
     const envelope = parseSignedStellarEnvelope(signedTransaction.signedXdr, this.networkPassphrase);
     try {
-      const response = await this.asyncHorizonServer.submitTransaction(envelope);
+      const response = await this._submitTransaction(envelope);
       if (response === null || typeof response !== 'object' || !('hash' in response)) {
         throw new ChainError(ChainErrorKinds.RpcError, pyRepr('hash'), { chainId: this.chainId, txHash: signedTransaction.txHash });
       }
-      return new StellarBroadcastTransactionResponse({ chain: this, txHash: response.hash });
+      return new StellarBroadcastTransactionResponse({ chain: this, txHash: (response as { hash: string }).hash });
     } catch (err) {
       return new StellarBroadcastTransactionResponse({
         chain: this,
@@ -1362,14 +1377,15 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const response = await this.broadcastSignedTransaction(signedTransaction);
     const error = response.broadcastError;
     if (error === null) {
-      if (response.txHash !== signedTransaction.txHash) {
+      const signedHash = signedTransaction.txHash.toLowerCase();
+      if (typeof response.txHash !== 'string' || response.txHash.toLowerCase() !== signedHash) {
         throw new ChainError(
           ChainErrorKinds.RpcError,
           `Horizon answered hash ${pyRepr(response.txHash)} for the signed transaction ${signedTransaction.txHash}`,
           { chainId: this.chainId, txHash: signedTransaction.txHash },
         );
       }
-      return signedTransaction.txHash;
+      return signedHash;
     }
     const rpcUrl = this.horizonUrl;
     if (error instanceof AccountRequiresMemoError) {
@@ -1516,7 +1532,7 @@ const HORIZON_TRANSACTION_REJECTED_STATUS = 400;
 const STELLAR_SDK_GET_TIMEOUT_MS = 11_000;
 const STELLAR_SDK_POST_TIMEOUT_MS = 33_000;
 const AIOHTTP_DEFAULT_TOTAL_TIMEOUT_MS = 300_000;
-const AIOHTTP_MAX_REDIRECTS = 10;
+const AIOHTTP_MAX_REDIRECTS = 9;
 
 function applyAiohttpClientLimits(client: Horizon.Server['httpClient']): void {
   client.interceptors.request.use((config) => {
@@ -1526,7 +1542,25 @@ function applyAiohttpClientLimits(client: Horizon.Server['httpClient']): void {
 }
 
 const GET_TRANSACTION_STATUSES: ReadonlySet<unknown> = new Set(['SUCCESS', 'NOT_FOUND', 'FAILED']);
-const GET_TRANSACTION_LEDGER_FIELDS = ['latestLedger', 'latestLedgerCloseTime', 'oldestLedger', 'oldestLedgerCloseTime'];
+const GET_TRANSACTION_REQUIRED_INTS = ['latestLedger', 'latestLedgerCloseTime', 'oldestLedger', 'oldestLedgerCloseTime'];
+const GET_TRANSACTION_OPTIONAL_INTS = ['applicationOrder', 'ledger', 'createdAt'];
+const GET_TRANSACTION_OPTIONAL_STRS = ['envelopeXdr', 'resultXdr', 'resultMetaXdr'];
+
+function isAbsent(value: unknown): boolean {
+  return value === undefined || value === null;
+}
+
+function isGetTransactionEvents(value: unknown): boolean {
+  if (isAbsent(value)) return true;
+  if (typeof value !== 'object' || Array.isArray(value)) return false;
+  const events = value as Record<string, unknown>;
+  return (
+    (isAbsent(events.diagnosticEventsXdr) || isPydanticStrList(events.diagnosticEventsXdr)) &&
+    (isAbsent(events.transactionEventsXdr) || isPydanticStrList(events.transactionEventsXdr)) &&
+    (isAbsent(events.contractEventsXdr) ||
+      (Array.isArray(events.contractEventsXdr) && events.contractEventsXdr.every((perOperation) => isPydanticStrList(perOperation))))
+  );
+}
 
 function isGetTransactionResponse(reply: unknown): reply is rpc.Api.RawGetTransactionResponse {
   if (reply === null || typeof reply !== 'object' || Array.isArray(reply)) return false;
@@ -1534,13 +1568,18 @@ function isGetTransactionResponse(reply: unknown): reply is rpc.Api.RawGetTransa
   return (
     GET_TRANSACTION_STATUSES.has(fields.status) &&
     typeof fields.txHash === 'string' &&
-    GET_TRANSACTION_LEDGER_FIELDS.every((name) => isLaxInt(fields[name]))
+    GET_TRANSACTION_REQUIRED_INTS.every((name) => isPydanticLaxInt(fields[name])) &&
+    GET_TRANSACTION_OPTIONAL_INTS.every((name) => isAbsent(fields[name]) || isPydanticLaxInt(fields[name])) &&
+    (isAbsent(fields.feeBump) || isPydanticLaxBool(fields.feeBump)) &&
+    GET_TRANSACTION_OPTIONAL_STRS.every((name) => isAbsent(fields[name]) || typeof fields[name] === 'string') &&
+    isGetTransactionEvents(fields.events)
   );
 }
 
-function isLaxInt(value: unknown): boolean {
-  if (typeof value === 'number') return Number.isInteger(value);
-  return typeof value === 'string' && /^\s*[+-]?\d+\s*$/.test(value);
+function firstHostFunctionResult(results: xdr.ScVal[] | null): xdr.ScVal {
+  if (results === null) throw new ChainError(ChainErrorKinds.SimulationFailed, "'NoneType' object is not subscriptable");
+  if (results.length === 0) throw new ChainError(ChainErrorKinds.SimulationFailed, 'list index out of range');
+  return results[0];
 }
 
 function transactionXdrOperations(tx: Transaction): xdr.Operation[] {
