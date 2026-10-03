@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import {
   Account,
+  AccountRequiresMemoError,
   Address,
   Asset as StellarSdkAsset,
   BadResponseError,
@@ -34,7 +35,7 @@ import {
 } from '../chain.base.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
-import { pyDecodeUtf8, pyEncodeUtf8 } from '../python_builtins.ts';
+import { pyDecodeUtf8, pyEncodeUtf8, PyStringContainer, pyContains, pyStringContainer } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
@@ -109,7 +110,7 @@ export interface StellarCreateTransferTransactionRequest {
 }
 
 export interface StellarBalanceChangeFilters {
-  filteredWallets?: ReadonlySet<string> | null;
+  filteredWallets?: PyStringContainer | null;
   filteredAssets?: ReadonlyArray<StellarAsset> | null;
 }
 
@@ -779,7 +780,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const balanceChanges: NestedBalanceChanges = new Map();
 
     const record = (account: string, sdkAsset: StellarSdkAsset, deltaHr: Decimal): void => {
-      if (filteredWallets !== null && !filteredWallets.has(account)) return;
+      if (filteredWallets !== null && !pyContains(filteredWallets, account)) return;
       let stellarAsset: StellarAsset;
       if (sdkAsset.isNative()) {
         if (!includeNative) return;
@@ -835,7 +836,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
         { chainId: this.chainId },
       );
     }
-    const filteredWallets = opts?.filteredWallets === undefined || opts.filteredWallets === null ? null : new Set(opts.filteredWallets);
+    const filteredWallets = opts?.filteredWallets === undefined || opts.filteredWallets === null ? null : pyStringContainer(opts.filteredWallets);
     const filteredAssets = opts?.filteredAssets === undefined || opts.filteredAssets === null ? null : [...opts.filteredAssets];
     if (Array.isArray(txHash)) {
       return runBatch(txHash, (hash) => this.getTransactionStatusOnce(hash, filteredWallets, filteredAssets));
@@ -845,7 +846,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
 
   private async getTransactionStatusOnce(
     txHash: string,
-    filteredWallets: ReadonlySet<string> | null,
+    filteredWallets: PyStringContainer | null,
     filteredAssets: ReadonlyArray<StellarAsset> | null,
   ): Promise<StellarTransactionStatus> {
     let txResp: Horizon.ServerApi.TransactionRecord;
@@ -1056,7 +1057,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       const eType = rec.type;
       const wallet = eType === 'contract_credited' || eType === 'contract_debited' ? rec.contract : rec.account;
       if (!wallet) continue;
-      if (filteredWallets !== null && !filteredWallets.has(wallet)) continue;
+      if (filteredWallets !== null && !pyContains(filteredWallets, wallet)) continue;
 
       if (eType === 'account_credited' || eType === 'contract_credited') {
         const stellarAsset = buildAsset(rec);
@@ -1144,10 +1145,10 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
           ? this.createSacToken(t.tokenContractSacCode, t.tokenContractSacIssuer)
           : await this.createNonSacToken(t.tokenContractId);
       if (filteredAssets !== null && !filteredAssets.some((a) => a.strictEquals(asset))) continue;
-      if (filteredWallets === null || filteredWallets.has(t.fromAccount)) {
+      if (filteredWallets === null || pyContains(filteredWallets, t.fromAccount)) {
         AssetBalanceChange.upsert(balanceChanges, t.fromAccount, asset, AssetBalanceChange.fromMr(-t.amountMr, asset.decimals));
       }
-      if (filteredWallets === null || filteredWallets.has(t.toAccount)) {
+      if (filteredWallets === null || pyContains(filteredWallets, t.toAccount)) {
         AssetBalanceChange.upsert(balanceChanges, t.toAccount, asset, AssetBalanceChange.fromMr(t.amountMr, asset.decimals));
       }
     }
@@ -1170,7 +1171,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
         { chainId: this.chainId },
       );
     }
-    const filteredWallets = req.filteredWallets === undefined || req.filteredWallets === null ? null : new Set(req.filteredWallets);
+    const filteredWallets = req.filteredWallets === undefined || req.filteredWallets === null ? null : pyStringContainer(req.filteredWallets);
     const filteredAssets = req.filteredAssets === undefined || req.filteredAssets === null ? null : [...req.filteredAssets];
 
     const envelope = await transaction.buildTransactionEnvelope(this);
@@ -1316,7 +1317,26 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       memoText: req.memo ?? null,
       gasPricing: req.gasPricing,
     });
+    for (const prerequisite of bundle.prerequisites) {
+      if (await this.isPrerequisiteAlreadyMet(prerequisite)) continue;
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Stellar transfer to ${req.to} needs a prerequisite the receiver must handle first (${prerequisite.constructor.name}); createTransferUnsignedTransaction cannot return it. Use createTransferTransaction and handle the prerequisite with the receiver's wallet.`,
+        { chainId: this.chainId, address: req.to },
+      );
+    }
     return bundle.transaction;
+  }
+
+  private async isPrerequisiteAlreadyMet(prerequisite: AbstractTransactionPrerequisite): Promise<boolean> {
+    if (!(prerequisite instanceof StellarChangeTrustLineTransactionPrerequisite)) return false;
+    try {
+      const current = await this.getTrustLineLimit(prerequisite.walletAddress, this.createSacToken(prerequisite.code, prerequisite.issuer));
+      return current.limit.gte(prerequisite.limit);
+    } catch (err) {
+      if (err instanceof NotFoundError) return false;
+      throw err;
+    }
   }
 
   async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
@@ -1332,6 +1352,14 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const error = response.broadcastError;
     if (error === null) return response.txHash;
     const rpcUrl = this.horizonUrl;
+    if (error instanceof AccountRequiresMemoError) {
+      throw new ChainError(
+        ChainErrorKinds.BroadcastRejected,
+        `Stellar broadcast refused before submission on ${this.name}: destination ${error.accountId} requires a memo (SEP-29, operation ${error.operationIndex})`,
+        { chainId: this.chainId, txHash: response.txHash, address: error.accountId },
+        error,
+      );
+    }
     const rejection = horizonSubmissionRejection(error);
     if (rejection !== null) {
       throw new ChainError(

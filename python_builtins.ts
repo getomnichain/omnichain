@@ -8,6 +8,16 @@ export function pyItem(container: unknown, key: string): unknown {
   return (container as Record<string, unknown>)[key];
 }
 
+export type PyStringContainer = string | ReadonlySet<string>;
+
+export function pyStringContainer(values: Iterable<string>): PyStringContainer {
+  return typeof values === 'string' ? values : new Set(values);
+}
+
+export function pyContains(container: PyStringContainer, item: string): boolean {
+  return typeof container === 'string' ? container.includes(item) : container.has(item);
+}
+
 export function pyDecodeUtf8(bytes: Uint8Array, errors: 'strict' | 'replace' = 'strict'): string {
   if (errors === 'replace') return new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes);
   const invalid = firstInvalidUtf8Range(bytes);

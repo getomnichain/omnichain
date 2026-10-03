@@ -269,7 +269,8 @@ describe('TronWallet signing and TronChain broadcast', () => {
     const dup = await chain.broadcastSignedTransaction(signed);
     expect(dup.txHash).toBe(TXID);
     expect(dup.broadcastError?.message).toBe("('dup transaction', 'DUP_TRANSACTION_ERROR')");
-    expect(await chain.broadcast(signed.toJsonStr())).toBe(TXID);
+    await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError, meta: { txHash: TXID } });
+    reply = { result: true, txid: TXID };
     expect(await chain.broadcast(JSON.stringify(signed.signedTransaction.toJson()))).toBe(TXID);
 
     reply = { code: 'SIGERROR', message: Buffer.from('bad sig').toString('hex') };

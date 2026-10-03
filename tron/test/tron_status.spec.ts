@@ -106,6 +106,14 @@ describe('TronChain.getTransactionStatus — omnichain-py mainnet cases replayed
     expect(s.balanceChanges?.get('THFCWaSeVR4Cfw2ZcVGMthoJQftyVDjQux')?.size).toBe(1);
   });
 
+  it('a single-string wallet filter raises, as Python formats each character as an address', async () => {
+    await expect(
+      replayChain().getTransactionStatus('3e4f592a61f46b5bf43c5c0a813a5e8066d5a6488fbef4245c99c938bc2a0360', {
+        filteredWallets: 'THFCWaSeVR4Cfw2ZcVGMthoJQftyVDjQux',
+      }),
+    ).rejects.toMatchObject({ kind: ChainErrorKinds.InvalidAddress });
+  });
+
   it('an unknown hash (empty info) is NotFound; info without id is Pending', async () => {
     const notFound = await replayChain((m) => (m === 'wallet/gettransactioninfobyid' ? {} : undefined)).getTransactionStatus('ab'.repeat(32));
     expect(notFound.status).toBe('NotFound');

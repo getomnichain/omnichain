@@ -357,7 +357,9 @@ Decisions taken with the requester (sepehr) on 2026-10-03, before coding. They o
   - Soroban contract spoofing;
   - Tron internal-transaction accounting;
   - signing the node-supplied txID;
-  - the decimals fallback cache and unpaginated Horizon effects.
+  - the decimals fallback cache and unpaginated Horizon effects;
+  - the muxed-receiver ID stripped to its `G…` account when a transfer is built.
+  They are listed under "Known issues shared with omnichain-py" in the CHANGELOG and in `docs/stellar.md` / `docs/tron.md`.
 - **Small additional divergences.**
   - No logging, because the TS SDK has no logger.
   - Secrets never leak:
@@ -365,8 +367,9 @@ Decisions taken with the requester (sepehr) on 2026-10-03, before coding. They o
     - Hex parsing errors report only a position, exactly like `bytes.fromhex`.
     - `StellarWallet.secretSeed`, `TronWallet.privateKeyHex`, the keypair / private key and the TronGrid API key are held in `#private` fields. The Python-named accessors still return them, but `JSON.stringify` / `util.inspect` never show them.
   - `signAndBroadcastTransaction` drops the `broad_cast` spelling slip.
-  - Tron's TS `broadcast` adapter treats `DUP_TRANSACTION_ERROR` as success, like Solana's "already processed".
-  - Stellar's TS `broadcast` adapter maps a Horizon `400` on submit (`tx_bad_seq`, `tx_failed`, …) to `BroadcastRejected` with the result codes. Timeouts and other HTTP failures stay `RpcError`, because the transaction may still land.
+  - Tron's TS `broadcast` adapter throws `DUP_TRANSACTION_ERROR` as `RpcError`, because Python returns it as `broadcast_error`, not as a success. The node may already hold the transaction, so the caller checks its status before re-signing, as Python's warning says.
+  - Stellar's TS `createTransferUnsignedTransaction` adapter can only return a transaction, so it refuses a transfer whose trustline prerequisite is still pending (same check as Python's `ensure_minimum_trust_line`) instead of dropping it.
+  - Stellar's TS `broadcast` adapter maps a Horizon `400` on submit (`tx_bad_seq`, `tx_failed`, …) to `BroadcastRejected` with the result codes. A SEP-29 memo-required refusal is also `BroadcastRejected`, because stellar-sdk raises it before sending anything. Timeouts and other HTTP failures stay `RpcError`, because the transaction may still land.
   - Tron's TS `verifyMessageSignature` adapter also accepts a `0x`-prefixed (TronWeb) signature. `TronChain.verifySignature` keeps Python's `bytes.fromhex` parsing.
   - A TronGrid `403 "Exceed the user daily usage"` raises tronpy's `ApiError('rate limit! please add more API keys')` text as `RpcError`. tronpy also drops the key from its provider, so every later request fails the same way until restart. TS keeps the key, so later requests are retried normally.
   - The canonical-transaction schemas (R12) use a hand-written validator equivalent to the pydantic models instead of `zod`, so Tron adds no dependency.
@@ -375,7 +378,7 @@ Decisions taken with the requester (sepehr) on 2026-10-03, before coding. They o
   - Python `type(x)` in messages renders as `<class 'Name'>` with no module path. Reprs of SDK objects that have no TS equivalent are shortened: the Stellar operations list prints its length.
   - `AssetBalanceChange.upsert` (the shared TS base used by every family) drops rows whose net change is zero. Python keeps them.
 - **TS-only address factory (not bound by Python parity).**
-  - `addressFor` accepts only a canonical Tron `T…` base58check address with prefix byte `0x41`. Hex, `0x…` and wrong-prefix forms are rejected, so no input is silently rewritten into a different address. The chain's own `formatWalletAddress` keeps tronpy's lenient forms.
+  - `addressFor` and `validateAddress` use one check for Tron: Python's `validate_wallet_address` followed by `format_wallet_address`. A `T…` base58check address of 21 bytes passes, as in Python; hex and `0x…` forms are rejected. Methods that take an address format it as Python does.
   - Stellar `G…` / `M…` addresses are validated with an SDK-free StrKey check, verified to agree with stellar-sdk. This keeps `@IsAddress` / `addressFor` from loading `@stellar/stellar-sdk`.
 - **Python value semantics where JS differs.**
   - Assets used as map keys (`*_STABLECOINS_PEG`, `getWalletBalance`) go through `AssetMap`, which looks keys up by value like a Python `dict` (`chain_id`, `symbol`, `identifier`, `decimals`).

@@ -152,6 +152,17 @@ describe('StellarChain.getTransactionStatus — omnichain-py mainnet cases repla
     expect(change(s, sender, native)).toBe('-0.00002');
   });
 
+  it('a single-string wallet filter is a Python str: membership is a substring test, as in Python', async () => {
+    const sender = 'GAUA7XL5K54CC2DDGP77FJ2YBHRJLT36CPZDXWPM6MP7MANOGG77PNJU';
+    const receiver = 'GBMVBG3NKVXRIS4Q2I2RUVYEYCZ5OJKN4AEJONGSCEBFSDPY46TDEZ6A';
+    const hash = '4246b4d2dc2cb79611117dcfd23413784587d6d855011243334fda77faa10727';
+    const asList = await replayChain().getTransactionStatus(hash, { filteredWallets: [receiver] });
+    const asString = await replayChain().getTransactionStatus(hash, { filteredWallets: receiver });
+    expect([...(asString.balanceChanges as Map<string, unknown>).keys()].sort()).toEqual([sender, receiver].sort());
+    expect(change(asString, receiver, usdc)).toBe(change(asList, receiver, usdc));
+    expect(change(asString, sender, native)).toBe(change(asList, sender, native));
+  });
+
   it('filters by asset identifier on the classic effects path', async () => {
     const s = await replayChain().getTransactionStatus('b36db4cd7f5cd809307b0a376255a8784167f1e6b5173c1bc3ad432072181e8c', {
       filteredAssets: [STELLAR_USDC],

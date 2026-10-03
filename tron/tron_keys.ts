@@ -3,9 +3,23 @@ import { SigningKey, getBytes, keccak256 as ethersKeccak256 } from 'ethers';
 import { bytesFromHex } from '../bytes_from_hex.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { pyDecodeUtf8, pyEncodeUtf8 } from '../python_builtins.ts';
-import { TRON_ADDRESS_PREFIX_BYTE, b58decodeCheck, b58encodeCheck, tronSha256 } from './tron_base58.ts';
+import {
+  TRON_ADDRESS_PREFIX_BYTE,
+  b58decodeCheck,
+  b58encodeCheck,
+  isBase58CheckAddress,
+  toBase58CheckAddress,
+  tronSha256,
+} from './tron_base58.ts';
 
-export { TRON_ADDRESS_PREFIX_BYTE, b58decodeCheck, b58encodeCheck, tronSha256 } from './tron_base58.ts';
+export {
+  TRON_ADDRESS_PREFIX_BYTE,
+  b58decodeCheck,
+  b58encodeCheck,
+  isBase58CheckAddress,
+  toBase58CheckAddress,
+  tronSha256,
+} from './tron_base58.ts';
 
 export const SECPK1_N = 115792089237316195423570985008687907852837564279074904382605163141518161494337n;
 export const TRON_MESSAGE_PREFIX = '\x19TRON Signed Message:\n';
@@ -22,45 +36,6 @@ export function hexToBytes(hex: string): Uint8Array {
   return bytesFromHex(hex);
 }
 
-function badAddress(raw: unknown): ChainError {
-  return new ChainError(
-    ChainErrorKinds.InvalidAddress,
-    `Bad Tron address: ${typeof raw === 'string' ? JSON.stringify(raw) : String(raw)}`,
-    typeof raw === 'string' ? { address: raw } : {},
-  );
-}
-
-export function toBase58CheckAddress(raw: string | Uint8Array): string {
-  if (typeof raw === 'string') {
-    if (raw.length === 0) throw badAddress(raw);
-    if (raw[0] === 'T' && raw.length === 34) {
-      try {
-        b58decodeCheck(raw);
-      } catch (err) {
-        throw new ChainError(ChainErrorKinds.InvalidAddress, 'bad base58check format', { address: raw }, err);
-      }
-      return raw;
-    }
-    if (raw.length === 42) {
-      if (raw.startsWith('0x')) {
-        return b58encodeCheck(concatBytes(Uint8Array.of(TRON_ADDRESS_PREFIX_BYTE), hexToBytes(raw.slice(2))));
-      }
-      return b58encodeCheck(hexToBytes(raw));
-    }
-    if (raw.startsWith('0x') && raw.length === 44) {
-      return b58encodeCheck(hexToBytes(raw.slice(2)));
-    }
-    throw badAddress(raw);
-  }
-  if (raw.length === 21 && raw[0] === TRON_ADDRESS_PREFIX_BYTE) {
-    return b58encodeCheck(raw);
-  }
-  if (raw.length === 20) {
-    return b58encodeCheck(concatBytes(Uint8Array.of(TRON_ADDRESS_PREFIX_BYTE), raw));
-  }
-  return toBase58CheckAddress(pyDecodeUtf8(raw));
-}
-
 export function toHexAddress(raw: string | Uint8Array): string {
   return bytesToHex(b58decodeCheck(toBase58CheckAddress(raw)));
 }
@@ -71,15 +46,6 @@ export function toRawAddress(raw: string | Uint8Array): Uint8Array {
 
 export function toTvmAddress(raw: string | Uint8Array): Uint8Array {
   return toRawAddress(raw).subarray(1);
-}
-
-export function isBase58CheckAddress(value: string): boolean {
-  if (typeof value !== 'string' || value.length === 0 || value[0] !== 'T') return false;
-  try {
-    return b58decodeCheck(value).length === 21;
-  } catch {
-    return false;
-  }
 }
 
 export function isHexAddress(value: string): boolean {

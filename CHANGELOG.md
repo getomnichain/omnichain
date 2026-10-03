@@ -17,6 +17,7 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
 
 ### Added
 
+- Stellar and Tron are imported from their subpaths only. Like Python's `import omnichain`, the root entry loads neither family, so `@stellar/stellar-sdk` is loaded only by consumers that use Stellar.
 - **`@getomnichain/omnichain/stellar`**:
   - Chains: `StellarMainnet` / `StellarTestnet`.
   - Assets: `StellarAsset` (native, SAC, non-SAC Soroban), `STELLAR_XLM` / `STELLAR_USDC` / `STELLAR_EURC` / `STELLAR_BNUSD` plus testnet assets, `STELLAR_MAINNET_STABLECOINS_PEG`.
@@ -45,9 +46,9 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
   - `AbstractTransactionSimulationResult` with `TransactionSimulationStatusTypes`;
   - `AbstractSignedMessage`, `AbstractWallet`, `AbstractBip32StyleSingleAccountWallet`, `AbstractAssetBalance`;
   - the BIP-39 helpers `mnemonicToSeedSep5` / `mnemonicToSeedBip39`.
-- **JSON wire format shared with Python** — `toJson()` / `toJsonStr()` / `fromJson()` on the Stellar and Tron unsigned/signed transactions, using Python's `{type, chain_id, …}` envelope. `UnsignedTransaction.fromJson` and `AbstractSignedTransaction.fromJson` dispatch on `type`, so payloads move between Python and TS processes unchanged.
+- **JSON wire format shared with Python** — `toJson()` / `toJsonStr()` / `fromJson()` on the Stellar and Tron unsigned/signed transactions, using Python's `{type, chain_id, …}` envelope. `UnsignedTransaction.fromJson` and `AbstractSignedTransaction.fromJson` dispatch on `type`, so payloads move between Python and TS processes unchanged. A family's types are registered when its subpath is imported: import `@getomnichain/omnichain/stellar` or `/tron` before decoding its payloads through the root `fromJson`.
 - **`NetworkType.STELLAR`**, with the Stellar chain ids seeded in the registry. `addressFor` now parses addresses instead of throwing `ChainNotSupported`:
-  - Tron (`TronAddress`): a canonical `T…` base58check address with prefix `0x41` only.
+  - Tron (`TronAddress`): what Python's `validate_wallet_address` + `format_wallet_address` accept, a `T…` base58check address of 21 bytes; `validateAddress` uses the same check.
   - Stellar (`StellarAddress`): `G…` / `M…`, checked without loading `@stellar/stellar-sdk`.
 - **Python-semantics helpers** the ports rely on:
   - `AssetMap`, a `Map` keyed by asset value like a Python `dict`, and the shared asset registry (`searchRegisteredAsset` / `getRegisteredAsset`);
@@ -55,7 +56,7 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
   - `pyRepr` / `pyStr` / `pyTypeRepr` / `pyFloatRepr`, so error and `toString` texts match Python's;
   - `pyJsonDumps`: `toJsonStr` output is byte-identical to omnichain-py's `to_json_str` and accepts its `json.dumps` options;
   - `tronAbiEncodeSingle` / `tronAbiDecodeSingle`, a port of tronpy's `trx_abi` (strict eth_abi decoding with Tron addresses).
-- **Tests** — 799 new tests:
+- **Tests** — 803 new tests:
   - Python's wallet vectors;
   - mainnet status cases replayed offline from recorded RPC responses;
   - Python JSON payload fixtures;
@@ -76,9 +77,20 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
 - `StellarWallet` errors never include the secret seed.
 - `AbstractWallet.signAndBroadcastTransaction` is Python's `sign_and_broad_cast_transaction` without the spelling slip.
 - The TS `Chain` adapters wrap the Python-parity methods: `getBalance`, `createTransferUnsignedTransaction`, `broadcast`, `verifyMessageSignature`, `getChainTipHeight`, and batch `getTransactionStatus`.
-  - Stellar's adapter rejects `isFullBalance`, because Python ignores it and the TS request then has no amount.
-  - Tron's `broadcast` adapter treats `DUP_TRANSACTION_ERROR` as success.
+  - Stellar's adapter rejects `isFullBalance`, because Python ignores it and the TS request then has no amount;
+  - Stellar's adapter refuses a transfer whose trustline prerequisite is still pending (same check as Python's `ensure_minimum_trust_line`), because it can only return the transaction;
+  - Tron's `broadcast` adapter throws `DUP_TRANSACTION_ERROR` as `RpcError` (Python returns it as `broadcast_error`); check the transaction's status before re-signing.
   - `wait` / `confirmations` options are rejected, as on UTXO.
+
+### Known issues shared with omnichain-py
+
+These are bugs in omnichain-py itself. They are kept for parity and tracked to be fixed in both SDKs. Consumers that credit deposits from transaction status should account for them:
+
+- RIN-316 (Stellar) — any contract can emit a `transfer` event carrying a SAC topic and pose as USDC / XLM in status, and `resolveAsset` returns XLM for any contract whose `name()` is `"native"`.
+- RIN-317 (Tron) — status counts rejected internal transactions and TRC-10 `callValue` as TRX, and does not debit TRX sent as `call_value`.
+- RIN-318 (Tron) — the wallet signs the txID returned by the node (or found in a JSON payload) without recomputing it from `raw_data`.
+- RIN-319 (Stellar) — a decimals fallback of 7 is cached after an RPC error, and Horizon effects are read from the first page (200) only.
+- Stellar — the ID of a muxed `M…` receiver is stripped to its `G…` account when a transfer is built.
 
 ### Note — upstream behaviour mirrored as-is
 

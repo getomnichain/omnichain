@@ -2,6 +2,8 @@
 
 `@getomnichain/omnichain/tron` is a port of omnichain-py's `impl/tron` (`chains.py`, `assets.py`, `base.py`, `helpers/transaction.py`) together with the parts of `tronpy` it relies on (HTTP provider, transaction builder, TRC-20 contract calls, keys). There is no `tronweb` dependency: the same TronGrid HTTP endpoints tronpy calls are called directly, with `ethers` for secp256k1/keccak/ABI and `bs58` for addresses.
 
+The family is imported from `@getomnichain/omnichain/tron` only. Like Python's `import omnichain`, the root entry does not load it.
+
 ## Chains and assets
 
 | Export | Value |
@@ -46,7 +48,7 @@ const response = await TronMainnet.broadcastSignedTransaction(signed);
 ```
 
 - Signatures are tronpy's: RFC 6979 recoverable `r || s || recid` over the txID, appended to the transaction's signature list (like tronpy, signing mutates the transaction). Messages use the TIP-191 `"\x19TRON Signed Message:\n"` keccak hash.
-- `broadcastSignedTransaction` never throws: node rejections such as `DUP_TRANSACTION_ERROR`, `SERVER_BUSY` or `BLOCK_UNSOLIDIFIED` come back as `broadcastError` with the txID kept. The TS `Chain.broadcast` adapter accepts the signed JSON, treats `DUP_TRANSACTION_ERROR` as success and throws for other rejections.
+- `broadcastSignedTransaction` never throws: node rejections such as `DUP_TRANSACTION_ERROR`, `SERVER_BUSY` or `BLOCK_UNSOLIDIFIED` come back as `broadcastError` with the txID kept. The TS `Chain.broadcast` adapter accepts the signed JSON and throws for every rejection. `DUP_TRANSACTION_ERROR` is thrown as `RpcError`, not `BroadcastRejected`: the node may already hold the transaction, so check its status before re-signing, as Python's warning says.
 - External signers sign `transaction.txId` and attach the signature with `transaction.transaction.setSignature([...])`.
 - `TronWallet.handleTransactionPrerequisite` handles `TronApproveTransactionPrerequisite`. It reads the current allowance, skips if it is enough, and otherwise approves (25 TRX fee limit). For USDT-style tokens it first resets the allowance to 0 and waits three blocks; these are tokens in `ZERO_RESET_APPROVAL_TRC20_ADDRESSES` or prerequisites with `requiresZeroResetFirst`.
 
@@ -78,7 +80,7 @@ const response = await TronMainnet.broadcastSignedTransaction(signed);
 
 Hex input (keys, signatures, txIDs, node messages) is parsed exactly like Python's `bytes.fromhex`: ASCII whitespace is skipped, `0x` is not hex, and errors report only a position. The TS `verifyMessageSignature` adapter additionally accepts TronWeb's `0x`-prefixed signatures.
 
-`addressFor` / `@IsAddress` accept only a canonical `T…` address (base58check, prefix `0x41`). `TronChain.formatWalletAddress` keeps tronpy's lenient hex / `0x` forms. `TRON_MAINNET_STABLECOINS_PEG` is an `AssetMap`, which looks assets up by value like a Python `dict`.
+`addressFor`, `@IsAddress` and `validateAddress` use one check: Python's `validate_wallet_address` followed by `format_wallet_address`, so a `T…` base58check address of 21 bytes passes (any prefix byte, as in Python) and hex / `0x` forms do not. Methods that take an address format it like Python, so they also take tronpy's hex / `0x` forms. `TRON_MAINNET_STABLECOINS_PEG` is an `AssetMap`, which looks assets up by value like a Python `dict`.
 
 ## Known upstream behaviour
 
@@ -88,3 +90,10 @@ Hex input (keys, signatures, txIDs, node messages) is parsed exactly like Python
 ## Known limitation
 
 - TronGrid JSON integers above 2^53 lose precision in `JSON.parse` before they reach `BigInt`. Python's ints do not. Balances and amounts below 9,007,199,254 TRX (or 2^53 base units of a token) are exact.
+
+## Known issues shared with omnichain-py
+
+These are bugs in omnichain-py itself. They are kept for parity and tracked to be fixed in both SDKs:
+
+- RIN-317 — status counts rejected internal transactions and TRC-10 `callValue` as TRX, and does not debit TRX sent as `call_value`.
+- RIN-318 — the wallet signs the txID returned by the node (or found in a JSON payload) without recomputing it from `raw_data`.

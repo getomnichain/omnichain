@@ -27,6 +27,7 @@ import {
   minorUnitsToHrString,
 } from '../transaction_status.ts';
 import { AbstractSignedMessage, SignedTransactionBroadcaster } from '../wallet.base.ts';
+import { TronAddress } from './tron_address.ts';
 import { TronAsset } from './tron_asset.ts';
 import {
   TronAddressNotFoundError,
@@ -315,12 +316,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
   }
 
   validateAddress(raw: string): boolean {
-    try {
-      TronChain.validateWalletAddress(raw);
-      return true;
-    } catch {
-      return false;
-    }
+    return typeof raw === 'string' && TronAddress.validatedBase58(raw) !== null;
   }
 
   validateTokenIdentifier(raw: string | undefined): boolean {
@@ -905,7 +901,9 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     const response = await this.broadcastSignedTransaction(signedTransaction);
     const error = response.broadcastError;
     if (error === null) return response.txHash;
-    if (error instanceof TronApiError && error.code === 'DUP_TRANSACTION_ERROR') return response.txHash;
+    if (error instanceof TronApiError && error.code === 'DUP_TRANSACTION_ERROR') {
+      throw new ChainError(ChainErrorKinds.RpcError, `Tron broadcast failed: ${error.message}`, { chainId: this.chainId, txHash: response.txHash }, error);
+    }
     if (error instanceof ChainError) {
       throw new ChainError(error.kind, error.message, { chainId: this.chainId, txHash: response.txHash }, error);
     }

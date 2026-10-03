@@ -35,8 +35,8 @@ mounted at each service's own `chain` directory.
 | **EVM** (Ethereum, Arbitrum, Base, BNB, …) | [evm/](../evm) | `EvmChain` over `ethers.js` v6 + ERC-20 support — see [evm.md](./evm.md) |
 | **UTXO** (Bitcoin, Litecoin, Dogecoin + testnets) | [utxo/](../utxo) | `UtxoChain` + `BtcChain` over `bitcoinjs-lib` v7 + `coininfo` — see [utxo.md](./utxo.md) |
 | **Solana** (mainnet, devnet, testnet) | [solana/](../solana) | `SolanaChain` over `@solana/web3.js` v1 + SPL Token / Token-2022 — see [solana.md](./solana.md) |
-| **Stellar** (mainnet, testnet) | [stellar/](../stellar) | `StellarChain` over `@stellar/stellar-sdk` (Horizon + Soroban RPC) — see [stellar.md](./stellar.md) |
-| **Tron** (mainnet, Shasta) | [tron/](../tron) | `TronChain` over the TronGrid HTTP API (tronpy port) — see [tron.md](./tron.md) |
+| **Stellar** (mainnet, testnet) | [stellar/](../stellar) | `StellarChain` over `@stellar/stellar-sdk` (Horizon + Soroban RPC); import from `@getomnichain/omnichain/stellar` — see [stellar.md](./stellar.md) |
+| **Tron** (mainnet, Shasta) | [tron/](../tron) | `TronChain` over the TronGrid HTTP API (tronpy port); import from `@getomnichain/omnichain/tron` — see [tron.md](./tron.md) |
 | **TON** | [ton/](../ton) | `TonAddress` only (no full chain yet) |
 
 ## Quickstart

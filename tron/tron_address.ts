@@ -1,36 +1,36 @@
 import { Address } from '../address.ts';
 import { NetworkType } from '../network_type.ts';
-import { TRON_ADDRESS_PREFIX_BYTE, b58decodeCheck } from './tron_base58.ts';
-
-const TRON_BASE58_ADDRESS_LENGTH = 34;
-const TRON_RAW_ADDRESS_LENGTH = 21;
+import { isBase58CheckAddress, toBase58CheckAddress } from './tron_base58.ts';
 
 export class TronAddress extends Address {
+  private readonly base58: string;
+
   constructor(raw: string) {
     super(raw);
     if (typeof raw !== 'string') {
       throw new Error('Invalid Tron address: not a string');
     }
-    if (!TronAddress.isCanonical(raw)) {
+    const canonical = TronAddress.validatedBase58(raw);
+    if (canonical === null) {
       throw new Error(`Invalid Tron address: "${raw}"`);
+    }
+    this.base58 = canonical;
+  }
+
+  static validatedBase58(raw: string): string | null {
+    if (!isBase58CheckAddress(raw)) return null;
+    try {
+      return toBase58CheckAddress(raw);
+    } catch {
+      return null;
     }
   }
 
   canonical(): string {
-    return this.raw;
+    return this.base58;
   }
 
   get networkType(): NetworkType {
     return NetworkType.TRON;
-  }
-
-  private static isCanonical(raw: string): boolean {
-    if (raw.length !== TRON_BASE58_ADDRESS_LENGTH || raw[0] !== 'T') return false;
-    try {
-      const payload = b58decodeCheck(raw);
-      return payload.length === TRON_RAW_ADDRESS_LENGTH && payload[0] === TRON_ADDRESS_PREFIX_BYTE;
-    } catch {
-      return false;
-    }
   }
 }

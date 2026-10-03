@@ -4,11 +4,13 @@ import { fileURLToPath } from 'node:url';
 
 import {
   Account,
+  AccountRequiresMemoError,
   Address,
   BadResponseError,
   Keypair,
   Memo,
   Networks,
+  NotFoundError,
   Operation,
   StrKey,
   Transaction,
@@ -477,6 +479,12 @@ describe('Signing, broadcasting and trustline handling', () => {
       kind: ChainErrorKinds.BroadcastRejected,
       message: expect.stringContaining('{"transaction":"tx_bad_seq"}'),
     });
+    fakes.submitError = new AccountRequiresMemoError('account requires memo', RECEIVER.address, 0);
+    expect((await chain.broadcastSignedTransaction(signed)).broadcastError).toBe(fakes.submitError);
+    await expect(chain.broadcast(signed.signedXdr)).rejects.toMatchObject({
+      kind: ChainErrorKinds.BroadcastRejected,
+      message: expect.stringContaining('requires a memo (SEP-29'),
+    });
     fakes.submitError = new Error('socket hang up');
     await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError });
     fakes.submitError = null;
@@ -586,6 +594,31 @@ describe('Stellar chain metadata and adapters', () => {
     expect((Operation.fromXDRObject(tx.operations[0]) as Operation.Payment).amount).toBe('2.5000000');
     expect(tx.memo?.value?.toString()).toBe('m');
     await expect(chain.createTransferUnsignedTransaction({ from: SENDER.address, to: RECEIVER.address, isFullBalance: true })).rejects.toThrow(/isFullBalance/);
+  });
+
+  it('TS adapter refuses a SAC transfer whose receiver still needs the trustline step, and builds it once the step is met', async () => {
+    const { chain } = fakeChain();
+    const usdc = sac(chain);
+    chain.resolveAsset = async () => usdc;
+    const request = { from: SENDER.address, to: RECEIVER.address, tokenIdentifier: usdc.contractId, amount: 5_000_000n };
+    const receiverBalances = (limit: string | null) => async (id: string) => {
+      if (id !== RECEIVER.address) throw new Error(`unexpected account ${id}`);
+      if (limit === null) throw new NotFoundError('Not Found', {});
+      const usdcLine = { asset_type: 'credit_alphanum4', asset_code: 'USDC', asset_issuer: USDC_ISSUER, balance: '0', limit };
+      return { balances: limit === '' ? [] : [usdcLine] } as never;
+    };
+
+    chain._loadAccountData = receiverBalances(StellarAsset.TRUST_LINE_MAX_LIMIT);
+    const tx = await chain.createTransferUnsignedTransaction(request);
+    expect((Operation.fromXDRObject(tx.operations[0]) as Operation.Payment).amount).toBe('0.5000000');
+
+    for (const limit of ['', '1000', null]) {
+      chain._loadAccountData = receiverBalances(limit);
+      await expect(chain.createTransferUnsignedTransaction(request)).rejects.toMatchObject({
+        kind: ChainErrorKinds.InvalidArgument,
+        message: expect.stringContaining('needs a prerequisite the receiver must handle first'),
+      });
+    }
   });
 
   it('getTransfersFromDiagnosisEvents extracts SEP-41 transfers', () => {

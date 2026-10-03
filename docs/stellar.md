@@ -2,6 +2,8 @@
 
 `@getomnichain/omnichain/stellar` is a port of omnichain-py's `impl/stellar` (`chains.py`, `assets.py`, `base.py`). Method names are camelCased, keyword arguments become one options object, and the behaviour — RPC calls, balance-change rules, fees, prerequisites, JSON wire format — is the Python behaviour. It is built on `@stellar/stellar-sdk` 15.x, the JS counterpart of Python's `stellar-sdk`.
 
+The family is imported from `@getomnichain/omnichain/stellar` only. Like Python's `import omnichain`, the root entry does not load it.
+
 ## Chains and assets
 
 | Export | Value |
@@ -86,7 +88,8 @@ External signers call `transaction.buildTransactionEnvelope(chain)`, sign `envel
 
 The TS `Chain` adapters (`getBalance`, `createTransferUnsignedTransaction`, `broadcast`, `verifyMessageSignature`, `getChainTipHeight`) wrap the methods above.
 - `createTransferUnsignedTransaction` rejects `isFullBalance`, because Python ignores the flag and the TS request has no amount when it is set.
-- `broadcast` maps a Horizon `400` on submit to `ChainError(BroadcastRejected)` with the result codes. Timeouts and other failures are `RpcError`, because the transaction may still land.
+- `createTransferUnsignedTransaction` can only return a transaction, so it refuses a transfer whose trustline prerequisite is still pending: the receiver has no trustline for the asset, or its limit is below the maximum, which is the check Python's `ensure_minimum_trust_line` makes. Use `createTransferTransaction` and handle the prerequisite with the receiver's wallet.
+- `broadcast` maps a Horizon `400` on submit to `ChainError(BroadcastRejected)` with the result codes, and so does a SEP-29 memo-required refusal, which stellar-sdk raises before sending anything. Timeouts and other failures are `RpcError`, because the transaction may still land.
 
 `addressFor` / `@IsAddress` validate `G…` / `M…` addresses without loading `@stellar/stellar-sdk`. `STELLAR_MAINNET_STABLECOINS_PEG` and `getWalletBalance` return an `AssetMap`, which looks assets up by value like a Python `dict`.
 
@@ -94,3 +97,11 @@ The TS `Chain` adapters (`getBalance`, `createTransferUnsignedTransaction`, `bro
 
 - Soroban RPC currently returns diagnostic events at the top level of `getTransaction`, not under `events`, so Python — and therefore this port — resolves historical Soroban transactions through the Stellar Expert API.
 - SDF's public Horizon keeps roughly one year of history; older transactions return `NotFound` from both SDKs.
+
+## Known issues shared with omnichain-py
+
+These are bugs in omnichain-py itself. They are kept for parity and tracked to be fixed in both SDKs:
+
+- RIN-316 — any contract can emit a `transfer` event carrying a SAC topic and pose as USDC / XLM in status, and `resolveAsset` returns XLM for any contract whose `name()` is `"native"`.
+- RIN-319 — a decimals fallback of 7 is cached after an RPC error, and Horizon effects are read from the first page (200) only.
+- The ID of a muxed `M…` receiver is stripped to its `G…` account when a transfer is built.

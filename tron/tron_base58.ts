@@ -2,7 +2,9 @@ import { createHash } from 'node:crypto';
 
 import bs58 from 'bs58';
 
+import { bytesFromHex } from '../bytes_from_hex.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { pyDecodeUtf8 } from '../python_builtins.ts';
 
 export const TRON_ADDRESS_PREFIX_BYTE = 0x41;
 
@@ -44,4 +46,52 @@ export function b58decodeCheck(value: string): Uint8Array {
     }
   }
   return new Uint8Array(payload);
+}
+
+function badAddress(raw: unknown): ChainError {
+  return new ChainError(
+    ChainErrorKinds.InvalidAddress,
+    `Bad Tron address: ${typeof raw === 'string' ? JSON.stringify(raw) : String(raw)}`,
+    typeof raw === 'string' ? { address: raw } : {},
+  );
+}
+
+export function toBase58CheckAddress(raw: string | Uint8Array): string {
+  if (typeof raw === 'string') {
+    if (raw.length === 0) throw badAddress(raw);
+    if (raw[0] === 'T' && raw.length === 34) {
+      try {
+        b58decodeCheck(raw);
+      } catch (err) {
+        throw new ChainError(ChainErrorKinds.InvalidAddress, 'bad base58check format', { address: raw }, err);
+      }
+      return raw;
+    }
+    if (raw.length === 42) {
+      if (raw.startsWith('0x')) {
+        return b58encodeCheck(Uint8Array.of(TRON_ADDRESS_PREFIX_BYTE, ...bytesFromHex(raw.slice(2))));
+      }
+      return b58encodeCheck(bytesFromHex(raw));
+    }
+    if (raw.startsWith('0x') && raw.length === 44) {
+      return b58encodeCheck(bytesFromHex(raw.slice(2)));
+    }
+    throw badAddress(raw);
+  }
+  if (raw.length === 21 && raw[0] === TRON_ADDRESS_PREFIX_BYTE) {
+    return b58encodeCheck(raw);
+  }
+  if (raw.length === 20) {
+    return b58encodeCheck(Uint8Array.of(TRON_ADDRESS_PREFIX_BYTE, ...raw));
+  }
+  return toBase58CheckAddress(pyDecodeUtf8(raw));
+}
+
+export function isBase58CheckAddress(value: string): boolean {
+  if (typeof value !== 'string' || value.length === 0 || value[0] !== 'T') return false;
+  try {
+    return b58decodeCheck(value).length === 21;
+  } catch {
+    return false;
+  }
 }

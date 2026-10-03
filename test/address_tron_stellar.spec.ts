@@ -11,6 +11,7 @@ import { IsAddress } from '../is_address.decorator.ts';
 import { StellarAddress } from '../stellar/stellar_address.ts';
 import { isValidStellarEd25519PublicKey, isValidStellarMed25519PublicKey } from '../stellar/stellar_strkey.ts';
 import { TronAddress } from '../tron/tron_address.ts';
+import { TronMainnet } from '../tron/tron_chains.ts';
 import { toHexAddress } from '../tron/tron_keys.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -34,24 +35,29 @@ function dto(chainId: number, token: string): DtoUnderTest {
   return value;
 }
 
-describe('addressFor on Tron accepts only a canonical T… address (prefix 0x41)', () => {
+describe('addressFor on Tron accepts what Python validate_wallet_address + format_wallet_address accept', () => {
   it('accepts a valid base58check T address and keeps it verbatim', () => {
     const address = addressFor(CHAIN_ID_TRON_MAINNET, TRON_USDT_CONTRACT);
     expect(address).toBeInstanceOf(TronAddress);
     expect(address.canonical()).toBe(TRON_USDT_CONTRACT);
   });
 
+  it('accepts a T address with another prefix byte, as Python does', () => {
+    expect(addressFor(CHAIN_ID_TRON_MAINNET, TRON_WRONG_PREFIX).canonical()).toBe(TRON_WRONG_PREFIX);
+    expect(TronMainnet.validateAddress(TRON_WRONG_PREFIX)).toBe(true);
+  });
+
   it.each([
     ['tronpy hex form 41…', toHexAddress(TRON_USDT_CONTRACT)],
     ['EVM 0x form', `0x${toHexAddress(TRON_USDT_CONTRACT).slice(2)}`],
     ['0x41… form', `0x${toHexAddress(TRON_USDT_CONTRACT)}`],
-    ['T address with prefix byte 0x42', TRON_WRONG_PREFIX],
     ['bad checksum', `${TRON_USDT_CONTRACT.slice(0, -1)}u`],
     ['trailing whitespace', `${TRON_USDT_CONTRACT}\n`],
     ['empty string', ''],
   ])('rejects the %s', (_label, raw) => {
     expect(() => addressFor(CHAIN_ID_TRON_MAINNET, raw)).toThrow(/Invalid Tron address/);
     expect(tryCanonicalizeAddress(CHAIN_ID_TRON_MAINNET, raw)).toBe(raw);
+    expect(TronMainnet.validateAddress(raw)).toBe(false);
   });
 
   it('@IsAddress rejects an EVM-shaped value on a Tron chain', () => {
@@ -111,5 +117,26 @@ describe('addressFor on Stellar uses an SDK-free StrKey check', () => {
     expect(visited.has(join(ROOT, 'stellar', 'stellar_address.ts'))).toBe(true);
     expect(visited.has(join(ROOT, 'tron', 'tron_address.ts'))).toBe(true);
     expect(heavyImports).toEqual([]);
+  });
+
+  it('the root entry does not load the Stellar or Tron families, as Python\'s `import omnichain` does not', () => {
+    const visited = new Set<string>();
+    const stellarSdkImports: string[] = [];
+    const visit = (file: string): void => {
+      if (visited.has(file)) return;
+      visited.add(file);
+      const source = readFileSync(file, 'utf8');
+      for (const match of source.matchAll(/^(?:import|export)(?!\s+type)[^;]*?from '([^']+)';/gms)) {
+        const specifier = match[1];
+        if (specifier.startsWith('@stellar/')) stellarSdkImports.push(`${file} -> ${specifier}`);
+        if (specifier.startsWith('.')) visit(join(dirname(file), specifier));
+      }
+    };
+    visit(join(ROOT, 'index.ts'));
+    expect(visited.has(join(ROOT, 'stellar', 'index.ts'))).toBe(false);
+    expect(visited.has(join(ROOT, 'tron', 'index.ts'))).toBe(false);
+    expect(visited.has(join(ROOT, 'stellar', 'stellar_chain.ts'))).toBe(false);
+    expect(visited.has(join(ROOT, 'tron', 'tron_chain.ts'))).toBe(false);
+    expect(stellarSdkImports).toEqual([]);
   });
 });
