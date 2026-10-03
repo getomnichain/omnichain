@@ -98,7 +98,7 @@ describe('StellarWallet derivation (Python TestStellarWalletGenerationMnemonic)'
     ["m/44'/148'/0'", 'GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX'],
     ["m/44'/148'/1'", 'GDVSYYTUAJ3ACHTPQNSTQBDQ4LDHQCMNY4FCEQH5TJUMSSLWQSTG42MV'],
   ])('%s -> %s', (path, expected) => {
-    expect(StellarWallet.fromMnemonic(MNEMONIC, path).address).toBe(expected);
+    expect(StellarWallet.fromMnemonic(MNEMONIC, { derivationPath: path }).address).toBe(expected);
   });
 
   it('default derivation path is account 0', () => {
@@ -112,13 +112,13 @@ describe('StellarWallet derivation (Python TestStellarWalletGenerationMnemonic)'
   });
 
   it('passphrase changes the derived account', () => {
-    expect(StellarWallet.fromMnemonic(MNEMONIC, "m/44'/148'/0'", 'secret').address).not.toBe(
+    expect(StellarWallet.fromMnemonic(MNEMONIC, { derivationPath: "m/44'/148'/0'", passphrase: 'secret' }).address).not.toBe(
       'GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX',
     );
   });
 
   it.each(["m/44'/148'/0'/0'", "m/44'/148'/0", "m/44'/60'/0'"])('rejects derivation path %s', (path) => {
-    expect(() => StellarWallet.fromMnemonic(MNEMONIC, path)).toThrow(/derivation path/);
+    expect(() => StellarWallet.fromMnemonic(MNEMONIC, { derivationPath: path })).toThrow(/derivation path/);
   });
 
   it('derivationPath() enforces SLIP-0010 hardened-only m/44\'/148\'/account\'', () => {
@@ -156,7 +156,7 @@ describe('StellarWallet SEP-53 signatures (Python TestStellarWalletMessageSignat
       'f7240563e18f48ac6a58015a74aacf0d3e337c3c0f6591e927ec0b88183e2ba9f7824bdae20d0d92101b8fc374b9a3ad2586ddabfec844a7d5d039b294045804',
     ],
   ])('%s signs "Hello World!" exactly like stellar-sdk', (path, expected) => {
-    const signed = StellarWallet.fromMnemonic(MNEMONIC, path).signMessage(RAW_MESSAGE);
+    const signed = StellarWallet.fromMnemonic(MNEMONIC, { derivationPath: path }).signMessage(RAW_MESSAGE);
     expect(signed).toBeInstanceOf(StellarSignedMessage);
     expect(signed.signature).toBe(expected);
   });

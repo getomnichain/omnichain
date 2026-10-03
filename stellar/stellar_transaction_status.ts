@@ -7,7 +7,8 @@ import {
   TransactionStatusType,
   TransactionStatusTypes,
 } from '../transaction_status.ts';
-import { StellarTransactionFees } from './stellar_transactions.ts';
+import { StellarTransactionFees, pyMemoStr } from './stellar_transactions.ts';
+import { pyBalanceChangesRepr, pyStr } from '../python_repr.ts';
 
 export interface StellarTransactionStatusInit {
   chainId: number;
@@ -36,6 +37,14 @@ export class StellarTransactionStatus extends TransactionStatus {
     this.horizonPagingToken = init.horizonPagingToken ?? null;
     this.fees = init.fees ?? null;
     this.memo = init.memo ?? null;
+  }
+
+  toString(): string {
+    return (
+      `StellarTransactionStatus[chainId:${this.chainId}, status_type:${this.status}, fee:${pyStr(this.fees)}, ` +
+      `paging_token:${pyStr(this.horizonPagingToken)}, balance_changes:${pyBalanceChangesRepr(this.balanceChanges)}, ` +
+      `error:${this.error === null ? 'None' : (this.error.reason ?? this.error.code)}, memo:${this.memo === null ? 'None' : pyMemoStr(this.memo)})]`
+    );
   }
 
   static successful(args: {

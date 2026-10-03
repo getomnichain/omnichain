@@ -12,11 +12,13 @@ import { CHAIN_ID_TRON_MAINNET } from '../../chain_ids.ts';
 import { ChainErrorKinds } from '../../errors.ts';
 import { TronAsset } from '../tron_asset.ts';
 import { TRON_MAINNET_STABLECOINS_PEG, TRON_TRX } from '../tron_assets.ts';
-import { TronChain, TronSignedMessage } from '../tron_chain.ts';
+import { TronAddressUtils, TronChain, TronSignedMessage } from '../tron_chain.ts';
 import { TRONPY_USER_AGENT, TronClient, TronJson, TronTvmError } from '../tron_client.ts';
 import { TronContract } from '../tron_contract.ts';
-import { TronPrivateKey } from '../tron_keys.ts';
-import { TronHandledApprovePrerequisiteResponse } from '../tron_transactions.ts';
+import { tronAbiDecodeSingle, tronAbiEncodeSingle } from '../tron_abi.ts';
+import { TronPrivateKey, TronPublicKey, TronSignature } from '../tron_keys.ts';
+import { TronHandledApprovePrerequisiteResponse, TronSignedTransaction, TronTransactionSimulationResult, tronTransactionFromJson } from '../tron_transactions.ts';
+import { TronTransactionStatus } from '../tron_transaction_status.ts';
 import { TronWallet } from '../tron_wallet.ts';
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -44,11 +46,16 @@ interface TronNodeStub {
   url: string;
   requests: RecordedRequest[];
   routes: Record<string, (body: TronJson) => TronJson>;
+  rawRoutes: Record<string, (res: ServerResponse) => void>;
   close: () => Promise<void>;
 }
 
 async function startNode(): Promise<TronNodeStub> {
-  const stub = { requests: [] as RecordedRequest[], routes: {} as Record<string, (body: TronJson) => TronJson> };
+  const stub = {
+    requests: [] as RecordedRequest[],
+    routes: {} as Record<string, (body: TronJson) => TronJson>,
+    rawRoutes: {} as Record<string, (res: ServerResponse) => void>,
+  };
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
     let raw = '';
     req.on('data', (chunk: Buffer) => (raw += chunk.toString('utf8')));
@@ -56,6 +63,11 @@ async function startNode(): Promise<TronNodeStub> {
       const path = (req.url ?? '').replace(/^\/trongrid/, '');
       const body = raw === '' ? {} : (JSON.parse(raw) as TronJson);
       stub.requests.push({ path, headers: req.headers, body });
+      const rawRoute = stub.rawRoutes[path];
+      if (rawRoute !== undefined) {
+        rawRoute(res);
+        return;
+      }
       const route = stub.routes[path];
       res.writeHead(route === undefined ? 404 : 200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(route === undefined ? {} : route(body)));
@@ -87,6 +99,70 @@ describe('TronClient over real HTTP mirrors tronpy AsyncHTTPProvider / AsyncTron
   beforeEach(() => {
     node.requests.length = 0;
     node.routes = {};
+    node.rawRoutes = {};
+  });
+
+  it('a connection dropped after the 200 headers is RpcError, and the broadcast adapter never calls it rejected', async () => {
+    node.rawRoutes['/wallet/broadcasttransaction'] = (res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.write('{"result": tr');
+      setTimeout(() => res.socket?.destroy(), 20);
+    };
+    const chain = new TronChain({ name: 'Tron Local Node', chainId: CHAIN_ID_TRON_MAINNET, defaultRpcUrl: node.url, explorerUrl: 'https://tronscan.org' });
+    const transaction = tronTransactionFromJson({ txID: 'aa'.repeat(32), raw_data: { expiration: Date.now() + 60_000 }, signature: ['00'], permission: null });
+    const signed = new TronSignedTransaction({ chainId: CHAIN_ID_TRON_MAINNET, signedTransaction: transaction });
+    const response = await chain.broadcastSignedTransaction(signed);
+    expect(response.broadcastError).toMatchObject({ kind: ChainErrorKinds.RpcError });
+    await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError, meta: { txHash: 'aa'.repeat(32) } });
+  });
+
+  it('the read timeout applies per chunk like httpx: a slow but live body succeeds, a stalled one is RpcError', async () => {
+    const client = new TronClient({ endpointUri: node.url, timeoutMs: 300 });
+    node.rawRoutes['/wallet/getnodeinfo'] = (res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      const parts = ['{"block": ', '"Num:7', ',ID:00"', '}'];
+      parts.forEach((part, i) => setTimeout(() => (i === parts.length - 1 ? res.end(part) : res.write(part)), 200 * (i + 1)));
+    };
+    await expect(client.getLatestBlockNumber()).resolves.toBe(7);
+    node.rawRoutes['/wallet/getnodeinfo'] = (res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.write('{"block": ');
+    };
+    await expect(client.getLatestBlockNumber()).rejects.toMatchObject({
+      kind: ChainErrorKinds.RpcError,
+      message: expect.stringContaining('timed out after 300 ms'),
+    });
+  });
+
+  it('never follows a redirect (httpx default) and never forwards the API key elsewhere', async () => {
+    const elsewhere = await startNode();
+    try {
+      elsewhere.routes['/wallet/getnodeinfo'] = () => ({ block: 'Num:1,ID:00' });
+      node.rawRoutes['/wallet/getnodeinfo'] = (res) => {
+        res.writeHead(307, { Location: `${elsewhere.url}wallet/getnodeinfo` });
+        res.end();
+      };
+      const client = new TronClient({ endpointUri: `${node.url}trongrid/`, apiKey: 'redirect-probe-key' });
+      const error = await client.getNodeInfo().catch((err: unknown) => err);
+      expect(error).toMatchObject({ kind: ChainErrorKinds.RpcError });
+      expect((error as Error).message).toContain("Redirect response '307 Temporary Redirect' for url");
+      expect((error as Error).message).toContain(`Redirect location: '${elsewhere.url}wallet/getnodeinfo'`);
+      expect(elsewhere.requests).toEqual([]);
+    } finally {
+      await elsewhere.close();
+    }
+  });
+
+  it('non-2xx answers carry httpx raise_for_status text; a TronGrid daily-limit 403 is tronpy\'s ApiError text', async () => {
+    const client = new TronClient({ endpointUri: `${node.url}trongrid/`, apiKey: 'k' });
+    await expect(client.getNodeInfo()).rejects.toThrow(
+      `Client error '404 Not Found' for url '${node.url}wallet/getnodeinfo'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404`,
+    );
+    node.rawRoutes['/wallet/getnodeinfo'] = (res) => {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end('{"Error": "Exceed the user daily usage (100000), the maximum query frequency is 1 time per second"}');
+    };
+    await expect(client.getNodeInfo()).rejects.toThrow(new Error('rate limit! please add more API keys'));
   });
 
   it('sends the tronpy User-Agent; the API key header only goes to trongrid endpoints', async () => {
@@ -261,5 +337,110 @@ describe('Python value semantics for Tron assets and __str__ texts', () => {
     expect(String(new TronHandledApprovePrerequisiteResponse({ skipped: true, txHash: null }))).toBe(
       'TronHandledApprovePrerequisiteResponse[skipped=True, tx_hash=None]',
     );
+  });
+});
+
+describe('TronTransaction.sign refuses exactly what tronpy AsyncTransaction.sign refuses', () => {
+  const key = new TronPrivateKey(new Uint8Array(32).fill(1));
+  const future = Date.now() + 60_000;
+  const tronpySignature = '2b3bc1430342aac2bcce687aaf5db4b8e0440421616fa3af77c3cba12832f4ea7f3d773f75cfc3733877a842ff0781696f477629c58817b9c61af9687647338300';
+  const sign = (payload: TronJson): string[] | null => tronTransactionFromJson(payload).sign(key).signature;
+
+  it.each([
+    ['missing expiration', { txID: 'aa'.repeat(32), raw_data: {}, signature: [], permission: null }, "'expiration'"],
+    ['string expiration', { txID: 'aa'.repeat(32), raw_data: { expiration: '99999999999999' }, signature: [], permission: null }, "'>=' not supported between instances of 'int' and 'str'"],
+    ['null expiration', { txID: 'aa'.repeat(32), raw_data: { expiration: null }, signature: [], permission: null }, "'>=' not supported between instances of 'int' and 'NoneType'"],
+    ['null txID', { txID: null, raw_data: { expiration: future }, signature: [], permission: null }, 'txID not calculated'],
+    ['integer txID', { txID: 123, raw_data: { expiration: future }, signature: [], permission: null }, 'fromhex() argument must be str, not int'],
+    ['31-byte txID', { txID: 'aa'.repeat(31), raw_data: { expiration: future }, signature: [], permission: null }, 'Message hash must be 32 bytes long.'],
+    ['null signature', { txID: 'aa'.repeat(32), raw_data: { expiration: future }, signature: null, permission: null }, "'NoneType' object has no attribute 'append'"],
+    ['string signature', { txID: 'aa'.repeat(32), raw_data: { expiration: future }, signature: 'abc', permission: null }, "'str' object has no attribute 'append'"],
+    ['permission without keys', { txID: 'aa'.repeat(32), raw_data: { expiration: future }, signature: [], permission: { x: 1 } }, "'keys'"],
+  ])('%s', (_label, payload, message) => {
+    expect(() => sign(payload as TronJson)).toThrow(new Error(message));
+  });
+
+  it('a key outside the permission list gives tronpy\'s BadKey text', () => {
+    const permission = { keys: [{ address: `41${'00'.repeat(20)}`, weight: 1 }] };
+    expect(() => sign({ txID: 'aa'.repeat(32), raw_data: { expiration: future }, signature: [], permission })).toThrow(
+      new Error(
+        `('provided private key is not in the permission list', 'provided ${key.publicKey.toBase58CheckAddress()}', "required {'keys': [{'address': '41${'00'.repeat(20)}', 'weight': 1}]}")`,
+      ),
+    );
+  });
+
+  it('payloads tronpy signs produce tronpy\'s exact signature', () => {
+    expect(sign({ txID: 'aa'.repeat(32), raw_data: { expiration: future + 0.5 }, signature: [], permission: null })).toEqual([tronpySignature]);
+    expect(sign({ txID: 'aa'.repeat(32), expiration: future, signature: [], permission: null })).toEqual([tronpySignature]);
+  });
+
+  it('fromJson reads the keys Python reads and fails like a KeyError when they are missing', () => {
+    expect(() => TronSignedTransaction.fromJson({ type: 'TronSignedTransaction', chain_id: 1 })).toThrow(new Error("'signed_transaction'"));
+    expect(() => TronSignedTransaction.fromJson({ type: 'TronSignedTransaction', chain_id: 1, signed_transaction: null })).toThrow(
+      new Error("'NoneType' object is not iterable"),
+    );
+  });
+});
+
+describe('tronAbi encode/decode is tronpy trx_abi (eth_abi 5.2 strict + Tron addresses), from a tronpy-generated fixture', () => {
+  interface AbiFixture {
+    decode: Array<{ type: string; hex: string; value?: unknown; error?: string }>;
+    encode: Array<{ type: string; args: unknown; hex?: string; error?: string }>;
+  }
+  const abi = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'tronpy_abi.json'), 'utf8')) as AbiFixture;
+  const untag = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(untag);
+    if (value !== null && typeof value === 'object' && 'int' in value) return BigInt((value as { int: string }).int);
+    if (value !== null && typeof value === 'object' && 'bytes' in value) return Buffer.from((value as { bytes: string }).bytes, 'hex');
+    return value;
+  };
+  const normalize = (value: unknown): unknown => (value instanceof Uint8Array ? Buffer.from(value) : Array.isArray(value) ? value.map(normalize) : value);
+
+  it.each(abi.decode.map((c) => [`${c.type} ${c.hex.slice(0, 24)}`, c] as const))('decode %s', (_label, c) => {
+    if (c.error !== undefined) expect(() => tronAbiDecodeSingle(c.type, Buffer.from(c.hex, 'hex'))).toThrow(new Error(c.error));
+    else expect(normalize(tronAbiDecodeSingle(c.type, Buffer.from(c.hex, 'hex')))).toEqual(normalize(untag(c.value)));
+  });
+
+  it.each(abi.encode.map((c) => [`${c.type} ${JSON.stringify(c.args).slice(0, 40)}`, c] as const))('encode %s', (_label, c) => {
+    if (c.error !== undefined) expect(() => tronAbiEncodeSingle(c.type, untag(c.args))).toThrow(new Error(c.error));
+    else expect(tronAbiEncodeSingle(c.type, untag(c.args))).toBe(c.hex);
+  });
+
+  it('high-s signatures recover the same key tronpy recovers (8 vectors)', () => {
+    const vectors = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'tronpy_high_s.json'), 'utf8')) as Array<{
+      hash: string;
+      sig: string;
+      recovered: string;
+      signer: string;
+    }>;
+    for (const v of vectors) {
+      const signature = TronSignature.fromHex(v.sig);
+      expect(signature.recoverPublicKeyFromMsgHash(Buffer.from(v.hash, 'hex')).hex()).toBe(v.recovered);
+      expect(TronPublicKey.fromHex(v.signer).verifyMsgHash(Buffer.from(v.hash, 'hex'), signature)).toBe(true);
+    }
+  });
+});
+
+describe('lone surrogates are refused like Python str.encode, never signed as U+FFFD', () => {
+  it('signMessage raises; verifySignature of the surrogate message is false', () => {
+    expect(() => WALLET.signMessage('a\ud800')).toThrow(new Error("'utf-8' codec can't encode character '\\ud800' in position 1: surrogates not allowed"));
+    const replacementSignature = WALLET.signMessage('a\ufffd').signature;
+    expect(TronChain.verifySignature(WALLET.publicKey, 'a\ud800', new TronSignedMessage(replacementSignature))).toBe(false);
+  });
+});
+
+describe('round-2 parity: Tron __str__ texts and int(s, 16)', () => {
+  it('TronTransactionStatus / simulation / fees print like Python', () => {
+    expect(String(TronTransactionStatus.pending(CHAIN_ID_TRON_MAINNET))).toBe(
+      `TronTransactionStatus[chain_id=${CHAIN_ID_TRON_MAINNET}, status_type=Pending, inclusion_datetime_utc=None, fees=None, balance_changes=None]`,
+    );
+    const simulation = new TronTransactionSimulationResult({ chainId: CHAIN_ID_TRON_MAINNET, statusType: 'Failed', balanceChanges: new Map(), error: new Error('nope'), energyUsed: null });
+    expect(String(simulation)).toBe(`TronTransactionSimulationResult[chain_id=${CHAIN_ID_TRON_MAINNET}, status_type=Failed, balance_changes={}, energy_used=None, error=nope]`);
+  });
+
+  it('TronAddressUtils.isHex is int(s, 16)', () => {
+    expect(TronAddressUtils.isHex(' 0x_1F ')).toBe(true);
+    expect(TronAddressUtils.isHex('1__f')).toBe(false);
+    expect(TronAddressUtils.isHex('\u0663')).toBe(true);
   });
 });

@@ -5,7 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { Asset, Memo, Operation } from '@stellar/stellar-sdk';
 
 import { CHAIN_ID_STELLAR_MAINNET, CHAIN_ID_TRON_MAINNET } from '../chain_ids.ts';
+import { ChainErrorKinds } from '../errors.ts';
+import { UnsignedEvmTransaction } from '../evm/unsigned_evm_transaction.ts';
 import { AbstractSignedTransaction } from '../signed_transaction.ts';
+import { registerJsonTransactionType } from '../transaction_json.ts';
 import { UnsignedTransaction } from '../unsigned_transaction.ts';
 import { StellarSignedTransaction, StellarUnsignedTransaction } from '../stellar/stellar_transactions.ts';
 import { TronSignedTransaction, TronUnsignedTransaction, tronTransactionFromJson } from '../tron/tron_transactions.ts';
@@ -72,12 +75,35 @@ describe('JSON wire format is interchangeable with omnichain-py', () => {
   });
 
   it('rejects a signed payload on the unsigned base, unknown types, and mismatched concrete types', () => {
-    expect(() => UnsignedTransaction.fromJson(fixtures.stellar_signed)).toThrow(/not a unsigned transaction/);
-    expect(() => UnsignedTransaction.fromJson({ type: 'NopeTransaction', chain_id: 1 })).toThrow(/Unknown transaction JSON type/);
-    expect(() => UnsignedTransaction.fromJson({ chain_id: 1 })).toThrow(/missing a "type" field/);
-    expect(() => StellarUnsignedTransaction.fromJson(fixtures.tron_unsigned)).toThrow(/Cannot deserialize/);
-    expect(() => TronSignedTransaction.fromJson({ type: 'TronSignedTransaction' })).toThrow(/chain_id/);
-    expect(() => UnsignedTransaction.fromJson('[1,2]')).toThrow(/JSON object/);
+    expect(() => UnsignedTransaction.fromJson(fixtures.stellar_signed)).toThrow(
+      'StellarSignedTransaction is not a UnsignedTransaction, cannot deserialize it as one',
+    );
+    expect(() => UnsignedTransaction.fromJson({ type: 'NopeTransaction', chain_id: 1 })).toThrow(
+      "Unknown transaction JSON type 'NopeTransaction'. Known types: ['StellarSignedTransaction', 'StellarUnsignedTransaction', 'TronSignedTransaction', 'TronUnsignedTransaction']",
+    );
+    expect(() => UnsignedTransaction.fromJson({ chain_id: 1 })).toThrow("Transaction JSON payload is missing a 'type' field: {'chain_id': 1}");
+    expect(() => StellarUnsignedTransaction.fromJson(fixtures.tron_unsigned)).toThrow(
+      "Cannot deserialize a 'TronUnsignedTransaction' payload as StellarUnsignedTransaction",
+    );
+    expect(() => TronSignedTransaction.fromJson({ type: 'TronSignedTransaction' })).toThrow("TronSignedTransaction payload is missing a 'chain_id' field");
+    expect(() => TronSignedTransaction.fromJson({ type: 'TronSignedTransaction', chain_id: 1 })).toThrow(new Error("'signed_transaction'"));
+    expect(() => StellarSignedTransaction.fromJson({ type: 'StellarSignedTransaction', chain_id: 1, signed_xdr: 'AAAA' })).toThrow(
+      new Error("'network_passphrase'"),
+    );
+    expect(() => UnsignedTransaction.fromJson('[1,2]')).toThrow('Expected a JSON object (dict) or its serialized form, got list');
+    expect(() => UnsignedTransaction.fromJson('{bad')).toThrow(expect.objectContaining({ kind: ChainErrorKinds.InvalidArgument }));
+  });
+
+  it('a concrete class only reads its own payloads; a model without fromJson says so', () => {
+    expect(() => UnsignedEvmTransaction.fromJson(fixtures.tron_unsigned)).toThrow(
+      'TronUnsignedTransaction is not a UnsignedEvmTransaction, cannot deserialize it as one',
+    );
+    expect(() => registerJsonTransactionType(class TronUnsignedTransaction {
+      static readonly JSON_TYPE = 'TronUnsignedTransaction';
+      static fromJson(): unknown {
+        return null;
+      }
+    })).toThrow("Duplicate transaction JSON type 'TronUnsignedTransaction': already registered by TronUnsignedTransaction");
   });
 
   it('toJsonStr produces parseable JSON and EVM/Solana/UTXO models without JSON support throw clearly', () => {

@@ -12,6 +12,7 @@ import {
 import { CHAIN_ID_TRON_MAINNET } from '../chain_ids.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds, isChainError } from '../errors.ts';
+import { isPyInt, pyDecodeUtf8, pyEncodeUtf8, pyInt, pyItem } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
@@ -130,7 +131,7 @@ export const ZERO_RESET_APPROVAL_TRC20_ADDRESSES: Set<string> = new Set([
 
 export class TronAddressUtils {
   static isHex(value: string): boolean {
-    return /^\s*[-+]?(0[xX])?[0-9a-fA-F]+(_[0-9a-fA-F]+)*\s*$/.test(value);
+    return isPyInt(value, 16);
   }
 
   static hexToVisible(hexAddress: string): string {
@@ -455,7 +456,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
       return gasPricing.feeLimitSun;
     }
     if (!Object.values(FeePriority).includes(gasPricing)) {
-      throw new ChainError(ChainErrorKinds.InvalidArgument, `Unsupported gas_pricing ${JSON.stringify(gasPricing)}`, { chainId: this.chainId });
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `Unsupported gas_pricing ${pyRepr(gasPricing)}`, { chainId: this.chainId });
     }
     return DEFAULT_TRC20_TRANSFER_FEE_LIMIT_SUN;
   }
@@ -497,7 +498,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     if (!ok) {
       let message = apiMessage;
       if (typeof message === 'string' && /^[0-9a-fA-F]*$/.test(message) && message.length % 2 === 0) {
-        message = new TextDecoder('utf-8').decode(Buffer.from(message, 'hex'));
+        message = pyDecodeUtf8(Buffer.from(message, 'hex'), 'replace');
       }
       error = new Error(`Tron constant call failed: code=${pyRepr(apiCode)} message=${pyRepr(message)}`);
     }
@@ -537,8 +538,8 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
         { chainId: this.chainId },
       );
     }
-    const contracts = (transaction.transaction.rawData.contract as TronJson[] | undefined) ?? [];
-    if (contracts.length === 0) {
+    const contracts = pyItem(transaction.transaction.rawData, 'contract') as TronJson[];
+    if (!pyTruthy(contracts)) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
         `Tron unsigned transaction ${transaction.txId} has no contract entries`,
@@ -547,15 +548,15 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     }
     const entry = contracts[0];
 
-    if (entry.type === 'TriggerSmartContract') {
-      const triggerValue = (entry.parameter as TronJson).value as TronJson;
-      const rawData = String(triggerValue.data ?? '').toLowerCase();
+    if (pyItem(entry, 'type') === 'TriggerSmartContract') {
+      const triggerValue = pyItem(pyItem(entry, 'parameter'), 'value') as TronJson;
+      const rawData = String(pyItem(triggerValue, 'data') || '').toLowerCase();
       const callDataHex = rawData.startsWith('0x') ? rawData.slice(2) : rawData;
       let ownerB58: string;
       let contractB58: string;
       try {
-        ownerB58 = TronAddressUtils.hexToVisible(String(triggerValue.owner_address));
-        contractB58 = TronAddressUtils.hexToVisible(String(triggerValue.contract_address));
+        ownerB58 = TronAddressUtils.hexToVisible(pyItem(triggerValue, 'owner_address') as string);
+        contractB58 = TronAddressUtils.hexToVisible(pyItem(triggerValue, 'contract_address') as string);
       } catch (err) {
         return new TronTransactionSimulationResult({
           chainId: this.chainId,
@@ -621,7 +622,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     }
     const dataHex = String(log.data || '').replace(/^[0x]+/, '');
     if (!dataHex) return null;
-    const value = BigInt(`0x${dataHex}`);
+    const value = pyInt(dataHex, 16);
     let contract: string | null;
     try {
       contract = TronChain._toBase58CheckAny(String(log.address || ''));
@@ -843,7 +844,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
           ? publicKey
           : TronPublicKey.fromHex(String(publicKey).startsWith('0x') ? String(publicKey).slice(2) : String(publicKey));
       const signature = TronSignature.fromHex(signedMessage.signature);
-      return resolvedPublicKey.verifyMsg(new TextEncoder().encode(message), signature);
+      return resolvedPublicKey.verifyMsg(pyEncodeUtf8(message), signature);
     } catch {
       return false;
     }
@@ -908,7 +909,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     if (error instanceof ChainError) {
       throw new ChainError(error.kind, error.message, { chainId: this.chainId, txHash: response.txHash }, error);
     }
-    throw new ChainError(ChainErrorKinds.BroadcastRejected, `Tron broadcast failed: ${error.message}`, { chainId: this.chainId, txHash: response.txHash }, error);
+    throw new ChainError(ChainErrorKinds.RpcError, `Tron broadcast failed: ${error.message}`, { chainId: this.chainId, txHash: response.txHash }, error);
   }
 
   async getChainTipHeight(): Promise<number> {
@@ -918,7 +919,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
   async verifyMessageSignature(req: VerifyMessageSignatureRequest): Promise<boolean> {
     try {
       const signature = TronSignature.fromHex(req.signature.startsWith('0x') ? req.signature.slice(2) : req.signature);
-      const recovered = signature.recoverPublicKeyFromMsg(new TextEncoder().encode(req.message));
+      const recovered = signature.recoverPublicKeyFromMsg(pyEncodeUtf8(req.message));
       return recovered.toBase58CheckAddress() === toBase58CheckAddress(req.signer);
     } catch {
       return false;
@@ -927,7 +928,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
 
   private assertOwnAsset(asset: TronAsset): void {
     if (!(asset instanceof TronAsset)) {
-      throw new ChainError(ChainErrorKinds.InvalidArgument, `Invalid asset ${String(asset)} of type ${typeof asset}, expected TronAsset`, {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `Invalid asset ${String(asset)} of type ${pyTypeRepr(asset)}, expected TronAsset`, {
         chainId: this.chainId,
       });
     }

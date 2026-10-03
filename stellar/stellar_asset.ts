@@ -3,6 +3,7 @@ import { Decimal } from 'decimal.js';
 
 import { AbstractAssetBalance } from '../asset_balance.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { getRegisteredAsset, registerAsset, searchRegisteredAsset } from '../asset_registry.ts';
 import { pyStr } from '../python_repr.ts';
 import { Token } from '../token.ts';
 
@@ -89,6 +90,15 @@ export class StellarAsset extends Token {
     this.issuer = issuer;
     this.contractId = contractId;
     this.networkPassphrase = init.networkPassphrase;
+    registerAsset(this);
+  }
+
+  static searchRegisteredAsset(chainId: number, identifier: string | null): StellarAsset | null {
+    return searchRegisteredAsset(chainId, identifier) as StellarAsset | null;
+  }
+
+  static getRegisteredAsset(chainId: number, symbol: string, identifier: string | null): StellarAsset | null {
+    return getRegisteredAsset(chainId, symbol, identifier) as StellarAsset | null;
   }
 
   isNative(): boolean {

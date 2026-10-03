@@ -1,10 +1,11 @@
-import { AbiCoder, ParamType, keccak256, toUtf8Bytes } from 'ethers';
+import { keccak256, toUtf8Bytes } from 'ethers';
 
 import { bytesFromHex } from '../bytes_from_hex.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { TronClient, TronJson } from './tron_client.ts';
 import { TronTransactionBuilder, TronTrx } from './tron_transaction_builder.ts';
-import { bytesToHex, isTronAddress, toBase58CheckAddress, toHexAddress, toTvmAddress } from './tron_keys.ts';
+import { tronAbiDecodeSingle, tronAbiEncodeSingle } from './tron_abi.ts';
+import { toHexAddress } from './tron_keys.ts';
 
 export const TRON_ZERO_OWNER_ADDRESS = '410000000000000000000000000000000000000000';
 
@@ -23,7 +24,6 @@ export interface TronAbiEntry {
   stateMutability?: string;
 }
 
-const abiCoder = AbiCoder.defaultAbiCoder();
 const TRC_TOKEN_TYPE = /(^|[(,])trcToken(?=$|[[),])/;
 
 export class TronContractMethod {
@@ -121,18 +121,16 @@ export class TronContractMethod {
         `wrong number of arguments, require ${this.inputs.length} got ${args.length}`,
       );
     }
-    const types = tronpyParamTypes(this.inputs.map(formatAbiType), 'Encoder');
-    const values = this.inputs.map((input, i) => toAbiValue(input, args[i]));
-    return abiCoder.encode(types, values).slice(2);
+    assertTronpyCodable(this.inputs.map(formatAbiType), 'Encoder');
+    return tronAbiEncodeSingle(this.inputType, args);
   }
 
   parseOutput(raw: string): unknown {
-    const types = tronpyParamTypes(this.outputs.map(formatAbiType), 'Decoder');
-    const decoded = abiCoder.decode(types, bytesFromHex(raw));
-    const values = this.outputs.map((output, i) => fromAbiValue(output, decoded[i]));
-    if (this.outputs.length === 1) return values[0];
+    assertTronpyCodable(this.outputs.map(formatAbiType), 'Decoder');
+    const parsed = tronAbiDecodeSingle(this.outputType, bytesFromHex(raw)) as unknown[];
+    if (this.outputs.length === 1) return parsed[0];
     if (this.outputs.length === 0) return null;
-    return values;
+    return parsed;
   }
 }
 
@@ -232,29 +230,11 @@ function formatAbiType(entry: TronAbiParameter): string {
   return type;
 }
 
-function tronpyParamTypes(types: string[], coder: 'Encoder' | 'Decoder'): ParamType[] {
+function assertTronpyCodable(types: string[], coder: 'Encoder' | 'Decoder'): void {
   if (types.some((type) => TRC_TOKEN_TYPE.test(type))) {
     throw new ChainError(
       ChainErrorKinds.InvalidArgument,
       `Cannot create UnsignedInteger${coder} for type 'trcToken': expected type with base 'uint'`,
     );
   }
-  return types.map((type) => ParamType.from(type));
-}
-
-function toAbiValue(param: TronAbiParameter, value: unknown): unknown {
-  if (param.type === 'address') {
-    if (typeof value !== 'string' || !isTronAddress(value)) {
-      throw new ChainError(ChainErrorKinds.InvalidAddress, `Value ${String(value)} is not a Tron address`);
-    }
-    return `0x${bytesToHex(toTvmAddress(value))}`;
-  }
-  return value;
-}
-
-function fromAbiValue(param: TronAbiParameter, value: unknown): unknown {
-  if (param.type === 'address' && typeof value === 'string') {
-    return toBase58CheckAddress(value.toLowerCase());
-  }
-  return value;
 }

@@ -1,11 +1,13 @@
 import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { pyEncodeUtf8, pyItem } from '../python_builtins.ts';
+import { pyRepr, pyTypeName } from '../python_repr.ts';
 import { TronClient, TronJson } from './tron_client.ts';
 import { TronPrivateKey, bytesToHex, hexToBytes, toHexAddress } from './tron_keys.ts';
 
 export interface TronTransactionJson {
   txID: string;
   raw_data: TronJson;
-  signature: string[];
+  signature: string[] | null;
   permission: TronJson | null;
   [key: string]: unknown;
 }
@@ -15,7 +17,7 @@ export interface TronTransactionInit {
   client?: TronClient | null;
   txid?: string;
   permission?: TronJson | null;
-  signature?: string[];
+  signature?: string[] | null;
 }
 
 export function currentTimestampMs(): number {
@@ -24,7 +26,7 @@ export function currentTimestampMs(): number {
 
 export class TronTransaction {
   rawData: TronJson;
-  signature: string[];
+  signature: string[] | null;
   txid: string;
   permission: TronJson | null;
   client: TronClient | null;
@@ -32,10 +34,10 @@ export class TronTransaction {
   constructor(init: TronTransactionInit) {
     const source = init.rawData;
     this.rawData = ('raw_data' in source ? source.raw_data : source) as TronJson;
-    this.signature = 'signature' in source ? [...((source.signature as string[] | null) ?? [])] : [...(init.signature ?? [])];
+    this.signature = 'signature' in source ? (source.signature as string[] | null) : init.signature || [];
     this.client = init.client ?? null;
-    this.txid = 'txID' in source ? String(source.txID) : (init.txid ?? '');
-    this.permission = 'permission' in source ? ((source.permission as TronJson | null) ?? null) : (init.permission ?? null);
+    this.txid = 'txID' in source ? (source.txID as string) : (init.txid ?? '');
+    this.permission = 'permission' in source ? (source.permission as TronJson | null) : (init.permission ?? null);
   }
 
   static async create(init: TronTransactionInit): Promise<TronTransaction> {
@@ -74,25 +76,42 @@ export class TronTransaction {
     }
     if (this.permission !== null) {
       const addressOfKey = privateKey.publicKey.toHexAddress();
-      const keys = (this.permission.keys as Array<{ address: string }> | undefined) ?? [];
-      if (!keys.some((key) => key.address === addressOfKey)) {
-        throw new ChainError(
-          ChainErrorKinds.InvalidArgument,
-          `provided private key is not in the permission list: provided ${privateKey.publicKey.toBase58CheckAddress()}, required ${JSON.stringify(this.permission)}`,
-        );
+      const keys = pyItem(this.permission, 'keys') as unknown[];
+      if (!keys.some((key) => pyItem(key as TronJson, 'address') === addressOfKey)) {
+        const reasons = [
+          'provided private key is not in the permission list',
+          `provided ${privateKey.publicKey.toBase58CheckAddress()}`,
+          `required ${pyRepr(this.permission)}`,
+        ];
+        throw new ChainError(ChainErrorKinds.InvalidArgument, `(${reasons.map(pyRepr).join(', ')})`);
       }
     }
-    this.signature.push(privateKey.signMsgHash(hexToBytes(this.txid)).hex());
+    if (typeof this.txid !== 'string') {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `fromhex() argument must be str, not ${pyTypeName(this.txid)}`);
+    }
+    const messageHash = hexToBytes(this.txid);
+    if (messageHash.length !== 32) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, 'Message hash must be 32 bytes long.');
+    }
+    if (!Array.isArray(this.signature)) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `'${pyTypeName(this.signature)}' object has no attribute 'append'`);
+    }
+    this.signature.push(privateKey.signMsgHash(messageHash).hex());
     return this;
   }
 
-  setSignature(signature: string[]): this {
+  setSignature(signature: string[] | null): this {
     this.signature = signature;
     return this;
   }
 
   get isExpired(): boolean {
-    return currentTimestampMs() >= Number(this.rawData.expiration);
+    const expiration = pyItem(this.rawData, 'expiration');
+    if (typeof expiration === 'boolean') return currentTimestampMs() >= Number(expiration);
+    if (typeof expiration !== 'number') {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `'>=' not supported between instances of 'int' and '${pyTypeName(expiration)}'`);
+    }
+    return currentTimestampMs() >= expiration;
   }
 
   async broadcast(): Promise<TronJson & { txid: string }> {
@@ -148,7 +167,7 @@ export class TronTransactionBuilder {
   }
 
   memo(memo: string | Uint8Array): this {
-    const data = typeof memo === 'string' ? new TextEncoder().encode(memo) : memo;
+    const data = typeof memo === 'string' ? pyEncodeUtf8(memo) : memo;
     this.rawData.data = bytesToHex(data);
     return this;
   }

@@ -1,6 +1,6 @@
 import type { Chain } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
-import { pyRepr, pyStr } from '../python_repr.ts';
+import { pyBalanceChangesRepr, pyRepr, pyStr, pyTypeName } from '../python_repr.ts';
 import { NetworkType } from '../network_type.ts';
 import { AbstractBroadcastTransactionResponse, AbstractSignedTransaction } from '../signed_transaction.ts';
 import {
@@ -8,6 +8,7 @@ import {
   JsonTransactionInput,
   jsonTransactionEnvelope,
   parseJsonTransactionEnvelope,
+  jsonPayloadItem,
   registerJsonTransactionType,
 } from '../transaction_json.ts';
 import { AbstractHandledPrerequisiteResponse, AbstractTransactionPrerequisite } from '../transaction_prerequisite.ts';
@@ -24,6 +25,9 @@ import { toBase58CheckAddress } from './tron_keys.ts';
 import { TronTransaction } from './tron_transaction_builder.ts';
 
 export function tronTransactionFromJson(transactionJson: TronJson): TronTransaction {
+  if (transactionJson === null || typeof transactionJson !== 'object' || Array.isArray(transactionJson)) {
+    throw new ChainError(ChainErrorKinds.InvalidArgument, `'${pyTypeName(transactionJson)}' object is not iterable`);
+  }
   return new TronTransaction({ rawData: { ...transactionJson }, client: null });
 }
 
@@ -54,8 +58,8 @@ export class TronUnsignedTransaction extends UnsignedTransaction {
   static fromJson(data: JsonTransactionInput): TronUnsignedTransaction {
     const payload = parseJsonTransactionEnvelope(data, TronUnsignedTransaction.JSON_TYPE);
     return new TronUnsignedTransaction({
-      chainId: payload.chain_id as number,
-      transaction: tronTransactionFromJson(payload.transaction as TronJson),
+      chainId: jsonPayloadItem(payload, 'chain_id') as number,
+      transaction: tronTransactionFromJson(jsonPayloadItem(payload, 'transaction') as TronJson),
     });
   }
 
@@ -97,14 +101,14 @@ export class TronSignedTransaction extends AbstractSignedTransaction {
   static fromJson(data: JsonTransactionInput): TronSignedTransaction {
     const payload = parseJsonTransactionEnvelope(data, TronSignedTransaction.JSON_TYPE);
     return new TronSignedTransaction({
-      chainId: payload.chain_id as number,
-      signedTransaction: tronTransactionFromJson(payload.signed_transaction as TronJson),
+      chainId: jsonPayloadItem(payload, 'chain_id') as number,
+      signedTransaction: tronTransactionFromJson(jsonPayloadItem(payload, 'signed_transaction') as TronJson),
     });
   }
 }
 
-registerJsonTransactionType(TronUnsignedTransaction.JSON_TYPE, 'unsigned', (payload) => TronUnsignedTransaction.fromJson(payload));
-registerJsonTransactionType(TronSignedTransaction.JSON_TYPE, 'signed', (payload) => TronSignedTransaction.fromJson(payload));
+registerJsonTransactionType(TronUnsignedTransaction);
+registerJsonTransactionType(TronSignedTransaction);
 
 export class TronBroadcastTransactionResponse extends AbstractBroadcastTransactionResponse {
   private readonly _chain: Chain;
@@ -150,6 +154,13 @@ export class TronTransactionSimulationResult extends AbstractTransactionSimulati
   }) {
     super(init);
     this.energyUsed = init.energyUsed;
+  }
+
+  toString(): string {
+    return (
+      `TronTransactionSimulationResult[chain_id=${this.chainId}, status_type=${this.statusType}, ` +
+      `balance_changes=${pyBalanceChangesRepr(this.balanceChanges)}, energy_used=${pyStr(this.energyUsed)}, error=${pyStr(this.error)}]`
+    );
   }
 }
 

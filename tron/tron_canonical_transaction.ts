@@ -184,6 +184,9 @@ export interface TronCanonicalTransaction extends Extra {
   visible: boolean | null;
 }
 
+const PYDANTIC_TRIM = /^[\t\n\v\f\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\t\n\v\f\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g;
+const PYDANTIC_INT_STRING = /^[+-]?\d+(_\d+)*(\.0+)?$/;
+
 class Validator {
   constructor(private readonly path: string) {}
 
@@ -206,10 +209,19 @@ class Validator {
   }
 
   int(value: unknown): number {
-    if (typeof value === 'number' && Number.isInteger(value)) return value;
-    if (typeof value === 'string' && /^\s*[-+]?\d+\s*$/.test(value)) return Number.parseInt(value, 10);
     if (typeof value === 'boolean') return value ? 1 : 0;
-    return this.fail('expected an integer');
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return this.fail('Input should be a finite number');
+      if (!Number.isInteger(value)) return this.fail('Input should be a valid integer, got a number with a fractional part');
+      return value;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.replace(PYDANTIC_TRIM, '');
+      if (!PYDANTIC_INT_STRING.test(trimmed)) return this.fail('Input should be a valid integer, unable to parse string as an integer');
+      const parsed = Number.parseInt(trimmed.split('.')[0].replace(/_/g, ''), 10);
+      return parsed === 0 ? 0 : parsed;
+    }
+    return this.fail('Input should be a valid integer');
   }
 
   bool(value: unknown): boolean {

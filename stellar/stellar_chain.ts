@@ -34,7 +34,8 @@ import {
 } from '../chain.base.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
-import { pyTypeRepr } from '../python_repr.ts';
+import { pyDecodeUtf8, pyEncodeUtf8 } from '../python_builtins.ts';
+import { pyRepr, pyTypeRepr } from '../python_repr.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
 import { AbstractSignedTransaction } from '../signed_transaction.ts';
@@ -64,6 +65,7 @@ import {
   parseSignedStellarEnvelope,
   parseStellarExpertTransactionInfo,
   stellarOperationAmount,
+  stellarTextMemo,
   toClassicStellarAccountId,
 } from './stellar_transactions.ts';
 
@@ -73,7 +75,7 @@ const HORIZON_DEFAULT_BASE_FEE_STROOPS = 100;
 const PythonDecimal = Decimal.clone({ precision: 28, rounding: Decimal.ROUND_HALF_EVEN });
 
 export function stellarMessageHash(message: string | Uint8Array): Buffer {
-  const messageBytes = typeof message === 'string' ? Buffer.from(message, 'utf8') : Buffer.from(message);
+  const messageBytes = typeof message === 'string' ? Buffer.from(pyEncodeUtf8(message)) : Buffer.from(message);
   return createHash('sha256').update(Buffer.concat([Buffer.from(STELLAR_MESSAGE_PREFIX, 'utf8'), messageBytes])).digest();
 }
 
@@ -104,6 +106,11 @@ export interface StellarCreateTransferTransactionRequest {
   isFullBalance?: boolean;
   memoText?: string | null;
   gasPricing?: GasPricingType;
+}
+
+export interface StellarBalanceChangeFilters {
+  filteredWallets?: ReadonlySet<string> | null;
+  filteredAssets?: ReadonlyArray<StellarAsset> | null;
 }
 
 export interface StellarCreateExactInSwapTransactionRequest {
@@ -208,7 +215,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     registerNonEvmChain(init.chainId, NetworkType.STELLAR);
   }
 
-  get horizonServer(): Horizon.Server {
+  get asyncHorizonServer(): Horizon.Server {
     if (this._horizonServer === null) {
       this.horizonUrl = this.horizonUrl || this._loadHorizonUrl();
       this._horizonServer = new Horizon.Server(this.horizonUrl, { allowHttp: this.horizonUrl.startsWith('http://') });
@@ -216,7 +223,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     return this._horizonServer;
   }
 
-  get sorobanServer(): rpc.Server {
+  get asyncSorobanServer(): rpc.Server {
     if (this._sorobanServer === null) {
       this.sorobanRpcUrl = this.sorobanRpcUrl || this._loadSorobanRpcUrl();
       this._sorobanServer = new rpc.Server(this.sorobanRpcUrl, { allowHttp: this.sorobanRpcUrl.startsWith('http://') });
@@ -330,7 +337,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
   }
 
   async getBaseFee(): Promise<number> {
-    const latestLedger = await this.horizonServer.ledgers().order('desc').limit(1).call();
+    const latestLedger = await this.asyncHorizonServer.ledgers().order('desc').limit(1).call();
     const records = (latestLedger as { records?: Array<{ base_fee_in_stroops?: unknown }> }).records;
     if (records === undefined) {
       throw new ChainError(ChainErrorKinds.RpcError, `Horizon latest-ledger response on ${this.name} has no _embedded records`, {
@@ -359,7 +366,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       return Math.max(STELLAR_MIN_BASE_FEE_STROOPS, gasPricing.baseFeeStroops);
     }
     if (!Object.values(FeePriority).includes(gasPricing)) {
-      throw new ChainError(ChainErrorKinds.InvalidArgument, `Unsupported gas_pricing ${JSON.stringify(gasPricing)}`, { chainId: this.chainId });
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `Unsupported gas_pricing ${pyRepr(gasPricing)}`, { chainId: this.chainId });
     }
     const baseFee = await this.getBaseFee();
     const scaled = Math.trunc(baseFee * StellarChain._FEE_PRIORITY_MULTIPLIERS[gasPricing]);
@@ -452,10 +459,16 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
   }
 
   async _callHostFunction(req: StellarCallHostFunctionRequest): Promise<xdr.ScVal[]> {
+    if (!StrKey.isValidContract(req.contractId)) {
+      throw new ChainError(ChainErrorKinds.InvalidTokenIdentifier, '`contract_id` is invalid.', {
+        chainId: this.chainId,
+        identifier: req.contractId,
+      });
+    }
     const account =
       req.accountId === undefined || req.accountId === null
         ? new Account(this._randomCallAccountId, '0')
-        : await this.sorobanServer.getAccount(req.accountId);
+        : await this.asyncSorobanServer.getAccount(req.accountId);
     const tx = new TransactionBuilder(account, { fee: '300', networkPassphrase: this.networkPassphrase })
       .addOperation(
         Operation.invokeContractFunction({
@@ -466,7 +479,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       )
       .setTimeout(300)
       .build();
-    const sim = await this.sorobanServer.simulateTransaction(tx);
+    const sim = await this.asyncSorobanServer.simulateTransaction(tx);
     if (rpc.Api.isSimulationError(sim)) {
       throw new ChainError(
         ChainErrorKinds.SimulationFailed,
@@ -506,7 +519,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
   }
 
   async _loadAccountData(accountId: string): Promise<Horizon.ServerApi.AccountRecord> {
-    return this.horizonServer.accounts().accountId(accountId).call();
+    return this.asyncHorizonServer.accounts().accountId(accountId).call();
   }
 
   async getAssetBalance(asset: StellarAsset, ownerAddress: string): Promise<Decimal> {
@@ -620,7 +633,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       sourceAccountId: req.sourceAddress,
       operations: req.operations,
       baseFee: req.baseFee ?? null,
-      memo: req.memoText ? Memo.text(req.memoText) : null,
+      memo: req.memoText ? stellarTextMemo(req.memoText) : null,
     });
   }
 
@@ -690,7 +703,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       sourceAccountId: senderClassicAddress,
       operations: [transferOp],
       baseFee,
-      memo: memoText ? Memo.text(memoText) : null,
+      memo: memoText ? stellarTextMemo(memoText) : null,
     });
 
     const prerequisites: AbstractTransactionPrerequisite[] = [];
@@ -709,7 +722,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const receiverClassicAddress = StellarChain.toClassicAccountId(req.receiverAddress);
     const sendAmount = new Decimal(req.sendAmount.toString()).toFixed();
 
-    const sendPath = await this.horizonServer
+    const sendPath = await this.asyncHorizonServer
       .strictSendPaths(req.sendAsset.toSdkAsset(), sendAmount, [req.receiveAsset.toSdkAsset()])
       .call();
     const records = sendPath.records;
@@ -756,9 +769,9 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
 
   _balanceChangesFromOperations(
     tx: Transaction,
-    filteredWallets: ReadonlySet<string> | null = null,
-    filteredAssets: ReadonlyArray<StellarAsset> | null = null,
+    opts: StellarBalanceChangeFilters = {},
   ): NestedBalanceChanges {
+    const { filteredWallets = null, filteredAssets = null } = opts;
     const includeNative = filteredAssets === null || filteredAssets.some((a) => a.isNative());
     const filteredAssetsByIdentifier = filteredAssets === null ? null : this.identifierIndex(filteredAssets);
 
@@ -837,7 +850,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
   ): Promise<StellarTransactionStatus> {
     let txResp: Horizon.ServerApi.TransactionRecord;
     try {
-      txResp = await this.horizonServer.transactions().transaction(txHash).call();
+      txResp = await this.asyncHorizonServer.transactions().transaction(txHash).call();
     } catch (err) {
       if (err instanceof NotFoundError) {
         return StellarTransactionStatus.notFound(this.chainId, { code: 'NOT_FOUND', reason: (err as Error).message });
@@ -845,7 +858,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       throw this.rpcError(`Horizon transaction lookup failed for ${txHash}`, err, txHash, this.horizonUrl);
     }
 
-    const ledger = await this.horizonServer.ledgers().ledger(txResp.ledger_attr).call();
+    const ledger = await this.asyncHorizonServer.ledgers().ledger(txResp.ledger_attr).call();
     const inclusionAt = new Date((ledger as unknown as { closed_at: string }).closed_at);
 
     const raw = txResp as unknown as Record<string, unknown>;
@@ -893,7 +906,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     if (!successful) {
       const extras = raw.extras as { result_codes?: unknown } | undefined;
       const resultCodes = extras?.result_codes || raw.result_codes;
-      const errorMessage = resultCodes ? `Stellar transaction failed: ${JSON.stringify(resultCodes)}` : 'Stellar transaction failed';
+      const errorMessage = resultCodes ? `Stellar transaction failed: ${pyRepr(resultCodes)}` : 'Stellar transaction failed';
       return StellarTransactionStatus.failed({
         chainId: this.chainId,
         inclusionAt,
@@ -917,7 +930,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
 
       let sorobanTxResp: rpc.Api.RawGetTransactionResponse | null;
       try {
-        sorobanTxResp = await this.sorobanServer._getTransaction(txHash);
+        sorobanTxResp = await this.asyncSorobanServer._getTransaction(txHash);
       } catch {
         sorobanTxResp = null;
       }
@@ -941,8 +954,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       if (hasSorobanTxResp && sorobanTxResp !== null) {
         const balanceChanges = await this.getBalanceChangesFromDiagnosisEvents(
           (sorobanDiagnosticEvents as string[]).map((d) => xdr.DiagnosticEvent.fromXDR(d, 'base64')),
-          filteredWallets,
-          filteredAssets,
+          { filteredWallets, filteredAssets },
         );
         this.upsertFee(balanceChanges, fees);
         if (sorobanTxResp.status === rpc.Api.GetTransactionStatus.SUCCESS) {
@@ -978,8 +990,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
         const txResult = xdr.TransactionResult.fromXDR(stellarExpertResult.result, 'base64');
         const balanceChanges = await this.getBalanceChangesFromDiagnosisEvents(
           txMeta.v4().diagnosticEvents(),
-          filteredWallets,
-          filteredAssets,
+          { filteredWallets, filteredAssets },
         );
         this.upsertFee(balanceChanges, fees);
         const resultCode = txResult.result().switch();
@@ -989,7 +1000,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
         return StellarTransactionStatus.failed({
           chainId: this.chainId,
           inclusionAt,
-          error: { code: resultCode.name, reason: `Stellar transaction failed: ${resultCode.name}` },
+          error: { code: resultCode.name, reason: `Stellar transaction failed: ${resultCode.value}` },
           fees,
           memo,
         });
@@ -1002,22 +1013,22 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       }
     }
 
-    const balanceChanges = await this._effectsToBalanceChanges(txHash, filteredWallets, filteredAssets);
+    const balanceChanges = await this._effectsToBalanceChanges(txHash, { filteredWallets, filteredAssets });
     this.upsertFee(balanceChanges, fees);
     return StellarTransactionStatus.successful({ chainId: this.chainId, inclusionAt, balanceChanges, fees, memo });
   }
 
   async _effectsToBalanceChanges(
     txHash: string,
-    filteredWallets: ReadonlySet<string> | null = null,
-    filteredAssets: ReadonlyArray<StellarAsset> | null = null,
+    opts: StellarBalanceChangeFilters = {},
   ): Promise<NestedBalanceChanges> {
+    const { filteredWallets = null, filteredAssets = null } = opts;
     const includeNative = filteredAssets === null || filteredAssets.some((a) => a.isNative());
     const filteredAssetsByIdentifier = filteredAssets === null ? null : this.identifierIndex(filteredAssets);
 
     const balanceChanges: NestedBalanceChanges = new Map();
 
-    const page = await this.horizonServer.effects().forTransaction(txHash).limit(200).call();
+    const page = await this.asyncHorizonServer.effects().forTransaction(txHash).limit(200).call();
     const records = (page.records ?? []) as unknown as HorizonEffectRecord[];
 
     const buildAsset = (rec: HorizonEffectRecord): StellarAsset | null => {
@@ -1083,6 +1094,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
         if (topics[0].switch().name === 'scvSymbol') {
           const topic0 = topics[0].sym().toString();
           if (topic0 === 'transfer') {
+            if (topics.length < 3) throw new ChainError(ChainErrorKinds.TransactionDecodeFailed, 'list index out of range');
             const transferFrom = Address.fromScVal(topics[1]).toString();
             const transferTo = Address.fromScVal(topics[2]).toString();
             let contractSacCode: string | null;
@@ -1121,9 +1133,9 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
 
   async getBalanceChangesFromDiagnosisEvents(
     diagnosisEvents: xdr.DiagnosticEvent[],
-    filteredWallets: ReadonlySet<string> | null = null,
-    filteredAssets: ReadonlyArray<StellarAsset> | null = null,
+    opts: StellarBalanceChangeFilters = {},
   ): Promise<NestedBalanceChanges> {
+    const { filteredWallets = null, filteredAssets = null } = opts;
     const tokenTransfers = StellarChain.getTransfersFromDiagnosisEvents(diagnosisEvents);
     const balanceChanges: NestedBalanceChanges = new Map();
     for (const t of tokenTransfers) {
@@ -1164,7 +1176,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const envelope = await transaction.buildTransactionEnvelope(this);
 
     if (transaction.isSorobanInvokeContractTransaction) {
-      const sim = await this.sorobanServer.simulateTransaction(envelope);
+      const sim = await this.asyncSorobanServer.simulateTransaction(envelope);
       if (rpc.Api.isSimulationError(sim) && sim.error) {
         return new StellarTransactionSimulationResult({
           chainId: this.chainId,
@@ -1173,7 +1185,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
           error: new Error(sim.error),
         });
       }
-      const balanceChanges = await this.getBalanceChangesFromDiagnosisEvents(sim.events, filteredWallets, filteredAssets);
+      const balanceChanges = await this.getBalanceChangesFromDiagnosisEvents(sim.events, { filteredWallets, filteredAssets });
       const minResourceFee = rpc.Api.isSimulationSuccess(sim) ? sim.minResourceFee : undefined;
       return new StellarTransactionSimulationResult({
         chainId: this.chainId,
@@ -1191,7 +1203,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     }
 
     try {
-      const balanceChanges = this._balanceChangesFromOperations(envelope, filteredWallets, filteredAssets);
+      const balanceChanges = this._balanceChangesFromOperations(envelope, { filteredWallets, filteredAssets });
       const memo = envelope.memo;
       const feePayer = StellarChain._muxedToClassic(envelope.source);
       const feeStroops = Math.trunc(Number(envelope.fee));
@@ -1237,7 +1249,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     }
     const envelope = parseSignedStellarEnvelope(signedTransaction.signedXdr, this.networkPassphrase);
     try {
-      const response = await this.horizonServer.submitTransaction(envelope);
+      const response = await this.asyncHorizonServer.submitTransaction(envelope);
       return new StellarBroadcastTransactionResponse({ chain: this, txHash: response.hash });
     } catch (err) {
       return new StellarBroadcastTransactionResponse({
@@ -1268,7 +1280,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
 
   async getAccountNextSequence(walletAddress: string): Promise<bigint> {
     const classicAddress = StellarChain.toClassicAccountId(walletAddress);
-    const account = await this.horizonServer.loadAccount(classicAddress);
+    const account = await this.asyncHorizonServer.loadAccount(classicAddress);
     return BigInt(account.sequenceNumber()) + 1n;
   }
 
@@ -1333,7 +1345,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
   }
 
   async getChainTipHeight(): Promise<number> {
-    const page = await this.horizonServer.ledgers().order('desc').limit(1).call();
+    const page = await this.asyncHorizonServer.ledgers().order('desc').limit(1).call();
     return Number(page.records[0].sequence);
   }
 
@@ -1387,7 +1399,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
 
   private assertStellarAsset(asset: StellarAsset): void {
     if (!(asset instanceof StellarAsset)) {
-      throw new ChainError(ChainErrorKinds.InvalidArgument, `Invalid asset ${String(asset)} of type ${typeof asset}, expected StellarAsset.`, {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, `Invalid asset ${String(asset)} of type ${pyTypeRepr(asset)}, expected StellarAsset.`, {
         chainId: this.chainId,
       });
     }
@@ -1428,7 +1440,7 @@ export function scvalToUtf8String(value: xdr.ScVal): string {
     throw new ChainError(ChainErrorKinds.TransactionDecodeFailed, `Expected an SCV_STRING value, got ${value.switch().name}`);
   }
   const raw = value.str();
-  return typeof raw === 'string' ? raw : Buffer.from(raw).toString('utf8');
+  return pyDecodeUtf8(typeof raw === 'string' ? Buffer.from(raw, 'utf8') : Buffer.from(raw));
 }
 
 export function scvalToInt128(value: xdr.ScVal): bigint {

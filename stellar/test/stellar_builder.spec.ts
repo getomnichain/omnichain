@@ -37,8 +37,8 @@ import {
 import { StellarWallet } from '../stellar_wallet.ts';
 
 const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const SENDER = StellarWallet.fromMnemonic(MNEMONIC, "m/44'/148'/0'");
-const RECEIVER = StellarWallet.fromMnemonic(MNEMONIC, "m/44'/148'/1'");
+const SENDER = StellarWallet.fromMnemonic(MNEMONIC, { derivationPath: "m/44'/148'/0'" });
+const RECEIVER = StellarWallet.fromMnemonic(MNEMONIC, { derivationPath: "m/44'/148'/1'" });
 const CONTRACT = 'CCLWL5NYSV2WJQ3VBU44AMDHEVKEPA45N2QP2LL62O3JVKPGWWAQUVAG';
 const USDC_ISSUER = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
 
@@ -97,8 +97,8 @@ function fakeChain(overrides: Partial<Fakes> = {}): { chain: StellarChain; fakes
     },
     simulateTransaction: async () => fakes.simulation,
   };
-  Object.defineProperty(chain, 'horizonServer', { get: () => horizon });
-  Object.defineProperty(chain, 'sorobanServer', { get: () => soroban });
+  Object.defineProperty(chain, 'asyncHorizonServer', { get: () => horizon });
+  Object.defineProperty(chain, 'asyncSorobanServer', { get: () => soroban });
   return { chain, fakes };
 }
 
@@ -307,9 +307,9 @@ describe('StellarChain.simulateTransaction', () => {
     expect(hr(all, SENDER.address, chain.nativeAsset.identifier)).toBe('-5');
     expect(hr(all, RECEIVER.address, chain.nativeAsset.identifier)).toBe('19.9');
     expect(hr(all, RECEIVER.address, usdc.identifier)).toBe('1');
-    const onlyUsdc = chain._balanceChangesFromOperations(tx, null, [usdc]);
+    const onlyUsdc = chain._balanceChangesFromOperations(tx, { filteredAssets: [usdc] });
     expect(hr(onlyUsdc, RECEIVER.address, chain.nativeAsset.identifier)).toBeUndefined();
-    const onlyReceiver = chain._balanceChangesFromOperations(tx, new Set([RECEIVER.address]));
+    const onlyReceiver = chain._balanceChangesFromOperations(tx, { filteredWallets: new Set([RECEIVER.address]) });
     expect(onlyReceiver.has(SENDER.address)).toBe(false);
   });
 

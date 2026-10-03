@@ -47,7 +47,7 @@ describe('TronWallet derivation (Python TestTronWalletGeneration)', () => {
     ["m/44'/195'/1'/0/0", 'TLrpNTBuCpGMrB9TyVwgEhNVRhtWEQPHh4'],
     ["m/44'/195'/1'/0/1", 'TUT9qMmtJtnjJhpazPaLraWSTaThhBpWyR'],
   ])('%s -> %s', (path, expected) => {
-    expect(TronWallet.fromMnemonic(MNEMONIC, path).address).toBe(expected);
+    expect(TronWallet.fromMnemonic(MNEMONIC, { derivationPath: path }).address).toBe(expected);
   });
 
   it('default path is m/44\'/195\'/0\'/0/0', () => {
@@ -65,7 +65,7 @@ describe('TronWallet derivation (Python TestTronWalletGeneration)', () => {
   });
 
   it.each(["m/44'/60'/0'/0/0", "m/49'/195'/0'/0/0", "m/44'/195'/0/0/0", 'garbage'])('rejects derivation path %s', (path) => {
-    expect(() => TronWallet.fromMnemonic(MNEMONIC, path)).toThrow(/derivation path/);
+    expect(() => TronWallet.fromMnemonic(MNEMONIC, { derivationPath: path })).toThrow(/derivation path/);
   });
 
   it('derivationPath() builds the BIP44 path and enforces purpose/coin type', () => {
@@ -103,7 +103,7 @@ describe('TronWallet message signatures (Python TestTronWalletMessageSignature)'
       '1dc3ba529e94bea2cda72054f840b7f81d7a7c8fba536c4f199e9db8986c24e06dea71e37d7c163e52f36c9e58fa62800c3f541e3d58ed37dc4f6f1f1ae40d6800',
     ],
   ])('%s signs "Hello World!" exactly like tronpy', (path, expected) => {
-    const signed = TronWallet.fromMnemonic(MNEMONIC, path).signMessage(RAW_MESSAGE);
+    const signed = TronWallet.fromMnemonic(MNEMONIC, { derivationPath: path }).signMessage(RAW_MESSAGE);
     expect(signed).toBeInstanceOf(TronSignedMessage);
     expect(signed.signature).toBe(expected);
   });

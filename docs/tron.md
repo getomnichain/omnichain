@@ -69,10 +69,12 @@ const response = await TronMainnet.broadcastSignedTransaction(signed);
 | Any exception from `gettransactioninfobyid` (429, 5xx) is reported as `NotFound`; a failed `gettransactionbyid` is swallowed | Only "not found" maps to `NotFound`; transport and API errors throw `ChainError` | A rate limit must not look like a dropped transaction |
 | `print()` debugging in `simulate_transaction` / `get_transaction_status` | Removed | Library code must not write to stdout |
 | tronpy falls back to its own shared TronGrid keys | Anonymous access without a configured key | Those keys belong to the tronpy project |
-| On TronGrid `403 "Exceed the user daily usage"` with a single key, tronpy sleeps 0.9 s and retries forever | `ChainError(RpcError)` | A library call must not hang |
+| On TronGrid `403 "Exceed the user daily usage"`, tronpy raises `ApiError('rate limit! please add more API keys')` and drops the key for the rest of the process | Same text as `ChainError(RpcError)`; the key is kept for later requests | One rate-limit window must not disable the client permanently |
 | `private_key_hex` / `_private_key` are plain attributes | `#private` fields; `wallet.privateKeyHex` still returns the key | `JSON.stringify` / `util.inspect` never print the key or the TronGrid API key |
 | `is_base58check_address` raises `ValueError` on a bad checksum | Returns `false`; callers raise their own error | TS predicates do not throw |
 | `logger.warning` for non-NORMAL `FeePriority` | No logging | The TS SDK has no logger |
+
+`TronClient` behaves like tronpy's httpx provider: it never follows redirects, it raises httpx's `raise_for_status` text on non-2xx responses, and its timeout restarts on every received chunk. Contract calls go through `tronAbiEncodeSingle` / `tronAbiDecodeSingle`, a port of tronpy's `trx_abi` (strict eth_abi decoding, Tron addresses inside arrays and tuples). `TronTransaction.sign` refuses the payloads tronpy's `AsyncTransaction.sign` refuses, with the same texts.
 
 Hex input (keys, signatures, txIDs, node messages) is parsed exactly like Python's `bytes.fromhex`: ASCII whitespace is skipped, `0x` is not hex, and errors report only a position. The TS `verifyMessageSignature` adapter additionally accepts TronWeb's `0x`-prefixed signatures.
 

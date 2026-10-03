@@ -59,7 +59,7 @@ if (!response.isBroadcastConfirmed) {
 
 External signers call `transaction.buildTransactionEnvelope(chain)`, sign `envelope.hash()` and submit `envelope.toXDR()` through `chain.broadcast(xdr)` (the TS `Chain` adapter, which throws on rejection) or wrap it in `StellarSignedTransaction` for `broadcastSignedTransaction` (which never throws and returns `broadcastError`).
 
-`StellarWallet` mirrors Python: `fromSecret`, `fromMnemonic(mnemonic, path, passphrase)` (English BIP-39 checked exactly like python-mnemonic, SLIP-0010 ed25519, hardened-only `m/44'/148'/<account>'`), `derivationPath()`, `ensureMinimumTrustLine`, `closeTrustLine`, `handleTransactionPrerequisite`, `signTransaction`, `signMessage` / `verifySignature` (SEP-53) and `requestTestnetFaucetStroops` (Friendbot).
+`StellarWallet` mirrors Python: `fromSecret`, `fromMnemonic(mnemonic, { derivationPath, passphrase })` (English BIP-39 checked exactly like python-mnemonic, SLIP-0010 ed25519, hardened-only `m/44'/148'/<account>'`), `derivationPath()`, `ensureMinimumTrustLine`, `closeTrustLine`, `handleTransactionPrerequisite`, `signTransaction`, `signMessage` / `verifySignature` (SEP-53) and `requestTestnetFaucetStroops` (Friendbot).
 
 ## Reading state
 
@@ -81,6 +81,7 @@ External signers call `transaction.buildTransactionEnvelope(chain)`, sign `envel
 | `secret_seed` / `_keypair` are plain attributes | `#private` fields; `wallet.secretSeed` still returns the seed | `JSON.stringify` / `util.inspect` of a wallet never print the seed |
 | A zero `Payment` amount or `dest_min` (100 % slippage) builds, and the network rejects it at submit | `ChainError(InvalidArgument)` at build time; other amount errors use stellar-sdk's texts | stellar-sdk JS cannot build a zero operation |
 | Soroban RPC response without an `events` object raises `AttributeError` | Falls back to Stellar Expert | Older RPC versions omit `events` |
+| stellar-sdk rejects an amount by its `Decimal` exponent (`Decimal('1.00000000')`, `'1E+8'`) | The value's decimal places are checked | `decimal.js` normalises trailing zeros and exponents |
 | `logger.info/warning` calls | No logging | The TS SDK has no logger |
 
 The TS `Chain` adapters (`getBalance`, `createTransferUnsignedTransaction`, `broadcast`, `verifyMessageSignature`, `getChainTipHeight`) wrap the methods above.

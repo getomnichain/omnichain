@@ -4,6 +4,7 @@ import { mnemonicToSeedBip39 } from '../bip39.ts';
 import type { Chain } from '../chain.base.ts';
 import { ChainType, WalletFamily } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { pyEncodeUtf8 } from '../python_builtins.ts';
 import { AbstractTransactionPrerequisite } from '../transaction_prerequisite.ts';
 import { UnsignedTransaction } from '../unsigned_transaction.ts';
 import { AbstractBip32StyleSingleAccountWallet, AbstractSignedMessage } from '../wallet.base.ts';
@@ -68,7 +69,8 @@ export class TronWallet extends AbstractBip32StyleSingleAccountWallet {
     return TronWallet.walletFamily();
   }
 
-  static fromMnemonic(mnemonicStr: string, derivationPath = "m/44'/195'/0'/0/0"): TronWallet {
+  static fromMnemonic(mnemonicStr: string, opts: { derivationPath?: string } = {}): TronWallet {
+    const derivationPath = opts.derivationPath ?? "m/44'/195'/0'/0/0";
     TronWallet.assertDerivationPath(derivationPath);
     return new TronWallet(TronWallet.derivePrivateKeyFromMnemonic(mnemonicStr, derivationPath));
   }
@@ -186,7 +188,7 @@ export class TronWallet extends AbstractBip32StyleSingleAccountWallet {
   }
 
   signMessage(message: string): TronSignedMessage {
-    return new TronSignedMessage(this.#privateKey.signMsg(new TextEncoder().encode(message)).hex());
+    return new TronSignedMessage(this.#privateKey.signMsg(pyEncodeUtf8(message)).hex());
   }
 
   verifySignature(message: string, signedMessage: AbstractSignedMessage): boolean {

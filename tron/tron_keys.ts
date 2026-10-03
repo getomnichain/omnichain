@@ -2,6 +2,7 @@ import { SigningKey, getBytes, keccak256 as ethersKeccak256 } from 'ethers';
 
 import { bytesFromHex } from '../bytes_from_hex.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { pyDecodeUtf8, pyEncodeUtf8 } from '../python_builtins.ts';
 import { TRON_ADDRESS_PREFIX_BYTE, b58decodeCheck, b58encodeCheck, tronSha256 } from './tron_base58.ts';
 
 export { TRON_ADDRESS_PREFIX_BYTE, b58decodeCheck, b58encodeCheck, tronSha256 } from './tron_base58.ts';
@@ -57,7 +58,7 @@ export function toBase58CheckAddress(raw: string | Uint8Array): string {
   if (raw.length === 20) {
     return b58encodeCheck(concatBytes(Uint8Array.of(TRON_ADDRESS_PREFIX_BYTE), raw));
   }
-  return toBase58CheckAddress(new TextDecoder().decode(raw));
+  return toBase58CheckAddress(pyDecodeUtf8(raw));
 }
 
 export function toHexAddress(raw: string | Uint8Array): string {
@@ -103,7 +104,7 @@ export function publicKeyToAddressBytes(publicKey: Uint8Array): Uint8Array {
 }
 
 export function hashTronMessage(message: string | Uint8Array): Uint8Array {
-  const messageBytes = typeof message === 'string' ? new TextEncoder().encode(message) : message;
+  const messageBytes = typeof message === 'string' ? pyEncodeUtf8(message) : message;
   const length = new TextEncoder().encode(String(messageBytes.length));
   return tronKeccak256(concatBytes(new TextEncoder().encode(TRON_MESSAGE_PREFIX), length, messageBytes));
 }
@@ -308,6 +309,7 @@ export class TronSignature {
   }
 
   private static recover(messageHash: Uint8Array, r: bigint, s: bigint, parity: number): TronPublicKey {
+    if (s > SECPK1_N / 2n) return TronSignature.recover(messageHash, r, SECPK1_N - s, parity ^ 1);
     const recovered = SigningKey.recoverPublicKey(messageHash, {
       r: `0x${r.toString(16).padStart(64, '0')}`,
       s: `0x${s.toString(16).padStart(64, '0')}`,

@@ -94,7 +94,9 @@ export class StellarWallet extends AbstractBip32StyleSingleAccountWallet {
     return new StellarWallet(secretSeed);
   }
 
-  static fromMnemonic(mnemonicStr: string, derivationPath = "m/44'/148'/0'", passphrase = ''): StellarWallet {
+  static fromMnemonic(mnemonicStr: string, opts: { derivationPath?: string; passphrase?: string | null } = {}): StellarWallet {
+    const derivationPath = opts.derivationPath ?? "m/44'/148'/0'";
+    const passphrase = opts.passphrase ?? '';
     const index = StellarWallet._indexFromDerivationPath(derivationPath);
     const rawEd25519Seed = deriveSep5Ed25519Seed(mnemonicToSeedSep5(mnemonicStr, passphrase), index);
     return new StellarWallet(Keypair.fromRawEd25519Seed(rawEd25519Seed).secret());

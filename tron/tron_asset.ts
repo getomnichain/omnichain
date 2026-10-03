@@ -1,15 +1,10 @@
 import { Decimal } from 'decimal.js';
 
 import { AbstractAssetBalance } from '../asset_balance.ts';
+import { getRegisteredAsset, registerAsset, searchRegisteredAsset } from '../asset_registry.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { Token } from '../token.ts';
 import { isBase58CheckAddress } from './tron_keys.ts';
-
-const tronAssetRegistry = new Map<string, TronAsset>();
-
-function registryKey(chainId: number, symbol: string, identifier: string | undefined): string {
-  return `${chainId}_${symbol}_${identifier ?? ''}`;
-}
 
 export class TronAsset extends Token {
   protected static override readonly allowsEmptySymbol = true;
@@ -40,18 +35,15 @@ export class TronAsset extends Token {
     }
     super(chainId, symbol, contractAddress ?? undefined, decimals);
     this.contractAddress = contractAddress;
-    tronAssetRegistry.set(registryKey(chainId, symbol, this.identifier), this);
+    registerAsset(this);
   }
 
   static searchRegisteredAsset(chainId: number, identifier: string | null): TronAsset | null {
-    const matches = [...tronAssetRegistry.values()].filter(
-      (a) => a.chainId === chainId && (a.identifier ?? null) === identifier,
-    );
-    return matches.length === 1 ? matches[0] : null;
+    return searchRegisteredAsset(chainId, identifier) as TronAsset | null;
   }
 
   static getRegisteredAsset(chainId: number, symbol: string, identifier: string | null): TronAsset | null {
-    return tronAssetRegistry.get(registryKey(chainId, symbol, identifier ?? undefined)) ?? null;
+    return getRegisteredAsset(chainId, symbol, identifier) as TronAsset | null;
   }
 
   isNative(): boolean {

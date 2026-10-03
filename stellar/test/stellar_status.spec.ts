@@ -57,8 +57,8 @@ function replayChain(overrides: { transactionError?: Error } = {}): StellarChain
       return r;
     },
   };
-  Object.defineProperty(chain, 'horizonServer', { get: () => horizon });
-  Object.defineProperty(chain, 'sorobanServer', { get: () => soroban });
+  Object.defineProperty(chain, 'asyncHorizonServer', { get: () => horizon });
+  Object.defineProperty(chain, 'asyncSorobanServer', { get: () => soroban });
   chain._getTransactionDataFromStellarExpert = async (token: string) => rec.expert[token] as never;
   chain._callHostFunction = async (req) => rec.hostCalls[`${req.contractId}:${req.functionName}`].map((v) => xdr.ScVal.fromXDR(v, 'base64'));
   return chain;

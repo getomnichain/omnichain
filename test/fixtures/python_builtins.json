@@ -1,0 +1,4976 @@
+{
+"decode": [
+{
+"hex": "efbbbf41efe08f41c1",
+"error": "'utf-8' codec can't decode byte 0xef in position 4: invalid continuation byte",
+"replace": "\ufeffA\ufffd\ufffd\ufffdA\ufffd"
+},
+{
+"hex": "bfc0",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "c1bfdf90e041c1ac",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\u07d0\ufffdA\ufffd\ufffd"
+},
+{
+"hex": "efa09fe080",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 3: invalid continuation byte",
+"replace": "\uf81f\ufffd\ufffd"
+},
+{
+"hex": "c1a0e0bff0f4f4",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bbf0df",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c2807f",
+"text": "\u0080\u007f",
+"replace": "\u0080\u007f"
+},
+{
+"hex": "bf41f5bbe0f4f0df",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffdA\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "8f8f",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "efbbbff490bfbf41c1",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffdA\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "c0df9fedc290a0df",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\u07df\ufffd\u0090\ufffd\ufffd"
+},
+{
+"hex": "315fc0c0ff",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 2: invalid start byte",
+"replace": "1_\ufffd\ufffd\ufffd"
+},
+{
+"hex": "41c1f0f5c2",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 1: invalid start byte",
+"replace": "A\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "eff4bfe07fefc1c0",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\u007f\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "edf5c1c0f0709f",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffdp\ufffd"
+},
+{
+"hex": "a0c28d7f9090c0",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\u008d\u007f\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbf80efdfc0ed",
+"error": "'utf-8' codec can't decode byte 0x80 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f0c08fffe380c0",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "a0e068f08fdff0",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffdh\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f0",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "ed07e09f90ed9f",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\u0007\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c05aefff9041ff",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffdZ\ufffd\ufffd\ufffdA\ufffd"
+},
+{
+"hex": "bf",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "8fff",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "bfe0",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "efbbbfef80f4f5df90f5e0",
+"error": "'utf-8' codec can't decode bytes in position 3-4: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\u07d0\ufffd\ufffd"
+},
+{
+"hex": "ef8ff5dfc29f",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\u009f"
+},
+{
+"hex": "edffc2",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f4ed",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "df909041f0",
+"error": "'utf-8' codec can't decode byte 0x90 in position 2: invalid start byte",
+"replace": "\u07d0\ufffdA\ufffd"
+},
+{
+"hex": "90ede0dfbf",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\u07ff"
+},
+{
+"hex": "90f4",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "90a0ef55f0",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffdU\ufffd"
+},
+{
+"hex": "ff9fc0f4bbe0f4bb",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbf41",
+"text": "\ufeffA",
+"replace": "\ufeffA"
+},
+{
+"hex": "f0ef9fc2",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "e27fca80f49fc180",
+"error": "'utf-8' codec can't decode byte 0xe2 in position 0: invalid continuation byte",
+"replace": "\ufffd\u007f\u0280\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c1f08f",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "e0df7fc09f",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\u007f\ufffd\ufffd"
+},
+{
+"hex": "ef7fc1f0",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\u007f\ufffd\ufffd"
+},
+{
+"hex": "41f0",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 1: unexpected end of data",
+"replace": "A\ufffd"
+},
+{
+"hex": "6ae0f4",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 1: invalid continuation byte",
+"replace": "j\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "efbbbfefc1",
+"error": "'utf-8' codec can't decode byte 0xef in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "f5bf90e0e0a0",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f47f9fffbf41",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffd\u007f\ufffd\ufffd\ufffdA"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "e0bf90df",
+"error": "'utf-8' codec can't decode byte 0xdf in position 3: unexpected end of data",
+"replace": "\u0fd0\ufffd"
+},
+{
+"hex": "ef",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "419fa0c0af",
+"error": "'utf-8' codec can't decode byte 0x9f in position 1: invalid start byte",
+"replace": "A\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f5c0a0bfc0e090",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbf7ff4c0efe09fed",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 4: invalid continuation byte",
+"replace": "\ufeff\u007f\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "e0a0f49ff4bfc1",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "9f7f7f80f480eded",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\u007f\u007f\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "90a07fa0f5",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\u007f\ufffd\ufffd"
+},
+{
+"hex": "7fefdfed",
+"error": "'utf-8' codec can't decode byte 0xef in position 1: invalid continuation byte",
+"replace": "\u007f\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f5e090ff",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c8bbef41ffef",
+"error": "'utf-8' codec can't decode byte 0xef in position 2: invalid continuation byte",
+"replace": "\u023b\ufffdA\ufffd\ufffd"
+},
+{
+"hex": "ef7ff4c0c0c2a041",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\u007f\ufffd\ufffd\ufffd\u00a0A"
+},
+{
+"hex": "41a0dfe08ff4",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 1: invalid start byte",
+"replace": "A\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbf41ff7f90bbf4f4f5",
+"error": "'utf-8' codec can't decode byte 0xff in position 4: invalid start byte",
+"replace": "\ufeffA\ufffd\u007f\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "ed80",
+"error": "'utf-8' codec can't decode bytes in position 0-1: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "8feda0df80bb8080",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\u07c0\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bf41c1ed80",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffdA\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "80efbbf5",
+"error": "'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "8fffe09fc194",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c0df9fa0bb",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\u07df\ufffd\ufffd"
+},
+{
+"hex": "efbbbfbf80f5eff4ef",
+"error": "'utf-8' codec can't decode byte 0xbf in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bbbbc0",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "ffc1",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "e0efc2f041",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffdA"
+},
+{
+"hex": "edf0bfdfc1c2c1ff",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "ef9f6d",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffdm"
+},
+{
+"hex": "efbbbf7fa0f4ff7e",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 4: invalid start byte",
+"replace": "\ufeff\u007f\ufffd\ufffd\ufffd~"
+},
+{
+"hex": "efdfe09ff5f4efbf",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "fff5e08fbfa0c0c0",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bff0",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "24efedef",
+"error": "'utf-8' codec can't decode byte 0xef in position 1: invalid continuation byte",
+"replace": "$\ufffd\ufffd\ufffd"
+},
+{
+"hex": "8fefdff5efbb41bf",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffdA\ufffd"
+},
+{
+"hex": "80c1c2efe0",
+"error": "'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c2ed9ff541e0158f",
+"error": "'utf-8' codec can't decode byte 0xc2 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffdA\ufffd\u0015\ufffd"
+},
+{
+"hex": "efbbbfc17ff0dff0f48f",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\u007f\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c0",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "7fc1f4",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 1: invalid start byte",
+"replace": "\u007f\ufffd\ufffd"
+},
+{
+"hex": "df4148f0efefdf",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: invalid continuation byte",
+"replace": "\ufffdAH\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "90",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "f5f5",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "dfbfffbf2cf590a0",
+"error": "'utf-8' codec can't decode byte 0xff in position 2: invalid start byte",
+"replace": "\u07ff\ufffd\ufffd,\ufffd\ufffd\ufffd"
+},
+{
+"hex": "ef80a0dfff90a0",
+"error": "'utf-8' codec can't decode byte 0xdf in position 3: invalid continuation byte",
+"replace": "\uf020\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c18fc0a0efef41",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdA"
+},
+{
+"hex": "efbbbfeff041f0",
+"error": "'utf-8' codec can't decode byte 0xef in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffdA\ufffd"
+},
+{
+"hex": "eff0f041bfff",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffdA\ufffd\ufffd"
+},
+{
+"hex": "f421bb41",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffd!\ufffdA"
+},
+{
+"hex": "30c2c0",
+"error": "'utf-8' codec can't decode byte 0xc2 in position 1: invalid continuation byte",
+"replace": "0\ufffd\ufffd"
+},
+{
+"hex": "ed8ffff4c28fc082",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\u008f\ufffd\ufffd"
+},
+{
+"hex": "ef90efffc0c0ed",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c031",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd1"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "a0edc141df",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffdA\ufffd"
+},
+{
+"hex": "efbbbfeff080",
+"error": "'utf-8' codec can't decode byte 0xef in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "e0",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "bf518ff4a07fc1",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffdQ\ufffd\ufffd\ufffd\u007f\ufffd"
+},
+{
+"hex": "7f",
+"text": "\u007f",
+"replace": "\u007f"
+},
+{
+"hex": "90c0edbf6ef0",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffdn\ufffd"
+},
+{
+"hex": "bb90ef",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "9f04",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\u0004"
+},
+{
+"hex": "ffc2c1a0f4",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfdfa0",
+"text": "\ufeff\u07e0",
+"replace": "\ufeff\u07e0"
+},
+{
+"hex": "bb",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "bf41ed",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffdA\ufffd"
+},
+{
+"hex": "41f041",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 1: invalid continuation byte",
+"replace": "A\ufffdA"
+},
+{
+"hex": "c2",
+"error": "'utf-8' codec can't decode byte 0xc2 in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "f4a0e0",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "edf441c1c2809f",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffdA\ufffd\u0080\ufffd"
+},
+{
+"hex": "f0ef80f4dfedbfc2",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "9f",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "efbbbf90bb90f5",
+"error": "'utf-8' codec can't decode byte 0x90 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f0ed8ff041a0",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffdA\ufffd"
+},
+{
+"hex": "e041ff49f0",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffdA\ufffdI\ufffd"
+},
+{
+"hex": "bb41e09f7f",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffdA\ufffd\ufffd\u007f"
+},
+{
+"hex": "a07fed",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\u007f\ufffd"
+},
+{
+"hex": "e07ff5f08f",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\u007f\ufffd\ufffd\ufffd"
+},
+{
+"hex": "80efefc1bb01a0",
+"error": "'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\u0001\ufffd"
+},
+{
+"hex": "7f",
+"text": "\u007f",
+"replace": "\u007f"
+},
+{
+"hex": "a0c1f4bbf0",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbf9f9f",
+"error": "'utf-8' codec can't decode byte 0x9f in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd"
+},
+{
+"hex": "f0dfefeff490c1",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "ef009f7fa0",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\u0000\ufffd\u007f\ufffd"
+},
+{
+"hex": "eff08fc1ef",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "e04190",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffdA\ufffd"
+},
+{
+"hex": "7fc190edc2",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 1: invalid start byte",
+"replace": "\u007f\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "9f7fc0",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\u007f\ufffd"
+},
+{
+"hex": "7ff0eff4",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 1: invalid continuation byte",
+"replace": "\u007f\ufffd\ufffd\ufffd"
+},
+{
+"hex": "9f90eff4",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbf41",
+"text": "\ufeffA",
+"replace": "\ufeffA"
+},
+{
+"hex": "9fc0ffef9f",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c09fc0bfe0bbf0bb",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bfbfffefc1ed9980",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ud640"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "dfef",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "c180907f418f92",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\u007fA\ufffd\ufffd"
+},
+{
+"hex": "c1",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "c0f0",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "efbbbf41edef31e08f3f80",
+"error": "'utf-8' codec can't decode byte 0xed in position 4: invalid continuation byte",
+"replace": "\ufeffA\ufffd\ufffd1\ufffd\ufffd?\ufffd"
+},
+{
+"hex": "bb9ff5f0a041a0e0",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffdA\ufffd\ufffd"
+},
+{
+"hex": "7f90bff0ff",
+"error": "'utf-8' codec can't decode byte 0x90 in position 1: invalid start byte",
+"replace": "\u007f\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c2f4c2",
+"error": "'utf-8' codec can't decode byte 0xc2 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "41c08fffef4190e0",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 1: invalid start byte",
+"replace": "A\ufffd\ufffd\ufffd\ufffdA\ufffd\ufffd"
+},
+{
+"hex": "f441dfc18fa0",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffdA\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "808fbff4f0",
+"error": "'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "8ff58feded8ff0ed",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbff5",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd"
+},
+{
+"hex": "bba0f49f",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "e09080ef",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f541c2c0c0bf8f",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffdA\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bfa0f0",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "a0",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "f0c07f",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\u007f"
+},
+{
+"hex": "8f7f8fed417f",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd\u007f\ufffd\ufffdA\u007f"
+},
+{
+"hex": "efbbbfbfedf4df7f",
+"error": "'utf-8' codec can't decode byte 0xbf in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd\u007f"
+},
+{
+"hex": "7f",
+"text": "\u007f",
+"replace": "\u007f"
+},
+{
+"hex": "7f7fff8f",
+"error": "'utf-8' codec can't decode byte 0xff in position 2: invalid start byte",
+"replace": "\u007f\u007f\ufffd\ufffd"
+},
+{
+"hex": "7f8fef41",
+"error": "'utf-8' codec can't decode byte 0x8f in position 1: invalid start byte",
+"replace": "\u007f\ufffd\ufffdA"
+},
+{
+"hex": "effff5f590",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "03",
+"text": "\u0003",
+"replace": "\u0003"
+},
+{
+"hex": "f4c2c2",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c090bb9ff07fedbb",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\u007f\ufffd\ufffd"
+},
+{
+"hex": "ed41c0f4a0c0807f",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffdA\ufffd\ufffd\ufffd\ufffd\ufffd\u007f"
+},
+{
+"hex": "efbbbfffdf80",
+"error": "'utf-8' codec can't decode byte 0xff in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\u07c0"
+},
+{
+"hex": "f48fef7fe0c241",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd\u007f\ufffd\ufffdA"
+},
+{
+"hex": "efbbf08fc1",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "807ff580c0f0c1",
+"error": "'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+"replace": "\ufffd\u007f\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bffff4a0",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "a0ef",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "eda0",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "efbbbfe090",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffd"
+},
+{
+"hex": "efdfc18041fff0ed",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffdA\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c1",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "a18f",
+"error": "'utf-8' codec can't decode byte 0xa1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "bf8080efff",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c2edc0f5",
+"error": "'utf-8' codec can't decode byte 0xc2 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "e0e08f9f",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c17fefe090dff0",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\u007f\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfc0c2fff4ef",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "8f9fa0ef9fbbdd",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\uf7fb\ufffd"
+},
+{
+"hex": "efdf",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "edbb7f8fbfeddf",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\u007f\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c1efa0c0f541c2c0",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffdA\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "a041efc2909fb9",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffdA\ufffd\u0090\ufffd\ufffd"
+},
+{
+"hex": "7fe041",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 1: invalid continuation byte",
+"replace": "\u007f\ufffdA"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "efbbbfbbef",
+"error": "'utf-8' codec can't decode byte 0xbb in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd"
+},
+{
+"hex": "9ff5df",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "ff",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "c2c2",
+"error": "'utf-8' codec can't decode byte 0xc2 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "f4f4c1bb80ffef",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "41f59ff09f7fff",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 1: invalid start byte",
+"replace": "A\ufffd\ufffd\ufffd\u007f\ufffd"
+},
+{
+"hex": "bf",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "ffeff0",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "dfef80ce",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfe053bb",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffdS\ufffd"
+},
+{
+"hex": "c2ef",
+"error": "'utf-8' codec can't decode byte 0xc2 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "f47ff0ac",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffd\u007f\ufffd"
+},
+{
+"hex": "e0",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "ef807f",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\u007f"
+},
+{
+"hex": "ff",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "efbfefdff08080",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "ed7f8fedf4",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\u007f\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f4c09f907fef90",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\u007f\ufffd"
+},
+{
+"hex": "efbbbf7fa0",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 4: invalid start byte",
+"replace": "\ufeff\u007f\ufffd"
+},
+{
+"hex": "bb34",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd4"
+},
+{
+"hex": "ac41",
+"error": "'utf-8' codec can't decode byte 0xac in position 0: invalid start byte",
+"replace": "\ufffdA"
+},
+{
+"hex": "edc1c28f",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\u008f"
+},
+{
+"hex": "eff57ff4f0",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\u007f\ufffd\ufffd"
+},
+{
+"hex": "bf",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "7f",
+"text": "\u007f",
+"replace": "\u007f"
+},
+{
+"hex": "9f90",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "9fdfffe0",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbf80cc",
+"error": "'utf-8' codec can't decode byte 0x80 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd"
+},
+{
+"hex": "f4c1edeff0c1ef",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "7fc0ef",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 1: invalid start byte",
+"replace": "\u007f\ufffd\ufffd"
+},
+{
+"hex": "df808f7ff4c041",
+"error": "'utf-8' codec can't decode byte 0x8f in position 2: invalid start byte",
+"replace": "\u07c0\ufffd\u007f\ufffd\ufffdA"
+},
+{
+"hex": "a0bbe0f4bf",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f58f7ff5",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\u007f\ufffd"
+},
+{
+"hex": "9ffff0f5",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "f58fef",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfdf418fc0",
+"error": "'utf-8' codec can't decode byte 0xdf in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffdA\ufffd\ufffd"
+},
+{
+"hex": "e0bb",
+"error": "'utf-8' codec can't decode bytes in position 0-1: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "f7ed901a",
+"error": "'utf-8' codec can't decode byte 0xf7 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\u001a"
+},
+{
+"hex": "9f",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "367f",
+"text": "6\u007f",
+"replace": "6\u007f"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "f0f090efc1ef",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "41f4c29fbbc2bf41",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 1: invalid continuation byte",
+"replace": "A\ufffd\u009f\ufffd\u00bfA"
+},
+{
+"hex": "7fbbdf80eff0ffef",
+"error": "'utf-8' codec can't decode byte 0xbb in position 1: invalid start byte",
+"replace": "\u007f\ufffd\u07c0\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfedbb80f58fefc0",
+"error": "'utf-8' codec can't decode byte 0xed in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c18f807f90",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\u007f\ufffd"
+},
+{
+"hex": "ef",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "f5e0",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "fff0ef8ff0c1419f",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffdA\ufffd"
+},
+{
+"hex": "ef90bbc17ff0ef",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 3: invalid start byte",
+"replace": "\uf43b\ufffd\u007f\ufffd\ufffd"
+},
+{
+"hex": "c0f4",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "f09fbf",
+"error": "'utf-8' codec can't decode bytes in position 0-2: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "bbf4bfb1",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfed80f5ef7f",
+"error": "'utf-8' codec can't decode bytes in position 3-4: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\u007f"
+},
+{
+"hex": "f0bfc2bb808fff90",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\u00bb\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f0a0dff441",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffdA"
+},
+{
+"hex": "80",
+"error": "'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "ff749090",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffdt\ufffd\ufffd"
+},
+{
+"hex": "e0efbb",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "9f8f90df8fff",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\u07cf\ufffd"
+},
+{
+"hex": "8f41efbb80",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffdA\ufec0"
+},
+{
+"hex": "80c17f",
+"error": "'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\u007f"
+},
+{
+"hex": "efbbbf8f",
+"error": "'utf-8' codec can't decode byte 0x8f in position 3: invalid start byte",
+"replace": "\ufeff\ufffd"
+},
+{
+"hex": "8fefef",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bb80c0e0f5c2bb",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\u00bb"
+},
+{
+"hex": "dfc08fa08fc0e0",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "41bbed",
+"error": "'utf-8' codec can't decode byte 0xbb in position 1: invalid start byte",
+"replace": "A\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "9f",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "e09fbfb0bf",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "75df7ff4bbef90",
+"error": "'utf-8' codec can't decode byte 0xdf in position 1: invalid continuation byte",
+"replace": "u\ufffd\u007f\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfc1ef9fc2f5f5bff0",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "8fefbf3eededef",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd>\ufffd\ufffd\ufffd"
+},
+{
+"hex": "dfc0f0ff",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "efc07f7ff0908f9f",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\u007f\u007f\ud800\udfdf"
+},
+{
+"hex": "9ff5e080a0f58fdf",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f5",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "f0bb",
+"error": "'utf-8' codec can't decode bytes in position 0-1: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "e0ff7f41efffbf",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\u007fA\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbf",
+"text": "\ufeff",
+"replace": "\ufeff"
+},
+{
+"hex": "f07f90ff",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\u007f\ufffd\ufffd"
+},
+{
+"hex": "edf4dff5",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bb",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "eddfa0",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\u07e0"
+},
+{
+"hex": "f5",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "efbfed7f7f",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd\u007f\u007f"
+},
+{
+"hex": "ff9f9ff08fedc2",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "efbbbf7f90f580bf",
+"error": "'utf-8' codec can't decode byte 0x90 in position 4: invalid start byte",
+"replace": "\ufeff\u007f\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bb9f8f8fbb58f5",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffdX\ufffd"
+},
+{
+"hex": "c1dfc1",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "8ff4efc0e0a0f0f4",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f44141e0",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffdAA\ufffd"
+},
+{
+"hex": "90bbdff4c2",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "80778fefc2f4bf",
+"error": "'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+"replace": "\ufffdw\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "90dff4c1f0c0",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "7fbbc07fc2c1df90",
+"error": "'utf-8' codec can't decode byte 0xbb in position 1: invalid start byte",
+"replace": "\u007f\ufffd\ufffd\u007f\ufffd\ufffd\u07d0"
+},
+{
+"hex": "efbbbfc1bfdf",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd"
+},
+{
+"hex": "df",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "a590dfa090",
+"error": "'utf-8' codec can't decode byte 0xa5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\u07e0\ufffd"
+},
+{
+"hex": "f0f0f4bbef",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efedbf41c041a0bf",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffdA\ufffdA\ufffd\ufffd"
+},
+{
+"hex": "e0a0ef90",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "a0ffc180f5f0",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c1c1ef9fdf3da0",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd=\ufffd"
+},
+{
+"hex": "dff490",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfefefa0e0",
+"error": "'utf-8' codec can't decode byte 0xef in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd"
+},
+{
+"hex": "eff456f51f7ff5",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffdV\ufffd\u001f\u007f\ufffd"
+},
+{
+"hex": "c0f0f0a041",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffdA"
+},
+{
+"hex": "fff0",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "ed7fc2ff",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\u007f\ufffd\ufffd"
+},
+{
+"hex": "a0bf",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "bfed91c0",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "fff4807ff4f49ff5",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\u007f\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c0c180c2c0c1e080",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbff0a4c2f49ff5ef9f",
+"error": "'utf-8' codec can't decode bytes in position 3-4: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f041f4ffc090a0",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffdA\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "ef",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "dfe0",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "f59fefe0",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "c7bf",
+"text": "\u01ff",
+"replace": "\u01ff"
+},
+{
+"hex": "efbbbfc1ffefedc1dfbba0",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd\ufffd\u07fb\ufffd"
+},
+{
+"hex": "c19ff5ef",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "7fefdfe8",
+"error": "'utf-8' codec can't decode byte 0xef in position 1: invalid continuation byte",
+"replace": "\u007f\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c0807fc190",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\u007f\ufffd\ufffd"
+},
+{
+"hex": "50f0c5efe0c0df",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 1: invalid continuation byte",
+"replace": "P\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "90bfed41fff5bb",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffdA\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c080a0efa08f",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\uf80f"
+},
+{
+"hex": "ef8fe09f9f417fe0",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffdA\u007f\ufffd"
+},
+{
+"hex": "9f90",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "efbbbfa0a98080f4bf8c",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c08fc1dfffc2ef",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "a07f8fed7f9f8f8f",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\u007f\ufffd\ufffd\u007f\ufffd\ufffd\ufffd"
+},
+{
+"hex": "e0ff",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "f5efedc2ffefc0",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bbf5",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "f0a0f5",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "f5c2",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "90ef",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "efbbbf808f8fc1ff80a0",
+"error": "'utf-8' codec can't decode byte 0x80 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "eda080efa0a0",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\uf820"
+},
+{
+"hex": "7bbf",
+"error": "'utf-8' codec can't decode byte 0xbf in position 1: invalid start byte",
+"replace": "{\ufffd"
+},
+{
+"hex": "c1efdfa090",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\u07e0\ufffd"
+},
+{
+"hex": "c2c0eff4bb80807f",
+"error": "'utf-8' codec can't decode byte 0xc2 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\u007f"
+},
+{
+"hex": "c0a0efc0e0",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "41ffbfdf",
+"error": "'utf-8' codec can't decode byte 0xff in position 1: invalid start byte",
+"replace": "A\ufffd\ufffd\ufffd"
+},
+{
+"hex": "dfed7f8fedc0",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\u007f\ufffd\ufffd\ufffd"
+},
+{
+"hex": "dfefbb",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "efbbbfefef9fdf",
+"error": "'utf-8' codec can't decode byte 0xef in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd"
+},
+{
+"hex": "edbff5eff4bbf0",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f0efc17f",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\u007f"
+},
+{
+"hex": "fff4c28fbb7f41",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\u008f\ufffd\u007fA"
+},
+{
+"hex": "ffc1eddfdf",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "fff5",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "df90f5ff9fc080",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 2: invalid start byte",
+"replace": "\u07d0\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f4ed29bec2f0ef",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd)\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f5a0bf4180",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffdA\ufffd"
+},
+{
+"hex": "efbbbf",
+"text": "\ufeff",
+"replace": "\ufeff"
+},
+{
+"hex": "f0ef8fbb",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\uf3fb"
+},
+{
+"hex": "7f",
+"text": "\u007f",
+"replace": "\u007f"
+},
+{
+"hex": "a07fefa0",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\u007f\ufffd"
+},
+{
+"hex": "f0bb",
+"error": "'utf-8' codec can't decode bytes in position 0-1: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "efc1",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "f5",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "eff0bbffbbc28f",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\u008f"
+},
+{
+"hex": "90",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "efbbbfbff5ffc0",
+"error": "'utf-8' codec can't decode byte 0xbf in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "80",
+"error": "'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "ed7df4bfa0",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd}\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "8fefa090eded",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd\uf810\ufffd\ufffd"
+},
+{
+"hex": "c180ef",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "ed",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "eda0",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "efbbbfe0df80edef54efbf",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffd\u07c0\ufffd\ufffdT\ufffd"
+},
+{
+"hex": "90ef909f",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\uf41f"
+},
+{
+"hex": "e0e0",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "9fc2",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "ef",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "dff4bf",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "90eddfc1ff1890",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\u0018\ufffd"
+},
+{
+"hex": "f5ef80",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "e08f809fe0",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfc29f9ff0dfc180",
+"error": "'utf-8' codec can't decode byte 0x9f in position 5: invalid start byte",
+"replace": "\ufeff\u009f\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "9fdff5bf9f41",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffdA"
+},
+{
+"hex": "41efc0efbff0bb",
+"error": "'utf-8' codec can't decode byte 0xef in position 1: invalid continuation byte",
+"replace": "A\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "eff4edf4c0f4bb",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bfa041c090f0",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd\ufffdA\ufffd\ufffd\ufffd"
+},
+{
+"hex": "41",
+"text": "A",
+"replace": "A"
+},
+{
+"hex": "bba2a0bb7fff4190",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\u007f\ufffdA\ufffd"
+},
+{
+"hex": "f5edc0ef7fdf",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\u007f\ufffd"
+},
+{
+"hex": "bbef90ff90bf",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfefdf9fdfc0bff4",
+"error": "'utf-8' codec can't decode byte 0xef in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffd\u07df\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "eff0bb8f7f27",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\u007f'"
+},
+{
+"hex": "9ff4f47fffe0c1a0",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\u007f\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "8041",
+"error": "'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+"replace": "\ufffdA"
+},
+{
+"hex": "ef5e7f",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd^\u007f"
+},
+{
+"hex": "f0f4edefc17f",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\u007f"
+},
+{
+"hex": "eddfe0ef",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "e090efc080",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfffc0f0",
+"error": "'utf-8' codec can't decode byte 0xff in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "e0edbf",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "9f417bbbf0dfeff0",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffdA{\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "908ff0",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "e0f48fa0",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "ef90",
+"error": "'utf-8' codec can't decode bytes in position 0-1: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "efbbbfbf",
+"error": "'utf-8' codec can't decode byte 0xbf in position 3: invalid start byte",
+"replace": "\ufeff\ufffd"
+},
+{
+"hex": "f5",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "ed",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "df",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "e080ffc0e0e0ff",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "90a0e0908fdfc0",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c041ef33c1ef",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffdA\ufffd3\ufffd\ufffd"
+},
+{
+"hex": "a09080bf8f",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbff5",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd"
+},
+{
+"hex": "f5bbffe041f5",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffdA\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "41f5",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 1: invalid start byte",
+"replace": "A\ufffd"
+},
+{
+"hex": "f5efa0efedf0",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "80ed30bf9080",
+"error": "'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd0\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c0df",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "a0c2c1ff",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfe0f09f7f9ff5",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffd\u007f\ufffd\ufffd"
+},
+{
+"hex": "e041c2c2ed",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffdA\ufffd\ufffd\ufffd"
+},
+{
+"hex": "df8fefc19fedf5",
+"error": "'utf-8' codec can't decode byte 0xef in position 2: invalid continuation byte",
+"replace": "\u07cf\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "8f",
+"error": "'utf-8' codec can't decode byte 0x8f in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "41",
+"text": "A",
+"replace": "A"
+},
+{
+"hex": "90bbdfdfbba0c2",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\u07fb\ufffd\ufffd"
+},
+{
+"hex": "ede041f08f419f7f",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffdA\ufffd\ufffdA\ufffd\u007f"
+},
+{
+"hex": "e0c2f0",
+"error": "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f0f48fc1ef",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfef",
+"error": "'utf-8' codec can't decode byte 0xef in position 3: unexpected end of data",
+"replace": "\ufeff\ufffd"
+},
+{
+"hex": "7f7fdf8fa0ef",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 4: invalid start byte",
+"replace": "\u007f\u007f\u07cf\ufffd\ufffd"
+},
+{
+"hex": "ed",
+"error": "'utf-8' codec can't decode byte 0xed in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "ed8ff5c08f90",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "df7fdf",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: invalid continuation byte",
+"replace": "\ufffd\u007f\ufffd"
+},
+{
+"hex": "eff0",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "ef8f",
+"error": "'utf-8' codec can't decode bytes in position 0-1: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "bfbfe0ed528f8cdf",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffdR\ufffd\ufffd\ufffd"
+},
+{
+"hex": "efbbbfe0bb",
+"error": "'utf-8' codec can't decode bytes in position 3-4: unexpected end of data",
+"replace": "\ufeff\ufffd"
+},
+{
+"hex": "c1c2f5",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f5bfbb90",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c0ffbb",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "bbedef",
+"error": "'utf-8' codec can't decode byte 0xbb in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f480efa0efc2efbf",
+"error": "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "ff",
+"error": "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "f4",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "efbbbfdffff4f0bb41c0c2",
+"error": "'utf-8' codec can't decode byte 0xdf in position 3: invalid continuation byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffdA\ufffd\ufffd"
+},
+{
+"hex": "90bf7f",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\u007f"
+},
+{
+"hex": "908f9fdfc0",
+"error": "'utf-8' codec can't decode byte 0x90 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c0",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "f4418fc090c0",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffdA\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "f4c080bf417f",
+"error": "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd\ufffdA\u007f"
+},
+{
+"hex": "9f",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "a07fc27f9ff490",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\u007f\ufffd\u007f\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "efbbbf41bf8f41",
+"error": "'utf-8' codec can't decode byte 0xbf in position 4: invalid start byte",
+"replace": "\ufeffA\ufffd\ufffdA"
+},
+{
+"hex": "9f9fed41c1a0",
+"error": "'utf-8' codec can't decode byte 0x9f in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffdA\ufffd\ufffd"
+},
+{
+"hex": "8041c27f",
+"error": "'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+"replace": "\ufffdA\ufffd\u007f"
+},
+{
+"hex": "f0c2",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "bf",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "df41",
+"error": "'utf-8' codec can't decode byte 0xdf in position 0: invalid continuation byte",
+"replace": "\ufffdA"
+},
+{
+"hex": "f0",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "f5ef9fef8fede0e0",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+},
+{
+"hex": "bfbba0ff7f8ff0",
+"error": "'utf-8' codec can't decode byte 0xbf in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\ufffd\u007f\ufffd\ufffd"
+},
+{
+"hex": "efbbbfc0f0bb",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd"
+},
+{
+"hex": "c09080dfbbdfbb",
+"error": "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\u07fb\u07fb"
+},
+{
+"hex": "278fdf",
+"error": "'utf-8' codec can't decode byte 0x8f in position 1: invalid start byte",
+"replace": "'\ufffd\ufffd"
+},
+{
+"hex": "eff5bb",
+"error": "'utf-8' codec can't decode byte 0xef in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffd\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "c2e28051f0c1",
+"error": "'utf-8' codec can't decode byte 0xc2 in position 0: invalid continuation byte",
+"replace": "\ufffd\ufffdQ\ufffd\ufffd"
+},
+{
+"hex": "a0ef",
+"error": "'utf-8' codec can't decode byte 0xa0 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd"
+},
+{
+"hex": "f5",
+"error": "'utf-8' codec can't decode byte 0xf5 in position 0: invalid start byte",
+"replace": "\ufffd"
+},
+{
+"hex": "efbbbfffa0f4a0ffc2bf",
+"error": "'utf-8' codec can't decode byte 0xff in position 3: invalid start byte",
+"replace": "\ufeff\ufffd\ufffd\ufffd\ufffd\ufffd\u00bf"
+},
+{
+"hex": "c2",
+"error": "'utf-8' codec can't decode byte 0xc2 in position 0: unexpected end of data",
+"replace": "\ufffd"
+},
+{
+"hex": "",
+"text": "",
+"replace": ""
+},
+{
+"hex": "f045f59080",
+"error": "'utf-8' codec can't decode byte 0xf0 in position 0: invalid continuation byte",
+"replace": "\ufffdE\ufffd\ufffd\ufffd"
+},
+{
+"hex": "c1efffc280ed9f",
+"error": "'utf-8' codec can't decode byte 0xc1 in position 0: invalid start byte",
+"replace": "\ufffd\ufffd\ufffd\u0080\ufffd"
+}
+],
+"encode": [
+{
+"value": "abc",
+"ok": true
+},
+{
+"value": "\ud800",
+"error": "'utf-8' codec can't encode character '\\ud800' in position 0: surrogates not allowed"
+},
+{
+"value": "a\ud800b",
+"error": "'utf-8' codec can't encode character '\\ud800' in position 1: surrogates not allowed"
+},
+{
+"value": "\udc00\ud800x",
+"error": "'utf-8' codec can't encode characters in position 0-1: surrogates not allowed"
+},
+{
+"value": "x\ud83d",
+"error": "'utf-8' codec can't encode character '\\ud83d' in position 1: surrogates not allowed"
+},
+{
+"value": "\ud83d\ude00\ud800",
+"error": "'utf-8' codec can't encode character '\\ud800' in position 1: surrogates not allowed"
+},
+{
+"value": "\u00e9\udfff\udfff\udfff",
+"error": "'utf-8' codec can't encode characters in position 1-3: surrogates not allowed"
+}
+],
+"int16": [
+{
+"value": "104FD1",
+"int": "1069009"
+},
+{
+"value": "3\uff103d8 A",
+"error": "invalid literal for int() with base 16: '3\uff103d8 A'"
+},
+{
+"value": "D4+19g\uff10",
+"error": "invalid literal for int() with base 16: 'D4+19g\uff10'"
+},
+{
+"value": "X5\uff10X\uff10+",
+"error": "invalid literal for int() with base 16: 'X5\uff10X\uff10+'"
+},
+{
+"value": "682\t\uff10",
+"error": "invalid literal for int() with base 16: '682\\t\uff10'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "ee8Cx",
+"error": "invalid literal for int() with base 16: 'ee8Cx'"
+},
+{
+"value": "+c",
+"int": "12"
+},
+{
+"value": "3A14f\t8",
+"error": "invalid literal for int() with base 16: '3A14f\\t8'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "B1\u30003",
+"error": "invalid literal for int() with base 16: 'B1\\u30003'"
+},
+{
+"value": "0g4\u0663",
+"error": "invalid literal for int() with base 16: '0g4\u0663'"
+},
+{
+"value": "\t-",
+"error": "invalid literal for int() with base 16: '\\t-'"
+},
+{
+"value": "+",
+"error": "invalid literal for int() with base 16: '+'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "DeD52",
+"int": "912722"
+},
+{
+"value": "\ud835\udfd8cFeA",
+"int": "53226"
+},
+{
+"value": "8F",
+"int": "143"
+},
+{
+"value": "_ae",
+"error": "invalid literal for int() with base 16: '_ae'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "A6X\uff109",
+"error": "invalid literal for int() with base 16: 'A6X\uff109'"
+},
+{
+"value": "bDff",
+"int": "48639"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "x\tbfCX+",
+"error": "invalid literal for int() with base 16: 'x\\tbfCX+'"
+},
+{
+"value": "--0",
+"error": "invalid literal for int() with base 16: '--0'"
+},
+{
+"value": "ece73\t",
+"int": "970355"
+},
+{
+"value": "\t2BA2 ",
+"int": "11170"
+},
+{
+"value": "B",
+"int": "11"
+},
+{
+"value": "aab\u06632\u0663C",
+"int": "178991676"
+},
+{
+"value": "939Ag",
+"error": "invalid literal for int() with base 16: '939Ag'"
+},
+{
+"value": "a",
+"int": "10"
+},
+{
+"value": "x",
+"error": "invalid literal for int() with base 16: 'x'"
+},
+{
+"value": "7",
+"int": "7"
+},
+{
+"value": "6D5c",
+"int": "27996"
+},
+{
+"value": "99\ud835\udfd8",
+"int": "2448"
+},
+{
+"value": "9faa-e\u3000",
+"error": "invalid literal for int() with base 16: '9faa-e\\u3000'"
+},
+{
+"value": "x8D",
+"error": "invalid literal for int() with base 16: 'x8D'"
+},
+{
+"value": "eBX",
+"error": "invalid literal for int() with base 16: 'eBX'"
+},
+{
+"value": "4",
+"int": "4"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "1B",
+"int": "27"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "8b7F\uff100C",
+"int": "146272268"
+},
+{
+"value": "e",
+"int": "14"
+},
+{
+"value": "AfbedBB",
+"int": "184282555"
+},
+{
+"value": "D00",
+"int": "3328"
+},
+{
+"value": "93-9",
+"error": "invalid literal for int() with base 16: '93-9'"
+},
+{
+"value": "A7B86c",
+"int": "10991724"
+},
+{
+"value": "6\u06633X",
+"error": "invalid literal for int() with base 16: '6\u06633X'"
+},
+{
+"value": "1gX\uff10",
+"error": "invalid literal for int() with base 16: '1gX\uff10'"
+},
+{
+"value": "5\uff10c",
+"int": "1292"
+},
+{
+"value": "D\tg5_1 ",
+"error": "invalid literal for int() with base 16: 'D\\tg5_1 '"
+},
+{
+"value": "2",
+"int": "2"
+},
+{
+"value": "6+BB",
+"error": "invalid literal for int() with base 16: '6+BB'"
+},
+{
+"value": " 0-B8F4",
+"error": "invalid literal for int() with base 16: ' 0-B8F4'"
+},
+{
+"value": "Fc\tc405",
+"error": "invalid literal for int() with base 16: 'Fc\\tc405'"
+},
+{
+"value": "A",
+"int": "10"
+},
+{
+"value": "Cf",
+"int": "207"
+},
+{
+"value": "FB\ud835\udfd8",
+"int": "4016"
+},
+{
+"value": "6cX4X09",
+"error": "invalid literal for int() with base 16: '6cX4X09'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "a4X",
+"error": "invalid literal for int() with base 16: 'a4X'"
+},
+{
+"value": "9Cb4\ud835\udfd8X",
+"error": "invalid literal for int() with base 16: '9Cb4\ud835\udfd8X'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "d-",
+"error": "invalid literal for int() with base 16: 'd-'"
+},
+{
+"value": "1\u3000b",
+"error": "invalid literal for int() with base 16: '1\\u3000b'"
+},
+{
+"value": "8b4\u30000",
+"error": "invalid literal for int() with base 16: '8b4\\u30000'"
+},
+{
+"value": "g 8B3dd",
+"error": "invalid literal for int() with base 16: 'g 8B3dd'"
+},
+{
+"value": "05B\ud835\udfd81X",
+"error": "invalid literal for int() with base 16: '05B\ud835\udfd81X'"
+},
+{
+"value": "aFga",
+"error": "invalid literal for int() with base 16: 'aFga'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "+CeC8E",
+"int": "846990"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "agaC",
+"error": "invalid literal for int() with base 16: 'agaC'"
+},
+{
+"value": "A\ud835\udfd8 a",
+"error": "invalid literal for int() with base 16: 'A\ud835\udfd8 a'"
+},
+{
+"value": "e\t3-0+b",
+"error": "invalid literal for int() with base 16: 'e\\t3-0+b'"
+},
+{
+"value": "-_aa4bf",
+"error": "invalid literal for int() with base 16: '-_aa4bf'"
+},
+{
+"value": "xD",
+"error": "invalid literal for int() with base 16: 'xD'"
+},
+{
+"value": "dCDa8",
+"int": "904616"
+},
+{
+"value": "\u3000c_X\u06635d",
+"error": "invalid literal for int() with base 16: '\\u3000c_X\u06635d'"
+},
+{
+"value": "2",
+"int": "2"
+},
+{
+"value": "Aa-\tgD",
+"error": "invalid literal for int() with base 16: 'Aa-\\tgD'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "\tX\u3000\tE",
+"error": "invalid literal for int() with base 16: '\\tX\\u3000\\tE'"
+},
+{
+"value": "D_\uff10Cfd",
+"int": "855293"
+},
+{
+"value": "80X",
+"error": "invalid literal for int() with base 16: '80X'"
+},
+{
+"value": "7+xBA90",
+"error": "invalid literal for int() with base 16: '7+xBA90'"
+},
+{
+"value": "6f98D_",
+"error": "invalid literal for int() with base 16: '6f98D_'"
+},
+{
+"value": "FaF\u0663",
+"int": "64243"
+},
+{
+"value": "c1_ceg",
+"error": "invalid literal for int() with base 16: 'c1_ceg'"
+},
+{
+"value": "Xb",
+"error": "invalid literal for int() with base 16: 'Xb'"
+},
+{
+"value": "2bCXxC6",
+"error": "invalid literal for int() with base 16: '2bCXxC6'"
+},
+{
+"value": "2",
+"int": "2"
+},
+{
+"value": "5cfBx ",
+"error": "invalid literal for int() with base 16: '5cfBx '"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "E",
+"int": "14"
+},
+{
+"value": "B5x_Be",
+"error": "invalid literal for int() with base 16: 'B5x_Be'"
+},
+{
+"value": "d\uff10g",
+"error": "invalid literal for int() with base 16: 'd\uff10g'"
+},
+{
+"value": "0\ud835\udfd8-0",
+"error": "invalid literal for int() with base 16: '0\ud835\udfd8-0'"
+},
+{
+"value": "+fD ",
+"int": "253"
+},
+{
+"value": "6\u3000\t\uff10CE",
+"error": "invalid literal for int() with base 16: '6\\u3000\\t\uff10CE'"
+},
+{
+"value": "1dXff8",
+"error": "invalid literal for int() with base 16: '1dXff8'"
+},
+{
+"value": "\ud835\udfd8F",
+"int": "15"
+},
+{
+"value": "F-",
+"error": "invalid literal for int() with base 16: 'F-'"
+},
+{
+"value": "a_a",
+"int": "170"
+},
+{
+"value": "Cfx5D",
+"error": "invalid literal for int() with base 16: 'Cfx5D'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "D++EF",
+"error": "invalid literal for int() with base 16: 'D++EF'"
+},
+{
+"value": "g",
+"error": "invalid literal for int() with base 16: 'g'"
+},
+{
+"value": "\tcX9",
+"error": "invalid literal for int() with base 16: '\\tcX9'"
+},
+{
+"value": "1e",
+"int": "30"
+},
+{
+"value": "0_a\uff10eC",
+"int": "41196"
+},
+{
+"value": "5x28ex",
+"error": "invalid literal for int() with base 16: '5x28ex'"
+},
+{
+"value": "4fX De",
+"error": "invalid literal for int() with base 16: '4fX De'"
+},
+{
+"value": "e_A7B\u30001",
+"error": "invalid literal for int() with base 16: 'e_A7B\\u30001'"
+},
+{
+"value": "\tf x4",
+"error": "invalid literal for int() with base 16: '\\tf x4'"
+},
+{
+"value": "6e",
+"int": "110"
+},
+{
+"value": "\ud835\udfd8X45",
+"int": "69"
+},
+{
+"value": "\u0663D4_",
+"error": "invalid literal for int() with base 16: '\u0663D4_'"
+},
+{
+"value": "662X",
+"error": "invalid literal for int() with base 16: '662X'"
+},
+{
+"value": "7cggb+",
+"error": "invalid literal for int() with base 16: '7cggb+'"
+},
+{
+"value": "e77E9",
+"int": "948201"
+},
+{
+"value": "\t",
+"error": "invalid literal for int() with base 16: '\\t'"
+},
+{
+"value": "2",
+"int": "2"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "7\uff10",
+"int": "112"
+},
+{
+"value": "g",
+"error": "invalid literal for int() with base 16: 'g'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "x  19F3",
+"error": "invalid literal for int() with base 16: 'x  19F3'"
+},
+{
+"value": "C+A6c",
+"error": "invalid literal for int() with base 16: 'C+A6c'"
+},
+{
+"value": "X03\uff107g",
+"error": "invalid literal for int() with base 16: 'X03\uff107g'"
+},
+{
+"value": "a",
+"int": "10"
+},
+{
+"value": "ed",
+"int": "237"
+},
+{
+"value": "D2",
+"int": "210"
+},
+{
+"value": "_a17_9",
+"error": "invalid literal for int() with base 16: '_a17_9'"
+},
+{
+"value": "DB8F+\uff10",
+"error": "invalid literal for int() with base 16: 'DB8F+\uff10'"
+},
+{
+"value": "60",
+"int": "96"
+},
+{
+"value": "Cd",
+"int": "205"
+},
+{
+"value": "g\uff10f6",
+"error": "invalid literal for int() with base 16: 'g\uff10f6'"
+},
+{
+"value": "d",
+"int": "13"
+},
+{
+"value": "d8e",
+"int": "3470"
+},
+{
+"value": "\u06634g\u3000gXx",
+"error": "invalid literal for int() with base 16: '\u06634g\\u3000gXx'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "8B\t-bDx",
+"error": "invalid literal for int() with base 16: '8B\\t-bDx'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "60",
+"int": "96"
+},
+{
+"value": "C",
+"int": "12"
+},
+{
+"value": "e\u3000C2 a",
+"error": "invalid literal for int() with base 16: 'e\\u3000C2 a'"
+},
+{
+"value": "Dda",
+"int": "3546"
+},
+{
+"value": "-+fc\u3000a0",
+"error": "invalid literal for int() with base 16: '-+fc\\u3000a0'"
+},
+{
+"value": "-\u0663b53",
+"int": "-15187"
+},
+{
+"value": "6\u06639ECd",
+"int": "6528717"
+},
+{
+"value": "7",
+"int": "7"
+},
+{
+"value": "\u3000E5\u3000E9",
+"error": "invalid literal for int() with base 16: '\\u3000E5\\u3000E9'"
+},
+{
+"value": "10-b ",
+"error": "invalid literal for int() with base 16: '10-b '"
+},
+{
+"value": "Cd+5_6B",
+"error": "invalid literal for int() with base 16: 'Cd+5_6B'"
+},
+{
+"value": "F8-\u0663xf",
+"error": "invalid literal for int() with base 16: 'F8-\u0663xf'"
+},
+{
+"value": "c9",
+"int": "201"
+},
+{
+"value": "Ec+4A",
+"error": "invalid literal for int() with base 16: 'Ec+4A'"
+},
+{
+"value": "A",
+"int": "10"
+},
+{
+"value": "89",
+"int": "137"
+},
+{
+"value": "_g+8+ac",
+"error": "invalid literal for int() with base 16: '_g+8+ac'"
+},
+{
+"value": "_ b\u30009E",
+"error": "invalid literal for int() with base 16: '_ b\\u30009E'"
+},
+{
+"value": "\u3000EX3\ud835\udfd858",
+"error": "invalid literal for int() with base 16: '\\u3000EX3\ud835\udfd858'"
+},
+{
+"value": "A+a g",
+"error": "invalid literal for int() with base 16: 'A+a g'"
+},
+{
+"value": "B5Fe58f",
+"int": "190834063"
+},
+{
+"value": "EB\uff103D07",
+"int": "246430983"
+},
+{
+"value": "6X9dc25",
+"error": "invalid literal for int() with base 16: '6X9dc25'"
+},
+{
+"value": "0",
+"int": "0"
+},
+{
+"value": "7xF",
+"error": "invalid literal for int() with base 16: '7xF'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "gCEX",
+"error": "invalid literal for int() with base 16: 'gCEX'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "Cge-4",
+"error": "invalid literal for int() with base 16: 'Cge-4'"
+},
+{
+"value": "d-C",
+"error": "invalid literal for int() with base 16: 'd-C'"
+},
+{
+"value": "E\ud835\udfd8b2_",
+"error": "invalid literal for int() with base 16: 'E\ud835\udfd8b2_'"
+},
+{
+"value": "C3",
+"int": "195"
+},
+{
+"value": "\u3000+0",
+"int": "0"
+},
+{
+"value": "+\u3000g7Eb",
+"error": "invalid literal for int() with base 16: '+\\u3000g7Eb'"
+},
+{
+"value": "F9_",
+"error": "invalid literal for int() with base 16: 'F9_'"
+},
+{
+"value": "Cc\uff101",
+"int": "52225"
+},
+{
+"value": "-ge0",
+"error": "invalid literal for int() with base 16: '-ge0'"
+},
+{
+"value": "d9\t",
+"int": "217"
+},
+{
+"value": "+ad65ab",
+"int": "11363755"
+},
+{
+"value": "xF7DA1",
+"error": "invalid literal for int() with base 16: 'xF7DA1'"
+},
+{
+"value": "9xe13",
+"error": "invalid literal for int() with base 16: '9xe13'"
+},
+{
+"value": "3b\u0663\ud835\udfd8\u3000E",
+"error": "invalid literal for int() with base 16: '3b\u0663\ud835\udfd8\\u3000E'"
+},
+{
+"value": "\u3000-c",
+"int": "-12"
+},
+{
+"value": "052\u0663b7+",
+"error": "invalid literal for int() with base 16: '052\u0663b7+'"
+},
+{
+"value": "AC\ud835\udfd8-0xX",
+"error": "invalid literal for int() with base 16: 'AC\ud835\udfd8-0xX'"
+},
+{
+"value": "Dxx\uff10f2",
+"error": "invalid literal for int() with base 16: 'Dxx\uff10f2'"
+},
+{
+"value": "dd1D",
+"int": "56605"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "7",
+"int": "7"
+},
+{
+"value": "E",
+"int": "14"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "16B",
+"int": "363"
+},
+{
+"value": "\t",
+"error": "invalid literal for int() with base 16: '\\t'"
+},
+{
+"value": "c\u0663\uff10",
+"int": "3120"
+},
+{
+"value": "XA\ud835\udfd84",
+"error": "invalid literal for int() with base 16: 'XA\ud835\udfd84'"
+},
+{
+"value": "977",
+"int": "2423"
+},
+{
+"value": "6x1cc5",
+"error": "invalid literal for int() with base 16: '6x1cc5'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "cD9",
+"int": "3289"
+},
+{
+"value": "25",
+"int": "37"
+},
+{
+"value": "e",
+"int": "14"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "a7-x7D",
+"error": "invalid literal for int() with base 16: 'a7-x7D'"
+},
+{
+"value": "_x+\ud835\udfd8+ ",
+"error": "invalid literal for int() with base 16: '_x+\ud835\udfd8+ '"
+},
+{
+"value": "+g6ce",
+"error": "invalid literal for int() with base 16: '+g6ce'"
+},
+{
+"value": "0x",
+"error": "invalid literal for int() with base 16: '0x'"
+},
+{
+"value": "-39+E",
+"error": "invalid literal for int() with base 16: '-39+E'"
+},
+{
+"value": "c753g",
+"error": "invalid literal for int() with base 16: 'c753g'"
+},
+{
+"value": "1FFcf00",
+"int": "33541888"
+},
+{
+"value": "FB\u06633\t\uff10\u0663",
+"error": "invalid literal for int() with base 16: 'FB\u06633\\t\uff10\u0663'"
+},
+{
+"value": "ff",
+"int": "255"
+},
+{
+"value": "XFBe6",
+"error": "invalid literal for int() with base 16: 'XFBe6'"
+},
+{
+"value": "FAdDeg",
+"error": "invalid literal for int() with base 16: 'FAdDeg'"
+},
+{
+"value": "\u3000_",
+"error": "invalid literal for int() with base 16: '\\u3000_'"
+},
+{
+"value": "+B",
+"int": "11"
+},
+{
+"value": " fge6\ud835\udfd8+",
+"error": "invalid literal for int() with base 16: ' fge6\ud835\udfd8+'"
+},
+{
+"value": "+d4 0-7",
+"error": "invalid literal for int() with base 16: '+d4 0-7'"
+},
+{
+"value": "2aeE_8",
+"int": "175848"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "D\t",
+"int": "13"
+},
+{
+"value": "f",
+"int": "15"
+},
+{
+"value": "aC\u3000EX84",
+"error": "invalid literal for int() with base 16: 'aC\\u3000EX84'"
+},
+{
+"value": "d\uff105cbb",
+"int": "13655227"
+},
+{
+"value": "ea",
+"int": "234"
+},
+{
+"value": "0",
+"int": "0"
+},
+{
+"value": "8",
+"int": "8"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": " C a",
+"error": "invalid literal for int() with base 16: ' C a'"
+},
+{
+"value": "f1A6bE",
+"int": "15836862"
+},
+{
+"value": "\u3000\uff10",
+"int": "0"
+},
+{
+"value": "gE f\t",
+"error": "invalid literal for int() with base 16: 'gE f\\t'"
+},
+{
+"value": "e2\u0663",
+"int": "3619"
+},
+{
+"value": "F\uff106X84\uff10",
+"error": "invalid literal for int() with base 16: 'F\uff106X84\uff10'"
+},
+{
+"value": "1 56c\u0663d",
+"error": "invalid literal for int() with base 16: '1 56c\u0663d'"
+},
+{
+"value": "4Xa",
+"error": "invalid literal for int() with base 16: '4Xa'"
+},
+{
+"value": "g65_d",
+"error": "invalid literal for int() with base 16: 'g65_d'"
+},
+{
+"value": "3C",
+"int": "60"
+},
+{
+"value": "EED70",
+"int": "978288"
+},
+{
+"value": "D",
+"int": "13"
+},
+{
+"value": "bBg\u3000\uff10",
+"error": "invalid literal for int() with base 16: 'bBg\\u3000\uff10'"
+},
+{
+"value": "\u3000B7",
+"int": "183"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "F\ud835\udfd8C4",
+"int": "61636"
+},
+{
+"value": "_D0",
+"error": "invalid literal for int() with base 16: '_D0'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "\u06632+c",
+"error": "invalid literal for int() with base 16: '\u06632+c'"
+},
+{
+"value": "edcD3",
+"int": "974035"
+},
+{
+"value": "x\ud835\udfd881d",
+"error": "invalid literal for int() with base 16: 'x\ud835\udfd881d'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "x6F\t4",
+"error": "invalid literal for int() with base 16: 'x6F\\t4'"
+},
+{
+"value": "2E\ud835\udfd8\u3000D5b",
+"error": "invalid literal for int() with base 16: '2E\ud835\udfd8\\u3000D5b'"
+},
+{
+"value": "ee\t1X\ud835\udfd8x",
+"error": "invalid literal for int() with base 16: 'ee\\t1X\ud835\udfd8x'"
+},
+{
+"value": "g",
+"error": "invalid literal for int() with base 16: 'g'"
+},
+{
+"value": "\u0663",
+"int": "3"
+},
+{
+"value": "0BB0c5F",
+"int": "12258399"
+},
+{
+"value": "c0-5 ",
+"error": "invalid literal for int() with base 16: 'c0-5 '"
+},
+{
+"value": "e_F+0F",
+"error": "invalid literal for int() with base 16: 'e_F+0F'"
+},
+{
+"value": "734Ed1",
+"int": "7556817"
+},
+{
+"value": "Fx5d3b ",
+"error": "invalid literal for int() with base 16: 'Fx5d3b '"
+},
+{
+"value": "a",
+"int": "10"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "6e2\t 3 ",
+"error": "invalid literal for int() with base 16: '6e2\\t 3 '"
+},
+{
+"value": "E5",
+"int": "229"
+},
+{
+"value": " \tx2f_",
+"error": "invalid literal for int() with base 16: ' \\tx2f_'"
+},
+{
+"value": "+aAB",
+"int": "2731"
+},
+{
+"value": "a",
+"int": "10"
+},
+{
+"value": "1Ba",
+"int": "442"
+},
+{
+"value": "-C3XbX",
+"error": "invalid literal for int() with base 16: '-C3XbX'"
+},
+{
+"value": "d7aB\t",
+"int": "55211"
+},
+{
+"value": "\ud835\udfd8_8",
+"int": "8"
+},
+{
+"value": "78x",
+"error": "invalid literal for int() with base 16: '78x'"
+},
+{
+"value": "\ud835\udfd8+\uff10",
+"error": "invalid literal for int() with base 16: '\ud835\udfd8+\uff10'"
+},
+{
+"value": "C7X03-6",
+"error": "invalid literal for int() with base 16: 'C7X03-6'"
+},
+{
+"value": "A3-FACf",
+"error": "invalid literal for int() with base 16: 'A3-FACf'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "\ud835\udfd8faCe-",
+"error": "invalid literal for int() with base 16: '\ud835\udfd8faCe-'"
+},
+{
+"value": "00A",
+"int": "10"
+},
+{
+"value": "XgXF9\u30006",
+"error": "invalid literal for int() with base 16: 'XgXF9\\u30006'"
+},
+{
+"value": "\uff10e2",
+"int": "226"
+},
+{
+"value": "\u3000Xd",
+"error": "invalid literal for int() with base 16: '\\u3000Xd'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "-d",
+"int": "-13"
+},
+{
+"value": "2_\u3000",
+"error": "invalid literal for int() with base 16: '2_\\u3000'"
+},
+{
+"value": "Db",
+"int": "219"
+},
+{
+"value": "f975",
+"int": "63861"
+},
+{
+"value": "\uff10\u0663",
+"int": "3"
+},
+{
+"value": "-Xd",
+"error": "invalid literal for int() with base 16: '-Xd'"
+},
+{
+"value": "91\uff10AX",
+"error": "invalid literal for int() with base 16: '91\uff10AX'"
+},
+{
+"value": "-c\ud835\udfd8a34F",
+"int": "-12624719"
+},
+{
+"value": "9 6dea",
+"error": "invalid literal for int() with base 16: '9 6dea'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "xg",
+"error": "invalid literal for int() with base 16: 'xg'"
+},
+{
+"value": "3",
+"int": "3"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "g7B\u0663",
+"error": "invalid literal for int() with base 16: 'g7B\u0663'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "eFD\u3000",
+"int": "3837"
+},
+{
+"value": "7 2bD4",
+"error": "invalid literal for int() with base 16: '7 2bD4'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "\u3000E",
+"int": "14"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "e",
+"int": "14"
+},
+{
+"value": "2\t 5 14",
+"error": "invalid literal for int() with base 16: '2\\t 5 14'"
+},
+{
+"value": "30\ud835\udfd8\u06632",
+"int": "196658"
+},
+{
+"value": "8",
+"int": "8"
+},
+{
+"value": " -AD-",
+"error": "invalid literal for int() with base 16: ' -AD-'"
+},
+{
+"value": "A1g",
+"error": "invalid literal for int() with base 16: 'A1g'"
+},
+{
+"value": "d",
+"int": "13"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "89F5xF-",
+"error": "invalid literal for int() with base 16: '89F5xF-'"
+},
+{
+"value": "\u3000x",
+"error": "invalid literal for int() with base 16: '\\u3000x'"
+},
+{
+"value": "\u06638\u3000\uff10",
+"error": "invalid literal for int() with base 16: '\u06638\\u3000\uff10'"
+},
+{
+"value": "c10\u06638",
+"int": "790584"
+},
+{
+"value": "\uff10A\ud835\udfd8\tE2",
+"error": "invalid literal for int() with base 16: '\uff10A\ud835\udfd8\\tE2'"
+},
+{
+"value": "bf",
+"int": "191"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "cXd\ud835\udfd8",
+"error": "invalid literal for int() with base 16: 'cXd\ud835\udfd8'"
+},
+{
+"value": "7b0",
+"int": "1968"
+},
+{
+"value": "094ff",
+"int": "38143"
+},
+{
+"value": "bg\ud835\udfd8CFA",
+"error": "invalid literal for int() with base 16: 'bg\ud835\udfd8CFA'"
+},
+{
+"value": "71",
+"int": "113"
+},
+{
+"value": "cd",
+"int": "205"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "5ca91",
+"int": "379537"
+},
+{
+"value": "\u06633",
+"int": "51"
+},
+{
+"value": "xd\u3000c4",
+"error": "invalid literal for int() with base 16: 'xd\\u3000c4'"
+},
+{
+"value": "3",
+"int": "3"
+},
+{
+"value": "agcc ",
+"error": "invalid literal for int() with base 16: 'agcc '"
+},
+{
+"value": "a5F",
+"int": "2655"
+},
+{
+"value": "3C6",
+"int": "966"
+},
+{
+"value": "BX",
+"error": "invalid literal for int() with base 16: 'BX'"
+},
+{
+"value": "F7a\uff10C7C",
+"int": "259656828"
+},
+{
+"value": "_\uff103",
+"error": "invalid literal for int() with base 16: '_\uff103'"
+},
+{
+"value": "\u0663D\uff10FX",
+"error": "invalid literal for int() with base 16: '\u0663D\uff10FX'"
+},
+{
+"value": "2",
+"int": "2"
+},
+{
+"value": "72D",
+"int": "1837"
+},
+{
+"value": "7267d",
+"int": "468605"
+},
+{
+"value": "4+a",
+"error": "invalid literal for int() with base 16: '4+a'"
+},
+{
+"value": "df\u3000",
+"int": "223"
+},
+{
+"value": "8",
+"int": "8"
+},
+{
+"value": "\uff10",
+"int": "0"
+},
+{
+"value": "3CFAc",
+"int": "249772"
+},
+{
+"value": "7FCA",
+"int": "32714"
+},
+{
+"value": "g\u3000\u3000Db3D",
+"error": "invalid literal for int() with base 16: 'g\\u3000\\u3000Db3D'"
+},
+{
+"value": "08xXE",
+"error": "invalid literal for int() with base 16: '08xXE'"
+},
+{
+"value": "2e4F",
+"int": "11855"
+},
+{
+"value": "\uff10\ud835\udfd8",
+"int": "0"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "eF\ud835\udfd8",
+"int": "3824"
+},
+{
+"value": "9XD",
+"error": "invalid literal for int() with base 16: '9XD'"
+},
+{
+"value": "6D_\t4",
+"error": "invalid literal for int() with base 16: '6D_\\t4'"
+},
+{
+"value": "x",
+"error": "invalid literal for int() with base 16: 'x'"
+},
+{
+"value": "\u0663",
+"int": "3"
+},
+{
+"value": "Df FdBC",
+"error": "invalid literal for int() with base 16: 'Df FdBC'"
+},
+{
+"value": "40Cb-Fb",
+"error": "invalid literal for int() with base 16: '40Cb-Fb'"
+},
+{
+"value": "AeF",
+"int": "2799"
+},
+{
+"value": "g4e2 x",
+"error": "invalid literal for int() with base 16: 'g4e2 x'"
+},
+{
+"value": "+1",
+"int": "1"
+},
+{
+"value": "\u3000X",
+"error": "invalid literal for int() with base 16: '\\u3000X'"
+},
+{
+"value": "7",
+"int": "7"
+},
+{
+"value": "-",
+"error": "invalid literal for int() with base 16: '-'"
+},
+{
+"value": "3b8_bg_",
+"error": "invalid literal for int() with base 16: '3b8_bg_'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "e ",
+"int": "14"
+},
+{
+"value": "CDA7f",
+"int": "842367"
+},
+{
+"value": "bXB",
+"error": "invalid literal for int() with base 16: 'bXB'"
+},
+{
+"value": "XcF802\u3000",
+"error": "invalid literal for int() with base 16: 'XcF802\\u3000'"
+},
+{
+"value": "9CaBA7b",
+"int": "164280955"
+},
+{
+"value": "2C\u30003",
+"error": "invalid literal for int() with base 16: '2C\\u30003'"
+},
+{
+"value": "_bd",
+"error": "invalid literal for int() with base 16: '_bd'"
+},
+{
+"value": "-E",
+"int": "-14"
+},
+{
+"value": "23d8Bd0",
+"int": "37587920"
+},
+{
+"value": "g9\u300089-",
+"error": "invalid literal for int() with base 16: 'g9\\u300089-'"
+},
+{
+"value": "c F",
+"error": "invalid literal for int() with base 16: 'c F'"
+},
+{
+"value": "E003+ ",
+"error": "invalid literal for int() with base 16: 'E003+ '"
+},
+{
+"value": "2Xc\u3000X",
+"error": "invalid literal for int() with base 16: '2Xc\\u3000X'"
+},
+{
+"value": "Bc\uff10",
+"int": "3008"
+},
+{
+"value": "9B3bf",
+"int": "635839"
+},
+{
+"value": "Fad07",
+"int": "1027335"
+},
+{
+"value": "EAbdg-",
+"error": "invalid literal for int() with base 16: 'EAbdg-'"
+},
+{
+"value": "Db5X",
+"error": "invalid literal for int() with base 16: 'Db5X'"
+},
+{
+"value": "5D2X4",
+"error": "invalid literal for int() with base 16: '5D2X4'"
+},
+{
+"value": "D",
+"int": "13"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "9EfX\uff10B-",
+"error": "invalid literal for int() with base 16: '9EfX\uff10B-'"
+},
+{
+"value": "g\t\t7",
+"error": "invalid literal for int() with base 16: 'g\\t\\t7'"
+},
+{
+"value": "\ud835\udfd8g49",
+"error": "invalid literal for int() with base 16: '\ud835\udfd8g49'"
+},
+{
+"value": "-\u3000\u3000f",
+"error": "invalid literal for int() with base 16: '-\\u3000\\u3000f'"
+},
+{
+"value": "-8E",
+"int": "-142"
+},
+{
+"value": "81510cf",
+"int": "135598287"
+},
+{
+"value": "49E",
+"int": "1182"
+},
+{
+"value": "9-0_d4",
+"error": "invalid literal for int() with base 16: '9-0_d4'"
+},
+{
+"value": "5X6\u3000eB",
+"error": "invalid literal for int() with base 16: '5X6\\u3000eB'"
+},
+{
+"value": "E0-",
+"error": "invalid literal for int() with base 16: 'E0-'"
+},
+{
+"value": "1C-Ac\u3000",
+"error": "invalid literal for int() with base 16: '1C-Ac\\u3000'"
+},
+{
+"value": "g",
+"error": "invalid literal for int() with base 16: 'g'"
+},
+{
+"value": "27\t",
+"int": "39"
+},
+{
+"value": "B\ud835\udfd8\u3000X",
+"error": "invalid literal for int() with base 16: 'B\ud835\udfd8\\u3000X'"
+},
+{
+"value": "\uff10g59e6",
+"error": "invalid literal for int() with base 16: '\uff10g59e6'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "eA9-",
+"error": "invalid literal for int() with base 16: 'eA9-'"
+},
+{
+"value": "x\u06638+",
+"error": "invalid literal for int() with base 16: 'x\u06638+'"
+},
+{
+"value": "x0fC",
+"error": "invalid literal for int() with base 16: 'x0fC'"
+},
+{
+"value": "d7dabCD",
+"int": "226339789"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "F6eCCX2",
+"error": "invalid literal for int() with base 16: 'F6eCCX2'"
+},
+{
+"value": "\u3000dB\u0663Cc",
+"int": "897996"
+},
+{
+"value": "-\tb0 \t",
+"error": "invalid literal for int() with base 16: '-\\tb0 \\t'"
+},
+{
+"value": "g\ud835\udfd8FX7f",
+"error": "invalid literal for int() with base 16: 'g\ud835\udfd8FX7f'"
+},
+{
+"value": "\u3000",
+"error": "invalid literal for int() with base 16: '\\u3000'"
+},
+{
+"value": "dCfD8FB",
+"int": "231725307"
+},
+{
+"value": "9XCd0",
+"error": "invalid literal for int() with base 16: '9XCd0'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "Xea",
+"error": "invalid literal for int() with base 16: 'Xea'"
+},
+{
+"value": "75Ax7+d",
+"error": "invalid literal for int() with base 16: '75Ax7+d'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "_e6DgC",
+"error": "invalid literal for int() with base 16: '_e6DgC'"
+},
+{
+"value": "\ud835\udfd8",
+"int": "0"
+},
+{
+"value": "01d7dD",
+"int": "120797"
+},
+{
+"value": "XB8",
+"error": "invalid literal for int() with base 16: 'XB8'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "B6-54D",
+"error": "invalid literal for int() with base 16: 'B6-54D'"
+},
+{
+"value": "-E_",
+"error": "invalid literal for int() with base 16: '-E_'"
+},
+{
+"value": "5 ",
+"int": "5"
+},
+{
+"value": "A",
+"int": "10"
+},
+{
+"value": "+\uff105",
+"int": "5"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "860",
+"int": "2144"
+},
+{
+"value": "\u3000",
+"error": "invalid literal for int() with base 16: '\\u3000'"
+},
+{
+"value": "cFb-f",
+"error": "invalid literal for int() with base 16: 'cFb-f'"
+},
+{
+"value": "95a\ud835\udfd81Fa",
+"int": "156893690"
+},
+{
+"value": "7",
+"int": "7"
+},
+{
+"value": "E\u3000a\u0663",
+"error": "invalid literal for int() with base 16: 'E\\u3000a\u0663'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "\u3000\uff100 E-6",
+"error": "invalid literal for int() with base 16: '\\u3000\uff100 E-6'"
+},
+{
+"value": "0BgF",
+"error": "invalid literal for int() with base 16: '0BgF'"
+},
+{
+"value": "-xD-1\ud835\udfd8",
+"error": "invalid literal for int() with base 16: '-xD-1\ud835\udfd8'"
+},
+{
+"value": "+\t",
+"error": "invalid literal for int() with base 16: '+\\t'"
+},
+{
+"value": "\ud835\udfd8AgF",
+"error": "invalid literal for int() with base 16: '\ud835\udfd8AgF'"
+},
+{
+"value": "+",
+"error": "invalid literal for int() with base 16: '+'"
+},
+{
+"value": "acdd",
+"int": "44253"
+},
+{
+"value": "0\ud835\udfd8\u30002E",
+"error": "invalid literal for int() with base 16: '0\ud835\udfd8\\u30002E'"
+},
+{
+"value": "\u3000\uff10E\t",
+"int": "14"
+},
+{
+"value": "cb",
+"int": "203"
+},
+{
+"value": "x2992c",
+"error": "invalid literal for int() with base 16: 'x2992c'"
+},
+{
+"value": "\u3000",
+"error": "invalid literal for int() with base 16: '\\u3000'"
+},
+{
+"value": "EBCB",
+"int": "60363"
+},
+{
+"value": "2",
+"int": "2"
+},
+{
+"value": "3Bx4\ud835\udfd8\u3000",
+"error": "invalid literal for int() with base 16: '3Bx4\ud835\udfd8\\u3000'"
+},
+{
+"value": "67\ud835\udfd81-\uff10b",
+"error": "invalid literal for int() with base 16: '67\ud835\udfd81-\uff10b'"
+},
+{
+"value": "0 dc3+",
+"error": "invalid literal for int() with base 16: '0 dc3+'"
+},
+{
+"value": "9b72e\u3000 ",
+"int": "636718"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "Ba",
+"int": "186"
+},
+{
+"value": "2e8x1c",
+"error": "invalid literal for int() with base 16: '2e8x1c'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "8\uff10841f-",
+"error": "invalid literal for int() with base 16: '8\uff10841f-'"
+},
+{
+"value": "-",
+"error": "invalid literal for int() with base 16: '-'"
+},
+{
+"value": "\uff10XD83\u0663",
+"int": "55347"
+},
+{
+"value": "\ud835\udfd8fcBef",
+"int": "1035247"
+},
+{
+"value": "x5AX63\ud835\udfd8",
+"error": "invalid literal for int() with base 16: 'x5AX63\ud835\udfd8'"
+},
+{
+"value": "2",
+"int": "2"
+},
+{
+"value": "4g0",
+"error": "invalid literal for int() with base 16: '4g0'"
+},
+{
+"value": "-Cd\t2D\u0663",
+"error": "invalid literal for int() with base 16: '-Cd\\t2D\u0663'"
+},
+{
+"value": "g",
+"error": "invalid literal for int() with base 16: 'g'"
+},
+{
+"value": "a D",
+"error": "invalid literal for int() with base 16: 'a D'"
+},
+{
+"value": "\t",
+"error": "invalid literal for int() with base 16: '\\t'"
+},
+{
+"value": "0\t4D\u3000",
+"error": "invalid literal for int() with base 16: '0\\t4D\\u3000'"
+},
+{
+"value": "e\u3000C9dX ",
+"error": "invalid literal for int() with base 16: 'e\\u3000C9dX '"
+},
+{
+"value": "CXCdb_f",
+"error": "invalid literal for int() with base 16: 'CXCdb_f'"
+},
+{
+"value": "\u066393",
+"int": "915"
+},
+{
+"value": "Dd6\uff10E6",
+"int": "14508262"
+},
+{
+"value": "\t",
+"error": "invalid literal for int() with base 16: '\\t'"
+},
+{
+"value": "12",
+"int": "18"
+},
+{
+"value": "d_e5d4e",
+"int": "14572878"
+},
+{
+"value": "e",
+"int": "14"
+},
+{
+"value": "\u066304d56",
+"int": "3165526"
+},
+{
+"value": "g0XEx",
+"error": "invalid literal for int() with base 16: 'g0XEx'"
+},
+{
+"value": "_gFFa",
+"error": "invalid literal for int() with base 16: '_gFFa'"
+},
+{
+"value": " ",
+"error": "invalid literal for int() with base 16: ' '"
+},
+{
+"value": "0-x6e\t",
+"error": "invalid literal for int() with base 16: '0-x6e\\t'"
+},
+{
+"value": "ADf\taBa",
+"error": "invalid literal for int() with base 16: 'ADf\\taBa'"
+},
+{
+"value": "\u3000",
+"error": "invalid literal for int() with base 16: '\\u3000'"
+},
+{
+"value": "B8",
+"int": "184"
+},
+{
+"value": "  A-",
+"error": "invalid literal for int() with base 16: '  A-'"
+},
+{
+"value": "f78\u3000",
+"int": "3960"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "9bA5\t5",
+"error": "invalid literal for int() with base 16: '9bA5\\t5'"
+},
+{
+"value": "03C7",
+"int": "967"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "bf\u0663",
+"int": "3059"
+},
+{
+"value": "f_4 A",
+"error": "invalid literal for int() with base 16: 'f_4 A'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": " 7x0\u3000",
+"error": "invalid literal for int() with base 16: ' 7x0\\u3000'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "bEga88",
+"error": "invalid literal for int() with base 16: 'bEga88'"
+},
+{
+"value": "4X2\uff105f",
+"error": "invalid literal for int() with base 16: '4X2\uff105f'"
+},
+{
+"value": "\t",
+"error": "invalid literal for int() with base 16: '\\t'"
+},
+{
+"value": "B",
+"int": "11"
+},
+{
+"value": "\u3000\t X4",
+"error": "invalid literal for int() with base 16: '\\u3000\\t X4'"
+},
+{
+"value": "dA7\ud835\udfd8g5",
+"error": "invalid literal for int() with base 16: 'dA7\ud835\udfd8g5'"
+},
+{
+"value": "1b655",
+"int": "112213"
+},
+{
+"value": "1F\u3000\u30009",
+"error": "invalid literal for int() with base 16: '1F\\u3000\\u30009'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "f",
+"int": "15"
+},
+{
+"value": "g7ax1",
+"error": "invalid literal for int() with base 16: 'g7ax1'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "D X1",
+"error": "invalid literal for int() with base 16: 'D X1'"
+},
+{
+"value": "gbfE ",
+"error": "invalid literal for int() with base 16: 'gbfE '"
+},
+{
+"value": "8b\t\ud835\udfd8",
+"error": "invalid literal for int() with base 16: '8b\\t\ud835\udfd8'"
+},
+{
+"value": "A",
+"int": "10"
+},
+{
+"value": "6gd",
+"error": "invalid literal for int() with base 16: '6gd'"
+},
+{
+"value": "88g+",
+"error": "invalid literal for int() with base 16: '88g+'"
+},
+{
+"value": "b+",
+"error": "invalid literal for int() with base 16: 'b+'"
+},
+{
+"value": "\u3000e89",
+"int": "3721"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "E",
+"int": "14"
+},
+{
+"value": "0A1E",
+"int": "2590"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "8D+",
+"error": "invalid literal for int() with base 16: '8D+'"
+},
+{
+"value": "D\u3000Faaf0",
+"error": "invalid literal for int() with base 16: 'D\\u3000Faaf0'"
+},
+{
+"value": "5aa",
+"int": "1450"
+},
+{
+"value": "gE9",
+"error": "invalid literal for int() with base 16: 'gE9'"
+},
+{
+"value": "f6_\uff100A\t",
+"int": "1007626"
+},
+{
+"value": "e3\u066314\u3000\u3000",
+"int": "930580"
+},
+{
+"value": "2d\t",
+"int": "45"
+},
+{
+"value": "\u3000A3",
+"int": "163"
+},
+{
+"value": "E -",
+"error": "invalid literal for int() with base 16: 'E -'"
+},
+{
+"value": "\ud835\udfd8d",
+"int": "13"
+},
+{
+"value": "\u0663dd7\ud835\udfd8D",
+"int": "4052749"
+},
+{
+"value": "xd-",
+"error": "invalid literal for int() with base 16: 'xd-'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "ae",
+"int": "174"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "xBd7 f3",
+"error": "invalid literal for int() with base 16: 'xBd7 f3'"
+},
+{
+"value": "\ud835\udfd8ee",
+"int": "238"
+},
+{
+"value": "b_9\uff10A",
+"int": "47370"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "CFe",
+"int": "3326"
+},
+{
+"value": "0df",
+"int": "223"
+},
+{
+"value": "b\ud835\udfd8-_g",
+"error": "invalid literal for int() with base 16: 'b\ud835\udfd8-_g'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "aF6cx",
+"error": "invalid literal for int() with base 16: 'aF6cx'"
+},
+{
+"value": "1Eg",
+"error": "invalid literal for int() with base 16: '1Eg'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "\u3000d5g+B",
+"error": "invalid literal for int() with base 16: '\\u3000d5g+B'"
+},
+{
+"value": "d8F\uff106",
+"int": "888582"
+},
+{
+"value": "_8-",
+"error": "invalid literal for int() with base 16: '_8-'"
+},
+{
+"value": "8\ud835\udfd8gD",
+"error": "invalid literal for int() with base 16: '8\ud835\udfd8gD'"
+},
+{
+"value": "dcDED",
+"int": "904685"
+},
+{
+"value": "C7Xde",
+"error": "invalid literal for int() with base 16: 'C7Xde'"
+},
+{
+"value": "\u30003",
+"int": "3"
+},
+{
+"value": "B6b",
+"int": "2923"
+},
+{
+"value": "+1ba",
+"int": "442"
+},
+{
+"value": "Fe8\t",
+"int": "4072"
+},
+{
+"value": "bD6",
+"int": "3030"
+},
+{
+"value": "fc",
+"int": "252"
+},
+{
+"value": "x\t",
+"error": "invalid literal for int() with base 16: 'x\\t'"
+},
+{
+"value": "9Ec5B",
+"int": "650331"
+},
+{
+"value": "X",
+"error": "invalid literal for int() with base 16: 'X'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "2FC3\ud835\udfd81",
+"int": "3130113"
+},
+{
+"value": "5D\u3000\uff102",
+"error": "invalid literal for int() with base 16: '5D\\u3000\uff102'"
+},
+{
+"value": "\u3000a4F",
+"int": "2639"
+},
+{
+"value": "0B\u3000A",
+"error": "invalid literal for int() with base 16: '0B\\u3000A'"
+},
+{
+"value": "6",
+"int": "6"
+},
+{
+"value": "76",
+"int": "118"
+},
+{
+"value": "E+7X84\uff10",
+"error": "invalid literal for int() with base 16: 'E+7X84\uff10'"
+},
+{
+"value": "EC",
+"int": "236"
+},
+{
+"value": "f49e",
+"int": "62622"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "\uff10",
+"int": "0"
+},
+{
+"value": "d9\uff10",
+"int": "3472"
+},
+{
+"value": "bee5c",
+"int": "781916"
+},
+{
+"value": "3b4",
+"int": "948"
+},
+{
+"value": "X23\ud835\udfd8-\ud835\udfd8",
+"error": "invalid literal for int() with base 16: 'X23\ud835\udfd8-\ud835\udfd8'"
+},
+{
+"value": "_gAxX",
+"error": "invalid literal for int() with base 16: '_gAxX'"
+},
+{
+"value": "F",
+"int": "15"
+},
+{
+"value": "3254+b",
+"error": "invalid literal for int() with base 16: '3254+b'"
+},
+{
+"value": "\uff10",
+"int": "0"
+},
+{
+"value": "B\uff10",
+"int": "176"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": "954\uff109\u0663",
+"int": "9781395"
+},
+{
+"value": "18\uff10\t",
+"int": "384"
+},
+{
+"value": "0x_1f",
+"int": "31"
+},
+{
+"value": "1_f",
+"int": "31"
+},
+{
+"value": "_1f",
+"error": "invalid literal for int() with base 16: '_1f'"
+},
+{
+"value": "1__f",
+"error": "invalid literal for int() with base 16: '1__f'"
+},
+{
+"value": "0x",
+"error": "invalid literal for int() with base 16: '0x'"
+},
+{
+"value": "",
+"error": "invalid literal for int() with base 16: ''"
+},
+{
+"value": " -0X1F ",
+"int": "-31"
+},
+{
+"value": "+1f",
+"int": "31"
+},
+{
+"value": "0x-1",
+"error": "invalid literal for int() with base 16: '0x-1'"
+},
+{
+"value": "\u0663\u0661",
+"int": "49"
+}
+]
+}

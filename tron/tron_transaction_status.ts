@@ -6,6 +6,7 @@ import {
   TransactionStatusType,
   TransactionStatusTypes,
 } from '../transaction_status.ts';
+import { pyBalanceChangesRepr, pyDatetimeStr, pyStr } from '../python_repr.ts';
 
 export interface TronTransactionFeesInit {
   feeInSun: number;
@@ -55,6 +56,14 @@ export class TronTransactionFees {
     this.chainParamGetEnergyFee = init.chainParamGetEnergyFee;
   }
 
+  toString(): string {
+    return (
+      `fee_in_sun=${this.feeInSun} energy_usage=${this.energyUsage} energy_fee=${this.energyFee} ` +
+      `origin_energy_usage=${this.originEnergyUsage} energy_usage_total=${this.energyUsageTotal} net_usage=${this.netUsage} ` +
+      `net_fee=${this.netFee} energy_penalty_total=${this.energyPenaltyTotal} chain_param_get_energy_fee=${this.chainParamGetEnergyFee}`
+    );
+  }
+
   static fromTransactionInfo(info: Record<string, unknown>, chainGetEnergyFee: number): TronTransactionFees {
     const receipt = (info.receipt as Record<string, unknown> | undefined) ?? {};
     const int = (value: unknown): number => (value ? Math.trunc(Number(value)) : 0);
@@ -93,6 +102,14 @@ export class TronTransactionStatus extends TransactionStatus {
       error: init.error,
     });
     this.fees = init.fees ?? null;
+  }
+
+  toString(): string {
+    return (
+      `TronTransactionStatus[chain_id=${this.chainId}, status_type=${this.status}, ` +
+      `inclusion_datetime_utc=${pyDatetimeStr(this.inclusionAt)}, ` +
+      `fees=${pyStr(this.fees)}, balance_changes=${pyBalanceChangesRepr(this.balanceChanges)}]`
+    );
   }
 
   static successful(args: {

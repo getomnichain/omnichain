@@ -1,5 +1,6 @@
 import { ChainError, ChainErrorKinds } from './errors.ts';
 import { NetworkType } from './network_type.ts';
+import { PyJsonDumpsOptions, pyJsonDumps } from './python_json.ts';
 import { JsonDict, JsonTransactionInput, transactionFromJson } from './transaction_json.ts';
 
 export abstract class UnsignedTransaction {
@@ -12,7 +13,7 @@ export abstract class UnsignedTransaction {
   }
 
   static fromJson(data: JsonTransactionInput): UnsignedTransaction {
-    return transactionFromJson(data, 'unsigned') as UnsignedTransaction;
+    return transactionFromJson(this, UnsignedTransaction.fromJson, data) as UnsignedTransaction;
   }
 
   toJson(): JsonDict {
@@ -23,7 +24,7 @@ export abstract class UnsignedTransaction {
     );
   }
 
-  toJsonStr(): string {
-    return JSON.stringify(this.toJson());
+  toJsonStr(opts?: PyJsonDumpsOptions): string {
+    return pyJsonDumps(this.toJson(), opts);
   }
 }

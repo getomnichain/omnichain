@@ -2,6 +2,7 @@ import { Decimal } from 'decimal.js';
 
 import { bytesFromHex } from '../bytes_from_hex.ts';
 import { ChainError, ChainErrorKind, ChainErrorKinds, sanitizeMessage } from '../errors.ts';
+import { pyDecodeUtf8 } from '../python_builtins.ts';
 import { pyRepr, pyStr } from '../python_repr.ts';
 import { minorUnitsToHrString } from '../transaction_status.ts';
 import { toBase58CheckAddress } from './tron_keys.ts';
@@ -68,39 +69,39 @@ export class TronClient {
     const headers: Record<string, string> = { 'User-Agent': TRONPY_USER_AGENT, 'Content-Type': 'application/json' };
     if (this.useApiKey && this.#apiKey !== undefined) headers['Tron-Pro-Api-Key'] = this.#apiKey;
     const url = new URL(method, this.endpointUri).toString();
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const restartTimeout = (): void => {
+      clearTimeout(timer);
+      timer = setTimeout(() => controller.abort(new Error(`timed out after ${this.timeoutMs} ms without a response`)), this.timeoutMs);
+    };
     let response: Response;
+    let body: Uint8Array;
     try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(params),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
+      restartTimeout();
+      response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(params), redirect: 'manual', signal: controller.signal });
+      restartTimeout();
+      body = await readBody(response, restartTimeout);
     } catch (err) {
       throw new ChainError(
         ChainErrorKinds.RpcError,
-        sanitizeMessage(`Tron ${method} request failed: ${err instanceof Error ? err.message : String(err)}`, this.endpointUri),
+        sanitizeMessage(`Tron ${method} request failed: ${transportErrorMessage(err, controller.signal)}`, this.endpointUri),
       );
+    } finally {
+      clearTimeout(timer);
     }
-    const text = await response.text();
-    if (this.useApiKey && response.status === 403 && text.includes('Exceed the user daily usage')) {
-      throw new ChainError(
-        ChainErrorKinds.RpcError,
-        sanitizeMessage(`Tron ${method}: TronGrid API key exceeded its daily usage (rate limit! please add more API keys)`, this.endpointUri),
-      );
+    if (this.useApiKey && response.status === 403 && Buffer.from(body).includes('Exceed the user daily usage')) {
+      throw new TronApiError(ChainErrorKinds.RpcError, 'rate limit! please add more API keys', null);
     }
-    if (!response.ok) {
-      throw new ChainError(
-        ChainErrorKinds.RpcError,
-        sanitizeMessage(`Tron ${method} HTTP ${response.status}: ${text.slice(0, 300)}`, this.endpointUri),
-      );
+    if (response.status < 200 || response.status > 299) {
+      throw new ChainError(ChainErrorKinds.RpcError, sanitizeMessage(httpxStatusErrorMessage(response, url), this.endpointUri.replace(/\/+$/, '')));
     }
     try {
-      return JSON.parse(text) as TronJson;
+      return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body)) as TronJson;
     } catch {
       throw new ChainError(
         ChainErrorKinds.RpcError,
-        sanitizeMessage(`Tron ${method} returned a non-JSON body: ${text.slice(0, 300)}`, this.endpointUri),
+        sanitizeMessage(`Tron ${method} returned a non-JSON body: ${Buffer.from(body).toString('utf8').slice(0, 300)}`, this.endpointUri),
       );
     }
   }
@@ -256,7 +257,7 @@ function decodeApiMessage(payload: TronJson): unknown {
   const rawMessage = payload.message;
   try {
     if (typeof rawMessage !== 'string') throw new TypeError('fromhex() argument must be str');
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytesFromHex(rawMessage));
+    return pyDecodeUtf8(bytesFromHex(rawMessage));
   } catch {
     return rawMessage === undefined ? pyRepr(payload) : rawMessage;
   }
@@ -272,7 +273,7 @@ function decodeRevertString(resultHex: unknown): string | null {
     if (BigInt(body.length) < 32n + paddedLength) return null;
     const data = body.subarray(32, 32 + Number(length));
     if (body.subarray(32 + Number(length), 32 + Number(paddedLength)).some((byte) => byte !== 0)) return null;
-    return new TextDecoder('utf-8', { fatal: true }).decode(data);
+    return pyDecodeUtf8(data);
   } catch {
     return null;
   }
@@ -284,4 +285,36 @@ function requireStringField(payload: TronJson, field: string, method: string): s
     throw new ChainError(ChainErrorKinds.RpcError, `Tron ${method} response has no ${field}`);
   }
   return value;
+}
+
+async function readBody(response: Response, onChunk: () => void): Promise<Uint8Array> {
+  if (response.body === null) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    onChunk();
+    if (done) break;
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+function transportErrorMessage(err: unknown, signal: AbortSignal): string {
+  if (signal.aborted && signal.reason instanceof Error) return signal.reason.message;
+  return err instanceof Error ? err.message : String(err);
+}
+
+const HTTPX_STATUS_ERROR_TYPES: Record<number, string> = {
+  1: 'Informational response',
+  3: 'Redirect response',
+  4: 'Client error',
+  5: 'Server error',
+};
+
+function httpxStatusErrorMessage(response: Response, url: string): string {
+  const errorType = HTTPX_STATUS_ERROR_TYPES[Math.floor(response.status / 100)] ?? 'Invalid status code';
+  const location = response.headers.get('location');
+  const redirect = response.status >= 300 && response.status < 400 && location !== null ? `\nRedirect location: '${location}'` : '';
+  return `${errorType} '${response.status} ${response.statusText}' for url '${url}'${redirect}\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/${response.status}`;
 }

@@ -16,7 +16,8 @@ import { Decimal } from 'decimal.js';
 
 import type { Chain } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds } from '../errors.ts';
-import { pyBytesRepr, pyStr } from '../python_repr.ts';
+import { pyEncodeUtf8 } from '../python_builtins.ts';
+import { pyBalanceChangesRepr, pyBytesRepr, pyStr } from '../python_repr.ts';
 import { NetworkType } from '../network_type.ts';
 import { AbstractBroadcastTransactionResponse, AbstractSignedTransaction } from '../signed_transaction.ts';
 import {
@@ -24,6 +25,7 @@ import {
   JsonTransactionInput,
   jsonTransactionEnvelope,
   parseJsonTransactionEnvelope,
+  jsonPayloadItem,
   registerJsonTransactionType,
 } from '../transaction_json.ts';
 import { AbstractHandledPrerequisiteResponse, AbstractTransactionPrerequisite } from '../transaction_prerequisite.ts';
@@ -39,7 +41,7 @@ export function isInvokeHostFunctionOperation(operation: xdr.Operation): boolean
   return operation.body().switch().name === 'invokeHostFunction';
 }
 
-function pyMemoStr(memo: Memo): string {
+export function pyMemoStr(memo: Memo): string {
   const valueBytes = (): Uint8Array => (typeof memo.value === 'string' ? Buffer.from(memo.value, 'utf8') : (memo.value as Buffer));
   switch (memo.type) {
     case MemoText:
@@ -53,6 +55,37 @@ function pyMemoStr(memo: Memo): string {
     default:
       return '<NoneMemo>';
   }
+}
+
+const STELLAR_TEXT_MEMO_MAX_BYTES = 28;
+
+export function stellarTextMemo(text: string): Memo {
+  const length = pyEncodeUtf8(text).length;
+  if (length > STELLAR_TEXT_MEMO_MAX_BYTES) {
+    throw new ChainError(
+      ChainErrorKinds.InvalidArgument,
+      `Text should be <= ${STELLAR_TEXT_MEMO_MAX_BYTES} bytes (ascii encoded), got ${length} bytes.`,
+    );
+  }
+  return Memo.text(text);
+}
+
+function prepareTransactionError(err: unknown, chainId: number): ChainError {
+  const simulationFailed = err instanceof Error && err.constructor === Error && !('response' in err) && !('code' in err);
+  if (simulationFailed) {
+    return new ChainError(
+      ChainErrorKinds.SimulationFailed,
+      'Simulation transaction failed, the response contains error information.',
+      { chainId },
+      err,
+    );
+  }
+  return new ChainError(
+    ChainErrorKinds.RpcError,
+    `Soroban prepareTransaction failed: ${err instanceof Error ? err.message : String(err)}`,
+    { chainId },
+    err,
+  );
 }
 
 const STELLAR_AMOUNT_UPPER_LIMIT = '922337203685.4775807';
@@ -87,7 +120,7 @@ export function toClassicStellarAccountId(address: string): string {
   try {
     return StrKey.encodeEd25519PublicKey(StrKey.decodeMed25519PublicKey(address).subarray(0, 32));
   } catch (err) {
-    throw new ChainError(ChainErrorKinds.InvalidAddress, `Invalid Stellar account ${address}`, { address }, err);
+    throw new ChainError(ChainErrorKinds.InvalidAddress, `This is not a valid account: ${address}`, { address }, err);
   }
 }
 
@@ -206,7 +239,11 @@ export class StellarUnsignedTransaction extends UnsignedTransaction {
     let tx = builder.build();
 
     if (hasInvokeHostOp) {
-      tx = await chain.sorobanServer.prepareTransaction(tx);
+      try {
+        tx = await chain.asyncSorobanServer.prepareTransaction(tx);
+      } catch (err) {
+        throw prepareTransactionError(err, chain.chainId);
+      }
     }
     return tx;
   }
@@ -223,7 +260,7 @@ export class StellarUnsignedTransaction extends UnsignedTransaction {
   }
 
   static fromXdr(chain: StellarChain, envelopeXdr: string): StellarUnsignedTransaction {
-    const envelope = new Transaction(envelopeXdr, chain.networkPassphrase);
+    const envelope = parseSignedStellarEnvelope(envelopeXdr, chain.networkPassphrase);
     StellarUnsignedTransaction.validateEnvelope(envelope);
     return new StellarUnsignedTransaction({
       chainId: chain.chainId,
@@ -250,10 +287,10 @@ export class StellarUnsignedTransaction extends UnsignedTransaction {
     const payload = parseJsonTransactionEnvelope(data, StellarUnsignedTransaction.JSON_TYPE);
     const memoXdr = payload.memo as string | null | undefined;
     return new StellarUnsignedTransaction({
-      chainId: payload.chain_id as number,
-      sourceAccountId: payload.source_account_id as string,
+      chainId: jsonPayloadItem(payload, 'chain_id') as number,
+      sourceAccountId: jsonPayloadItem(payload, 'source_account_id') as string,
       baseFee: (payload.base_fee as number | null | undefined) ?? null,
-      operations: (payload.operations as string[]).map((op) => xdr.Operation.fromXDR(op, 'base64')),
+      operations: (jsonPayloadItem(payload, 'operations') as string[]).map((op) => xdr.Operation.fromXDR(op, 'base64')),
       memo: memoXdr === null || memoXdr === undefined ? null : Memo.fromXDRObject(xdr.Memo.fromXDR(memoXdr, 'base64')),
     });
   }
@@ -271,10 +308,10 @@ function rawEnvelopeOperations(envelope: Transaction): xdr.Operation[] {
 
 async function loadSourceAccount(chain: StellarChain, sourceAccountId: string): Promise<Account | MuxedAccount> {
   if (StrKey.isValidMed25519PublicKey(sourceAccountId)) {
-    const base = await chain.horizonServer.loadAccount(toClassicStellarAccountId(sourceAccountId));
+    const base = await chain.asyncHorizonServer.loadAccount(toClassicStellarAccountId(sourceAccountId));
     return MuxedAccount.fromAddress(sourceAccountId, base.sequenceNumber());
   }
-  return chain.horizonServer.loadAccount(sourceAccountId);
+  return chain.asyncHorizonServer.loadAccount(sourceAccountId);
 }
 
 export class StellarSignedTransaction extends AbstractSignedTransaction {
@@ -309,15 +346,15 @@ export class StellarSignedTransaction extends AbstractSignedTransaction {
   static fromJson(data: JsonTransactionInput): StellarSignedTransaction {
     const payload = parseJsonTransactionEnvelope(data, StellarSignedTransaction.JSON_TYPE);
     return new StellarSignedTransaction({
-      chainId: payload.chain_id as number,
-      signedXdr: payload.signed_xdr as string,
-      networkPassphrase: payload.network_passphrase as string,
+      chainId: jsonPayloadItem(payload, 'chain_id') as number,
+      signedXdr: jsonPayloadItem(payload, 'signed_xdr') as string,
+      networkPassphrase: jsonPayloadItem(payload, 'network_passphrase') as string,
     });
   }
 }
 
-registerJsonTransactionType(StellarUnsignedTransaction.JSON_TYPE, 'unsigned', (payload) => StellarUnsignedTransaction.fromJson(payload));
-registerJsonTransactionType(StellarSignedTransaction.JSON_TYPE, 'signed', (payload) => StellarSignedTransaction.fromJson(payload));
+registerJsonTransactionType(StellarUnsignedTransaction);
+registerJsonTransactionType(StellarSignedTransaction);
 
 export class StellarBroadcastTransactionResponse extends AbstractBroadcastTransactionResponse {
   private readonly _chain: Chain;
@@ -383,6 +420,14 @@ export class StellarTransactionSimulationResult extends AbstractTransactionSimul
     this.fees = init.fees ?? null;
     this.transactionType = init.transactionType ?? null;
     this.memo = init.memo ?? null;
+  }
+
+  toString(): string {
+    return (
+      `StellarTransactionSimulationResult[chain_id:${this.chainId},status:${this.statusType},` +
+      `balance_changes:${pyBalanceChangesRepr(this.balanceChanges)},error:${pyStr(this.error)},fees:${pyStr(this.fees)},` +
+      `transaction_type:${pyStr(this.transactionType)},memo:${this.memo === null ? 'None' : pyMemoStr(this.memo)},]`
+    );
   }
 }
 
