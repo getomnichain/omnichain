@@ -510,6 +510,14 @@ describe('Signing, broadcasting and trustline handling', () => {
     fakes.submitError = null;
     expect(await chain.broadcast(Buffer.from(signed.signedXdr, 'base64'))).toBe(signed.txHash);
 
+    for (const hash of [null, 5, '', 'ab'.repeat(32)]) {
+      fakes.submitReply = { hash };
+      expect((await chain.broadcastSignedTransaction(signed)).txHash).toBe(hash);
+      await expect(chain.broadcast(signed.signedXdr)).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError, meta: { txHash: signed.txHash } });
+    }
+    fakes.submitReply = { hash: signed.txHash };
+    expect(await chain.broadcast(signed.signedXdr)).toBe(signed.txHash);
+
     for (const reply of [{}, '<html>maintenance</html>']) {
       fakes.submitReply = reply;
       const noHash = await chain.broadcastSignedTransaction(signed);

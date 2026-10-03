@@ -313,6 +313,23 @@ describe('TronWallet signing and TronChain broadcast', () => {
     await expectKind({ Error: 'class java.lang.NullPointerException : null' }, ChainErrorKinds.RpcError);
     await expectKind({}, ChainErrorKinds.RpcError);
 
+    for (const [txid, parityHash] of [
+      [{}, TXID],
+      [[], TXID],
+      ['', TXID],
+      [5, 5],
+      [true, true],
+      ['ff'.repeat(32), 'ff'.repeat(32)],
+    ] as [unknown, unknown][]) {
+      reply = { result: true, txid };
+      expect((await chain.broadcastSignedTransaction(signed)).txHash).toEqual(parityHash);
+      if (parityHash === TXID) {
+        expect(await chain.broadcast(signed.toJsonStr())).toBe(TXID);
+      } else {
+        await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError, meta: { txHash: TXID } });
+      }
+    }
+
     reply = { result: true };
     const noTxid = await chain.broadcastSignedTransaction(signed);
     expect(noTxid.txHash).toBe(TXID);
@@ -346,11 +363,15 @@ describe('TronWallet.handleTransactionPrerequisite (TRC-20 approve)', () => {
     return (((((tx.raw_data as TronJson).contract as TronJson[])[0].parameter as TronJson).value as TronJson).data as string);
   }
 
-  it('approve broadcast failures use the broadcast classification and carry the txHash', async () => {
+  it('approve broadcast failures keep tronpy\'s text, use the broadcast classification and carry the signed txid', async () => {
     let reply: TronJson = { result: true };
-    const { chain } = stubChain((method) => {
+    let broadcastTxid: unknown = null;
+    const { chain } = stubChain((method, params) => {
       if (method === 'wallet/triggerconstantcontract') return allowanceReply(0n);
-      if (method === 'wallet/broadcasttransaction') return reply;
+      if (method === 'wallet/broadcasttransaction') {
+        broadcastTxid = params.txID;
+        return reply;
+      }
       return undefined;
     });
     const prerequisite = new TronApproveTransactionPrerequisite({
@@ -360,18 +381,22 @@ describe('TronWallet.handleTransactionPrerequisite (TRC-20 approve)', () => {
       spenderContractAddress: SPENDER,
       amount: 1_000n,
     });
-    const cases: [TronJson, string][] = [
-      [{ code: 'SIGERROR', message: '' }, ChainErrorKinds.BroadcastRejected],
-      [{ code: 'CONTRACT_VALIDATE_ERROR', message: '' }, ChainErrorKinds.BroadcastRejected],
-      [{ code: 'TRANSACTION_EXPIRATION_ERROR', message: '' }, ChainErrorKinds.RpcError],
-      [{ result: true }, ChainErrorKinds.RpcError],
+    const hex = (text: string) => Buffer.from(text).toString('hex');
+    const cases: [TronJson, string, string][] = [
+      [{ code: 'SIGERROR', message: hex('bad sig') }, ChainErrorKinds.BroadcastRejected, 'bad sig'],
+      [{ code: 'CONTRACT_VALIDATE_ERROR', message: hex('boom') }, ChainErrorKinds.BroadcastRejected, 'boom'],
+      [{ code: 'TRANSACTION_EXPIRATION_ERROR', message: hex('expired') }, ChainErrorKinds.RpcError, 'expired'],
+      [{ code: 'DUP_TRANSACTION_ERROR', message: hex('dup transaction') }, ChainErrorKinds.RpcError, "('dup transaction', 'DUP_TRANSACTION_ERROR')"],
+      [{ result: true }, ChainErrorKinds.RpcError, "'txid'"],
     ];
-    for (const [next, kind] of cases) {
+    for (const [next, kind, message] of cases) {
       reply = next;
-      await expect(SENDER.handleTransactionPrerequisite(prerequisite, chain)).rejects.toMatchObject({
-        kind,
-        meta: { txHash: expect.stringMatching(/^[0-9a-f]{64}$/) },
-      });
+      const failure = await SENDER.handleTransactionPrerequisite(prerequisite, chain).then(
+        () => null,
+        (err: unknown) => err,
+      );
+      expect(failure).toMatchObject({ kind, message, meta: { txHash: broadcastTxid } });
+      expect(typeof broadcastTxid).toBe('string');
     }
   });
 

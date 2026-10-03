@@ -9,12 +9,12 @@ import {
   VerifyMessageSignatureRequest,
   resolveTransferAmount,
 } from '../chain.base.ts';
-import { CHAIN_FAMILY_TRON, CHAIN_ID_TRON_MAINNET } from '../chain_ids.ts';
+import { CHAIN_ID_TRON_MAINNET } from '../chain_ids.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKind, ChainErrorKinds, isChainError } from '../errors.ts';
 import { isPyInt, pyDecodeUtf8, pyEncodeUtf8, pyInt, pyItem } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
-import { NetworkType, registerNonEvmChain } from '../network_type.ts';
+import { NetworkType } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
 import { AbstractSignedTransaction } from '../signed_transaction.ts';
 import { coerceJsonDict, JSON_TRANSACTION_TYPE_KEY, JsonTransactionInput } from '../transaction_json.ts';
@@ -213,7 +213,6 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     this.rpcUrl = init.rpcUrl ?? null;
     this.#trongridApiKey = init.trongridApiKey ?? null;
     this._nativeAsset = new TronAsset(init.chainId, 'TRX', null, TronAsset.NATIVE_DECIMALS);
-    if (CHAIN_FAMILY_TRON.has(init.chainId)) registerNonEvmChain(init.chainId, NetworkType.TRON);
   }
 
   get client(): TronClient {
@@ -816,7 +815,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     }
     try {
       const result = await signedTransaction.signedTransaction.broadcast();
-      const txHash = (result.txid as string | undefined) || signedTransaction.txHash;
+      const txHash = pyTruthy(result.txid) ? (result.txid as string) : signedTransaction.txHash;
       return new TronBroadcastTransactionResponse({ chain: this, txHash });
     } catch (err) {
       return new TronBroadcastTransactionResponse({
@@ -900,7 +899,16 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     const signedTransaction = parseTronSignedInput(signed, this.chainId);
     const response = await this.broadcastSignedTransaction(signedTransaction);
     const error = response.broadcastError;
-    if (error === null) return response.txHash;
+    if (error === null) {
+      if (response.txHash !== signedTransaction.txHash) {
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          `Tron node answered txid ${pyRepr(response.txHash)} for the signed transaction ${signedTransaction.txHash}`,
+          { chainId: this.chainId, txHash: signedTransaction.txHash },
+        );
+      }
+      return signedTransaction.txHash;
+    }
     throw new ChainError(
       tronBroadcastErrorKind(error),
       `Tron broadcast failed: ${error.message}`,
@@ -997,7 +1005,7 @@ function readEnv(): Record<string, string | undefined> | undefined {
 }
 
 export function pyTruthy(value: unknown): boolean {
-  if (value === null || value === undefined || value === false || value === 0 || value === '') return false;
+  if (value === null || value === undefined || value === false || value === 0 || value === 0n || value === '') return false;
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === 'object') return Object.keys(value as object).length > 0;
   return true;

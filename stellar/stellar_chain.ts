@@ -37,8 +37,7 @@ import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { pyDecodeUtf8, pyEncodeUtf8, PyStringContainer, pyContains, pyStringContainer } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
-import { CHAIN_FAMILY_STELLAR } from '../chain_ids.ts';
-import { NetworkType, registerNonEvmChain } from '../network_type.ts';
+import { NetworkType } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
 import { AbstractSignedTransaction } from '../signed_transaction.ts';
 import { JSON_TRANSACTION_TYPE_KEY, coerceJsonDict } from '../transaction_json.ts';
@@ -67,7 +66,7 @@ import {
   parseSignedStellarEnvelope,
   parseStellarExpertTransactionInfo,
   stellarOperationAmount,
-  sorobanRpcErrorResponse,
+  sorobanRpcError,
   stellarTextMemo,
   toClassicStellarAccountId,
 } from './stellar_transactions.ts';
@@ -215,7 +214,6 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     this.sorobanRpcUrl = init.sorobanRpcUrl ?? null;
     this.defaultHorizonUrl = init.defaultHorizonUrl;
     this.defaultSorobanRpcUrl = init.defaultSorobanRpcUrl;
-    if (CHAIN_FAMILY_STELLAR.has(init.chainId)) registerNonEvmChain(init.chainId, NetworkType.STELLAR);
   }
 
   get asyncHorizonServer(): Horizon.Server {
@@ -940,7 +938,8 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
 
       let sorobanTxResp: rpc.Api.RawGetTransactionResponse | null;
       try {
-        sorobanTxResp = await this.asyncSorobanServer._getTransaction(txHash);
+        const reply: unknown = await this.asyncSorobanServer._getTransaction(txHash);
+        sorobanTxResp = isGetTransactionResponse(reply) ? reply : null;
       } catch {
         sorobanTxResp = null;
       }
@@ -1362,7 +1361,16 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const signedTransaction = this.parseSignedInput(signed);
     const response = await this.broadcastSignedTransaction(signedTransaction);
     const error = response.broadcastError;
-    if (error === null) return response.txHash;
+    if (error === null) {
+      if (response.txHash !== signedTransaction.txHash) {
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          `Horizon answered hash ${pyRepr(response.txHash)} for the signed transaction ${signedTransaction.txHash}`,
+          { chainId: this.chainId, txHash: signedTransaction.txHash },
+        );
+      }
+      return signedTransaction.txHash;
+    }
     const rpcUrl = this.horizonUrl;
     if (error instanceof AccountRequiresMemoError) {
       throw new ChainError(
@@ -1462,7 +1470,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     try {
       return await call;
     } catch (err) {
-      throw sorobanRpcErrorResponse(err, this.chainId);
+      throw sorobanRpcError(err, this.chainId, this.sorobanRpcUrl);
     }
   }
 
@@ -1515,6 +1523,24 @@ function applyAiohttpClientLimits(client: Horizon.Server['httpClient']): void {
     const total = String(config.method).toLowerCase() === 'post' ? STELLAR_SDK_POST_TIMEOUT_MS : STELLAR_SDK_GET_TIMEOUT_MS;
     return Object.assign(config, { timeout: total, signal: AbortSignal.timeout(total), proxy: false, maxRedirects: AIOHTTP_MAX_REDIRECTS });
   });
+}
+
+const GET_TRANSACTION_STATUSES: ReadonlySet<unknown> = new Set(['SUCCESS', 'NOT_FOUND', 'FAILED']);
+const GET_TRANSACTION_LEDGER_FIELDS = ['latestLedger', 'latestLedgerCloseTime', 'oldestLedger', 'oldestLedgerCloseTime'];
+
+function isGetTransactionResponse(reply: unknown): reply is rpc.Api.RawGetTransactionResponse {
+  if (reply === null || typeof reply !== 'object' || Array.isArray(reply)) return false;
+  const fields = reply as Record<string, unknown>;
+  return (
+    GET_TRANSACTION_STATUSES.has(fields.status) &&
+    typeof fields.txHash === 'string' &&
+    GET_TRANSACTION_LEDGER_FIELDS.every((name) => isLaxInt(fields[name]))
+  );
+}
+
+function isLaxInt(value: unknown): boolean {
+  if (typeof value === 'number') return Number.isInteger(value);
+  return typeof value === 'string' && /^\s*[+-]?\d+\s*$/.test(value);
 }
 
 function transactionXdrOperations(tx: Transaction): xdr.Operation[] {

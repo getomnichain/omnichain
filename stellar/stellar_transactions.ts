@@ -15,7 +15,7 @@ import {
 import { Decimal } from 'decimal.js';
 
 import type { Chain } from '../chain.base.ts';
-import { ChainError, ChainErrorKinds } from '../errors.ts';
+import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { pyEncodeUtf8 } from '../python_builtins.ts';
 import { pyBalanceChangesRepr, pyBytesRepr, pyStr } from '../python_repr.ts';
 import { NetworkType } from '../network_type.ts';
@@ -70,13 +70,21 @@ export function stellarTextMemo(text: string): Memo {
   return Memo.text(text);
 }
 
-export function sorobanRpcErrorResponse(err: unknown, chainId: number): unknown {
-  if (err instanceof Error || err === null || typeof err !== 'object' || !('code' in err)) return err;
-  const message = (err as { message?: unknown }).message;
-  return new ChainError(ChainErrorKinds.RpcError, message === undefined || message === null ? 'None' : String(message), { chainId }, err);
+export function sorobanRpcError(err: unknown, chainId: number, rpcUrl: string | null): ChainError {
+  if (err instanceof ChainError) return err;
+  let message: string;
+  if (err instanceof Error) {
+    message = err.message;
+  } else if (err !== null && typeof err === 'object' && 'message' in err) {
+    const rpcMessage = (err as { message?: unknown }).message;
+    message = rpcMessage === undefined || rpcMessage === null ? 'None' : String(rpcMessage);
+  } else {
+    message = String(err);
+  }
+  return new ChainError(ChainErrorKinds.RpcError, sanitizeMessage(message, rpcUrl), { chainId }, sanitizeCause(err, rpcUrl));
 }
 
-function prepareTransactionError(err: unknown, chainId: number): ChainError {
+function prepareTransactionError(err: unknown, chainId: number, rpcUrl: string | null): ChainError {
   const simulationFailed = err instanceof Error && err.constructor === Error && !('response' in err) && !('code' in err);
   if (simulationFailed) {
     return new ChainError(
@@ -86,12 +94,7 @@ function prepareTransactionError(err: unknown, chainId: number): ChainError {
       err,
     );
   }
-  return new ChainError(
-    ChainErrorKinds.RpcError,
-    `Soroban prepareTransaction failed: ${err instanceof Error ? err.message : String(err)}`,
-    { chainId },
-    err,
-  );
+  return sorobanRpcError(err, chainId, rpcUrl);
 }
 
 const STELLAR_AMOUNT_UPPER_LIMIT = '922337203685.4775807';
@@ -248,7 +251,7 @@ export class StellarUnsignedTransaction extends UnsignedTransaction {
       try {
         tx = await chain.asyncSorobanServer.prepareTransaction(tx);
       } catch (err) {
-        throw prepareTransactionError(sorobanRpcErrorResponse(err, chain.chainId), chain.chainId);
+        throw prepareTransactionError(err, chain.chainId, chain.sorobanRpcUrl);
       }
     }
     return tx;

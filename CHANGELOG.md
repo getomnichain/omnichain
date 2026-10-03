@@ -17,7 +17,7 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
 
 ### Added
 
-- Stellar and Tron are imported from their subpaths only. Like Python's `import omnichain`, the root entry loads neither family, so `@stellar/stellar-sdk` is loaded only by consumers that use Stellar.
+- Stellar and Tron are imported from their subpaths only. Like Python's `import omnichain`, the root entry does not load the families' chain modules, so at runtime `@stellar/stellar-sdk` is loaded only by consumers that use Stellar. Consumers that compile omnichain's source need it at compile time; see Migration.
 - **`@getomnichain/omnichain/stellar`**:
   - Chains: `StellarMainnet` / `StellarTestnet`.
   - Assets: `StellarAsset` (native, SAC, non-SAC Soroban), `STELLAR_XLM` / `STELLAR_USDC` / `STELLAR_EURC` / `STELLAR_BNUSD` plus testnet assets, `STELLAR_MAINNET_STABLECOINS_PEG`.
@@ -56,7 +56,7 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
   - `pyRepr` / `pyStr` / `pyTypeRepr` / `pyFloatRepr`, so error and `toString` texts match Python's;
   - `pyJsonDumps`: `toJsonStr` output is byte-identical to omnichain-py's `to_json_str` and accepts its `json.dumps` options;
   - `tronAbiEncodeSingle` / `tronAbiDecodeSingle`, a port of tronpy's `trx_abi` (strict eth_abi decoding with Tron addresses).
-- **Tests** — 834 new tests:
+- **Tests** — 840 new tests:
   - Python's wallet vectors;
   - mainnet status cases replayed offline from recorded RPC responses;
   - Python JSON payload fixtures;
@@ -68,6 +68,20 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
 
 - `UnsignedTransaction` gains `toJson()` / `toJsonStr()` (throwing `FeatureNotSupported` for models without a JSON form, as in Python) and a static `fromJson`.
 - New runtime dependency `@stellar/stellar-sdk` `^15.1.0`, the newest line that still supports Node 20 (v17 requires Node ≥ 22.12). Tron adds no dependency.
+
+### Migration
+
+- **Consumers that compile omnichain's source** (a submodule whose `.ts` files are in the consumer's `tsconfig` `include`) must add `@stellar/stellar-sdk` `^15.1.0` and `decimal.js` to their own dependencies, or exclude `stellar/**` from compilation if they do not use Stellar. npm consumers of the built package get both as dependencies.
+- **`NetworkType.STELLAR` is a new enum member.** Exhaustive `switch`es over `NetworkType` and local mirrors of the enum need a `STELLAR` case.
+- **Registry and address behaviour on Tron and Stellar chain ids:**
+  - `networkTypeOf(-3500)` / `networkTypeOf(-3501)` threw before and now return `STELLAR`.
+  - `registerNonEvmChain(-3500 | -3501, <another type>)` now throws, because the ids are seeded as Stellar. Call `unregisterChain` first to reclassify one.
+  - `addressFor`, `canonicalizeAddressStrict` and `@IsAddress` on Tron and Stellar chain ids validate the address instead of throwing `ChainNotSupported`.
+- **Advisories inherited from `@stellar/stellar-sdk` 15.1.** It pins `axios` 1.15.0 and depends on `toml` 3.0.0, both with high-severity advisories. The stellar-sdk line that fixes them (17.x) needs Node ≥ 22. Consumers can lift both with npm `overrides`; with this recipe `npm audit` reports no vulnerabilities for stellar-sdk, and the Stellar test suite passes on axios 1.20:
+
+  ```json
+  "overrides": { "@stellar/stellar-sdk": { "axios": "^1.20.0", "toml": "^4.2.0" } }
+  ```
 
 ### Note — differences from omnichain-py
 

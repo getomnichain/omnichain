@@ -494,10 +494,6 @@ describe('round-4 parity: StellarChain construction', () => {
     expect(chain.chainId).toBe(chainId);
     expect([networkTypeRegistrations().get(chainId), tryNetworkTypeOf(chainId)]).toEqual(before);
   });
-
-  it('the preset Stellar ids stay registered as STELLAR', () => {
-    expect(tryNetworkTypeOf(CHAIN_ID_STELLAR_MAINNET)).toBe(NetworkType.STELLAR);
-  });
 });
 
 describe('round-4 parity: a passphrase with a lone surrogate is refused, as Python str.encode refuses it', () => {
@@ -506,5 +502,75 @@ describe('round-4 parity: a passphrase with a lone surrogate is refused, as Pyth
     expect(() => StellarWallet.fromMnemonic(MNEMONIC, { derivationPath: "m/44'/148'/0'", passphrase })).toThrow(
       new ChainError(ChainErrorKinds.InvalidArgument, `'utf-8' codec can't encode character '${escaped}' in position 8: surrogates not allowed`),
     );
+  });
+});
+
+describe('round-5 parity: every Soroban failure surfaces as ChainError(RpcError) with the original message', () => {
+  async function sorobanStub(reply: (res: ServerResponse) => void): Promise<{ url: string; close: () => Promise<void> }> {
+    const server = createServer((req, res) => {
+      req.resume();
+      req.on('end', () => reply(res));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return {
+      url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    };
+  }
+
+  function chainWithSoroban(sorobanRpcUrl: string): StellarChain {
+    return new StellarChain({
+      name: 'Stellar Local Soroban',
+      defaultHorizonUrl: 'http://127.0.0.1:9',
+      defaultSorobanRpcUrl: sorobanRpcUrl,
+      explorerUrl: 'https://stellar.expert/explorer/public',
+      stellarExpertApiUrl: 'https://api.stellar.expert/explorer/public',
+      networkPassphrase: Networks.PUBLIC,
+      chainId: CHAIN_ID_STELLAR_MAINNET,
+      chainAgnosticStellarIdentifier: 'pubnet',
+    });
+  }
+
+  const replies: [string, (res: ServerResponse) => void, string][] = [
+    ['HTTP 500', (res) => res.writeHead(500).end('boom'), 'Request failed with status code 500'],
+    ['an HTML 200', (res) => res.writeHead(200, { 'Content-Type': 'text/html' }).end('<html>maintenance</html>'), ''],
+    [
+      'a JSON-RPC error without code',
+      (res) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { message: 'no code' } })),
+      'no code',
+    ],
+    [
+      'a JSON-RPC error',
+      (res) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32602, message: 'invalid parameters' } })),
+      'invalid parameters',
+    ],
+  ];
+
+  it.each(replies)('%s', async (_label, reply, message) => {
+    const stub = await sorobanStub(reply);
+    try {
+      const failure = await chainWithSoroban(stub.url)
+        .resolveAsset(STELLAR_USDC.contractId)
+        .then(
+          () => null,
+          (err: unknown) => err,
+        );
+      expect(failure).toBeInstanceOf(ChainError);
+      expect(failure).toMatchObject({ kind: ChainErrorKinds.RpcError });
+      if (message !== '') expect((failure as Error).message).toBe(message);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('a refused connection', async () => {
+    const failure = await chainWithSoroban('http://127.0.0.1:9')
+      .resolveAsset(STELLAR_USDC.contractId)
+      .then(
+        () => null,
+        (err: unknown) => err,
+      );
+    expect(failure).toBeInstanceOf(ChainError);
+    expect(failure).toMatchObject({ kind: ChainErrorKinds.RpcError, message: expect.stringContaining('ECONNREFUSED') });
   });
 });

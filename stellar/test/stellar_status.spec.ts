@@ -25,7 +25,7 @@ const rec = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'mainnet_status_recordings.json'), 'utf8'),
 ) as Recordings;
 
-function replayChain(overrides: { transactionError?: Error } = {}): StellarChain {
+function replayChain(overrides: { transactionError?: Error; sorobanReply?: unknown } = {}): StellarChain {
   const chain = new StellarChain({
     name: 'Stellar Replay',
     defaultHorizonUrl: 'https://horizon.invalid',
@@ -52,6 +52,7 @@ function replayChain(overrides: { transactionError?: Error } = {}): StellarChain
   };
   const soroban = {
     _getTransaction: async (id: string) => {
+      if ('sorobanReply' in overrides) return overrides.sorobanReply;
       const r = rec.soroban[id];
       if (r === undefined) throw new Error('not recorded');
       return r;
@@ -113,6 +114,23 @@ describe('StellarChain.getTransactionStatus — omnichain-py mainnet cases repla
     expect(change(s, receiver, STELLAR_BNUSD.identifier)).toBe('0.000012');
     expect(change(s, sender, native)).toBe('-0.0012591');
     expect(s.balanceChanges?.size).toBe(2);
+  });
+
+  it('a Soroban getTransaction reply that fails Python\'s GetTransactionResponse model falls back to Stellar Expert, as Python does', async () => {
+    const hash = '0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338';
+    const sender = 'GA7BRV2K3OM27NLVY2IJQGYZEQ7AEZSPR3Y3XA6COHPMOPOEUHQBDYBC';
+    const ledgers = { latestLedger: 1, latestLedgerCloseTime: '1', oldestLedger: 1, oldestLedgerCloseTime: '1' };
+    for (const sorobanReply of [
+      undefined,
+      '<html>maintenance</html>',
+      [],
+      { status: 'PENDING', txHash: hash, ...ledgers, events: { diagnosticEventsXdr: [] } },
+      { status: 'SUCCESS', ...ledgers, events: { diagnosticEventsXdr: [] } },
+    ]) {
+      const s = await replayChain({ sorobanReply }).getTransactionStatus(hash);
+      expect(s.status).toBe('Success');
+      expect(change(s, sender, STELLAR_BNUSD.identifier)).toBe('-0.000012');
+    }
   });
 
   it('classic DEX path payment', async () => {

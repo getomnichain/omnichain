@@ -495,9 +495,4 @@ describe('round-3 parity: TronChain construction', () => {
       expect([networkTypeRegistrations().get(chainId), tryNetworkTypeOf(chainId)]).toEqual(before);
     },
   );
-
-  it('the preset Tron ids stay registered as TRON', () => {
-    new TronChain({ name: 'Tron Mainnet', chainId: CHAIN_ID_TRON_MAINNET, defaultRpcUrl: 'https://api.trongrid.io', explorerUrl: 'https://tronscan.org' });
-    expect(tryNetworkTypeOf(CHAIN_ID_TRON_MAINNET)).toBe(NetworkType.TRON);
-  });
 });

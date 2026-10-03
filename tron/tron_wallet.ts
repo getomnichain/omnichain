@@ -13,6 +13,7 @@ import {
   TronChain,
   TronSignedMessage,
   ZERO_RESET_APPROVAL_TRC20_ADDRESSES,
+  pyTruthy,
   tronBroadcastErrorKind,
   zeroResetApprovalKey,
 } from './tron_chain.ts';
@@ -178,9 +179,9 @@ export class TronWallet extends AbstractBip32StyleSingleAccountWallet {
       result = await signed.broadcast();
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      throw new ChainError(tronBroadcastErrorKind(error), `Tron broadcast failed: ${error.message}`, { txHash: signed.txid }, error);
+      throw new ChainError(tronBroadcastErrorKind(error), error.message, { txHash: signed.txid }, error);
     }
-    return (result.txid as string | undefined) || signed.txid;
+    return pyTruthy(result.txid) ? (result.txid as string) : signed.txid;
   }
 
   async signTransaction(transaction: UnsignedTransaction, chain: Chain): Promise<TronSignedTransaction> {
