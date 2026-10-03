@@ -4,7 +4,9 @@ import { NetworkType, networkTypeOf } from './network_type.ts';
 import { Address } from './address.ts';
 import { EvmAddress } from './evm/evm_address.ts';
 import { SolanaAddress } from './solana/solana_address.ts';
+import { StellarAddress } from './stellar/stellar_address.ts';
 import { TonAddress } from './ton/ton_address.ts';
+import { TronAddress } from './tron/tron_address.ts';
 import { BtcAddress } from './utxo/btc/btc_address.ts';
 import { btcParamsForChainId } from './utxo/btc/network_params.ts';
 
@@ -19,11 +21,12 @@ export function addressFor(chainId: number, raw: string): Address {
       return new BtcAddress(raw, btcParamsForChainId(BigInt(chainId)));
     case NetworkType.TON:
       return new TonAddress(raw);
-    // TRON / COSMOS have no in-repo Address class yet. Rather than fall through
-    // to EvmAddress (which would silently accept a valid EVM address for a
-    // Tron chain and un-canonicalize base58 T… addresses), fail closed until
-    // the concrete implementations land.
     case NetworkType.TRON:
+      return new TronAddress(raw);
+    case NetworkType.STELLAR:
+      return new StellarAddress(raw);
+    // COSMOS has no in-repo Address class yet. Rather than fall through to
+    // EvmAddress, fail closed until the concrete implementation lands.
     case NetworkType.COSMOS:
       throw new ChainError(
         ChainErrorKinds.ChainNotSupported,

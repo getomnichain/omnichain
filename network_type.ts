@@ -3,6 +3,7 @@ import {
   CHAIN_ID_BITCOIN_SIGNET,
   CHAIN_ID_BITCOIN_TESTNET,
   CHAIN_FAMILY_SOLANA,
+  CHAIN_FAMILY_STELLAR,
   CHAIN_FAMILY_TON,
   CHAIN_FAMILY_TRON,
 } from './chain_ids.ts';
@@ -24,12 +25,13 @@ export enum NetworkType {
   SOLANA = 'SOLANA',
   BTC = 'BTC',
   TRON = 'TRON',
+  STELLAR = 'STELLAR',
 }
 
 const networkTypeRegistry = new Map<number, NetworkType>();
 
 // Seed the registry statically for families that have a working address
-// parser in v0. Only BTC (bech32 + base58 with BTC HRPs), Solana, TON, Tron.
+// parser. BTC (bech32 + base58 with BTC HRPs), Solana, TON, Tron, Stellar.
 //
 // LTC/DOGE/DASH/ZEC/BCH are NOT statically seeded: their address grammars
 // differ from BTC's (different HRPs, different version bytes, CashAddr for
@@ -46,6 +48,7 @@ for (const id of BTC_ADDRESS_GRAMMAR_IDS) networkTypeRegistry.set(id, NetworkTyp
 for (const id of CHAIN_FAMILY_SOLANA) networkTypeRegistry.set(id, NetworkType.SOLANA);
 for (const id of CHAIN_FAMILY_TON) networkTypeRegistry.set(id, NetworkType.TON);
 for (const id of CHAIN_FAMILY_TRON) networkTypeRegistry.set(id, NetworkType.TRON);
+for (const id of CHAIN_FAMILY_STELLAR) networkTypeRegistry.set(id, NetworkType.STELLAR);
 
 /**
  * Register (or re-register) a chainId's NetworkType. Idempotent for the SAME
@@ -116,7 +119,7 @@ export function networkTypeRegistrations(): ReadonlyMap<number, NetworkType> {
 /**
  * Resolve the NetworkType for a chainId.
  *
- * - Static seeds (UTXO / Solana / TON / Tron families from `chain_ids.ts`)
+ * - Static seeds (UTXO / Solana / TON / Tron / Stellar families from `chain_ids.ts`)
  *   win first.
  * - Instance constructors override via `registerNonEvmChain` (idempotent per
  *   the guard above).

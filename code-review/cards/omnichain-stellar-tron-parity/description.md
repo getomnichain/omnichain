@@ -1,0 +1,321 @@
+---
+id: RIN-315
+title: omnichain (TS SDK) — Stellar + Tron family parity with omnichain-py
+status: ready
+repos: [omnichain]
+---
+
+# Summary
+
+`@getomnichain/omnichain` (TypeScript SDK) today ships EVM, Solana, UTXO, and TON. It does not expose Stellar or Tron, while the canonical Python reference `omnichain-py` has fully modelled both families — pre-wired mainnet + testnet chains, assets, wallets, status, prerequisites, simulation, and broadcast. This task brings those two families into the TypeScript SDK at full feature parity with `omnichain-py` so consumers (pluton / rango-intents backends, solver, and external SDK users) can send, read, and simulate Stellar and Tron transactions through the same `AbstractChain` / `AbstractWallet` surface already used for the other families.
+
+---
+
+# Objective
+
+The TypeScript SDK must support Stellar and Tron the same way it already supports Solana and the EVM chains. A user of the SDK must be able to create a chain instance, build and sign a transfer, broadcast it, read back its status with balance changes, and simulate it before sending — without having to drop into chain-specific libraries. This closes the last gap between the Python and TypeScript reference SDKs and unblocks every intent, deposit, and solver flow that will later touch XLM, USDC-on-Stellar, TRX, and USDT-on-Tron.
+
+---
+
+# Scope
+
+## In scope (family-level)
+
+- Stellar: mainnet + testnet, native XLM, SAC assets (USDC, EURC), non-SAC Soroban tokens, trustlines, path-payment swap, Soroban `transfer`, SEP-53 message signing.
+- Tron: mainnet + Shasta testnet, native TRX, TRC-20 (USDT, USDC), approve prerequisite with USDT zero-reset, `triggerconstantcontract` simulation, canonical-transaction JSON schemas.
+- Both families: wired instances, preregistered assets, wallet classes, unsigned/signed transaction models, broadcast with dup-tolerance semantics, `getTransactionStatus` with balance changes, `simulateTransaction`, chain stablecoin peg maps, explorer URL helpers.
+
+## Out of scope / non-goals
+
+- No change to the public surface of EVM, Solana, UTXO, or TON chains.
+- No change to `AbstractChain`, `AbstractWallet`, `AbstractUnsignedTransaction`, `AbstractAsset`, `AbstractTransactionStatus`, or any other shared base — any gap found there is a separate task, not fixed here.
+- No port of Tron contract types beyond what `omnichain-py` actually surfaces today (TRC-10 transfers, voting, freeze/unfreeze, resource delegation, account-permission updates are modelled in the canonical schema but not exposed through chain factory methods — same stance here).
+- No new wallet family added to `WalletFamily` beyond `STELLAR` and `TRON`.
+- No change to the published SDK's package layout contract — exports `./stellar` and `./tron` are added alongside the existing `./evm`, `./solana`, `./utxo`, `./ton`; existing entry points stay byte-for-byte identical.
+- No RPC provider abstraction redesign — Stellar uses `@stellar/stellar-sdk` directly (Horizon + Soroban servers); Tron uses `tronweb` directly.
+- No DEX routing beyond Stellar's native path-payment (Horizon strict-send) — no external aggregator integration in this task.
+- Rango or solver backend plumbing to pick up these chains is a separate task.
+
+---
+
+# Requirements
+
+## R1. Stellar chain family — wired instances and assets
+
+- `StellarMainnet` and `StellarTestnet` chain classes exposed from `./stellar`, each wiring Horizon URL, Soroban RPC URL, explorer, Stellar Expert API, `networkPassphrase`, and chain-agnostic identifier identically to `omnichain-py`'s `impl/stellar/chains.py`.
+- Chain IDs match: `CHAIN_ID_STELLAR_MAINNET = -3500`, `CHAIN_ID_STELLAR_TESTNET = -3501`.
+- Env-var-driven RPC override reads: `STELLAR_<chainId>_HORIZON_URL`, `STELLAR_<chainId>_SOROBAN_RPC_URL`, `<NAME>_HORIZON_URL`, `<NAME>_SOROBAN_RPC_URL` (name derived from the chain's `name`).
+- Preregistered assets available: native `XLM` (mainnet + testnet), SAC `USDC`, SAC `EURC`, non-SAC Soroban `BnUSD`, plus testnet variants. Stablecoin peg map `STELLAR_MAINNET_STABLECOINS_PEG` exported.
+
+## R2. Stellar asset model
+
+- `StellarAsset` extends `AbstractAsset` with fields `code`, `issuer` (nullable), `contractId`, `decimals`, `chainId`, `networkPassphrase`.
+- Enforces at construction time the three valid shapes: native (`code === 'XLM'`, no issuer, native contract id), SAC (code + issuer, decimals forced to 7, deterministic contract id derived with the network passphrase), non-SAC Soroban (contract id only, custom decimals).
+- Exposes `isNative()`, `isSac()`, `isNonSacSorobanToken()`, `toSdkAsset()`, static `getNativeContractId(networkPassphrase)`, and class constants `NATIVE_CODE`, `DECIMALS = 7`, `TRUST_LINE_MAX_LIMIT`, `PUBLIC_NATIVE_CONTRACT_ID`, `TESTNET_NATIVE_CONTRACT_ID`.
+- Two asset-balance variants exist: `StellarNativeAssetBalance` tracking `totalHr`, `reservedHr`, `availableHr`; `StellarTokenAssetBalance` tracking a single `amountHr`.
+- Chain factories: `createSacToken(code, issuer)`, `createNonSacToken(contractId)` (reads `decimals()` + `symbol()` from the Soroban contract, memoised with an LRU of size 2000). The generic `createAsset(symbol, identifier, decimals)` throws, mirroring the Python implementation.
+
+## R3. Stellar chain surface
+
+Must expose, with the exact behaviour documented in `omnichain-py` `impl/stellar/base.py`:
+
+- `blockTimeSeconds = 5.0`, `chainType = ChainType.STELLAR`, lazy async Horizon and Soroban server clients.
+- `getBaseFee()`, `_resolveGasPricing(gasPricing)` honouring `StellarGasPricing(baseFeeStroops)` and `FeePriority` tiers (SLOW/NORMAL = 1×, FAST = 2×, floor 100 stroops).
+- `resolveAsset(identifier)` (reads `decimals()` + `name()` via Soroban simulation, parses `code:issuer` for SAC vs non-SAC).
+- `getAssetBalance(asset, ownerAddress)` — Horizon balances with reserve subtraction for native XLM, Soroban `balance()` for non-SAC tokens.
+- `getWalletBalance(ownerAddress)` returning a map keyed by `StellarAsset` for every classical trustline on the account.
+- `getTrustLineLimit(wallet, asset)` returning `StellarTrustLine { balance, limit }`.
+- `createPrerequisiteForReceivableAsset(receiveAsset, receiverAddress)` producing a `StellarChangeTrustLineTransactionPrerequisite` only when the receiver is a classic account and the asset is SAC without an existing trustline; `null` for native, non-SAC, or contract receivers.
+- `buildUnsignedTransaction(sourceAccountId, operations, baseFee, memoText)`.
+- `buildTokenTransferOperation(asset, sender, receiver, amountHr)` returning an `InvokeHostFunction` call to SEP-41 `transfer(from, to, amount)`.
+- `createTransferTransaction(asset, amountHr, sender, receiver, isFullBalance, memoText, gasPricing)` — classical `Payment` for native/SAC-to-classic, Soroban `transfer` for everything else; memo rejected for Soroban; trustline prerequisite attached when needed.
+- `createExactInSwapTransaction(sendAsset, receiveAsset, sendAmountHr, sender, receiver, slippagePercent)` — Horizon strict-send path finder + `PathPaymentStrictSend` with min-receive honouring slippage; trustline prerequisite attached when needed.
+- `getTransactionStatus(txHash, filteredWallets?, filteredAssets?)` — Horizon tx + ledger lookup; for Soroban invokes Soroban RPC first, falls back to Stellar Expert API; decodes memo from envelope XDR; handles `ENVELOPE_TYPE_TX_FEE_BUMP`, `ENVELOPE_TYPE_TX_V0`, `ENVELOPE_TYPE_TX`; derives `fees: StellarTransactionFees { feeStroops, feePayer }`; builds balance changes via `_effectsToBalanceChanges` (classical) or `getBalanceChangesFromDiagnosisEvents` (Soroban).
+- `supportsFullTransactionSimulation(unsignedTx) → true`; `simulateTransaction(tx, sender, filteredWallets?, filteredAssets?)` — Soroban: delegate to Soroban `simulateTransaction` + diagnostic events, carry `min_resource_fee`; Classical: predict from the operation list and add the fee delta.
+- `broadcastSignedTransaction(signedTx)` — Horizon `submitTransaction(envelope)`; on exception preserves `txHash` and `broadcastError`.
+- `verifySignature(publicKey, message, signedMessage)` classmethod — `Keypair.fromPublicKey(G…).verifyMessage(message, Buffer.fromHex(signature))` using the SEP-53 message hash.
+- `getAccountNextSequence(walletAddress)` — load account via Horizon, return `BigInt(sequence) + 1n`.
+- `_muxedToClassic(address)` helper handling `M…` muxed accounts (via `MuxedAccount.fromAccount`) and classic `G…`.
+- Address validation: `validateWalletAddress` accepts `G…` (ed25519) and `M…` (muxed); `validateAssetIdentifier` accepts `C…` contract ids. Explorer URL helpers mirror the Python conventions.
+
+## R4. Stellar transaction, status, and simulation models
+
+- `StellarGasPricing extends AbstractGasPricing { chainType, baseFeeStroops: number }`.
+- `StellarUnsignedTransaction extends AbstractUnsignedTransaction` carrying intent (source account id, operations, base fee, optional memo) rather than an envelope; `buildTransactionEnvelope(chain)` resolves sequence + base fee at build time, builds via `TransactionBuilder`, sets a 300-second time bound, calls `sorobanServer.prepareTransaction` for Soroban operations; rejects memo for Soroban `InvokeHostFunction`; serialises operations and memo as base64 XDR via `toJson`/`fromJson`; exposes `isSorobanInvokeContractTransaction`.
+- `StellarSignedTransaction extends AbstractSignedTransaction { signedXdr, networkPassphrase }`; `txHash` is derived from `TransactionEnvelope.fromXDR(signedXdr, passphrase).hashHex()`.
+- `StellarBroadcastTransactionResponse extends AbstractBroadcastTransactionResponse { chain, txHash, broadcastError }`.
+- `StellarTransactionFees { feeStroops: number, feePayer: string }`.
+- `StellarTransactionSimulationResult extends AbstractTransactionSimulationResult { fees, transactionType, memo }`.
+- `StellarTransactionStatus extends AbstractTransactionStatus { horizonPagingToken, fees, memo }`; static factories `successful`, `failed`, `pending`, `notFound`.
+- `StellarSorobanTransferEvent { fromAccount, toAccount, tokenContractId, tokenContractSacCode?, tokenContractSacIssuer?, amountMr: bigint }`.
+- `StellarExpertTransactionInfo { id, hash, ledger, ts, protocol, body, meta, result }` (all XDR strings).
+- `StellarTrustLine { balance: Decimal, limit: Decimal }`.
+- `StellarChangeTrustLineTransactionPrerequisite { chainId, code, issuer, limit, walletAddress }` + `StellarChangeTrustPrerequisiteResponse { skipped, txHash }`.
+
+## R5. Stellar wallet
+
+- `StellarWallet extends AbstractBip32StyleSingleAccountWallet` with `chainType = ChainType.STELLAR`, `walletFamily = WalletFamily.STELLAR`.
+- Constructor `new StellarWallet(secretSeed: string)` validates `StrKey.isValidEd25519SecretSeed`, derives `keypair = Keypair.fromSecret`, `address = keypair.publicKey`.
+- Static `StellarWallet.fromMnemonic(mnemonic, derivationPath = "m/44'/148'/0'", passphrase = "")`; `derivationPath(purpose=44, coinType=148, account=0, change=0, index=0)` returns `m/44'/148'/<account>'` and rejects any non-SLIP-0010-Ed25519 input (change/index must be 0).
+- `ensureMinimumTrustLine(chain, code, issuer, limit)` — reads current limit, submits a `ChangeTrust` if needed.
+- `closeTrustLine(chain, code, issuer)` — asserts zero balance then submits `ChangeTrust(limit=0)`.
+- `handleTransactionPrerequisite(prerequisite, chain)` dispatches on `StellarChangeTrustLineTransactionPrerequisite`.
+- `signTransaction(transaction, chain)` → builds envelope + signs → `StellarSignedTransaction`.
+- `requestTestnetFaucetStroops()` → Friendbot `https://friendbot.stellar.org/?addr=…`.
+- `signMessage(message)` → `StellarSignedMessage { signature: hex }` using `keypair.signMessage` (SEP-53).
+- `verifySignature(message, signedMessage)` delegates to `StellarChain.verifySignature`.
+
+## R6. Stellar family-specific primitives (parity-critical)
+
+- Trustline reserve math on native XLM: `available = total − (2 + subEntryCount + numSponsoring − numSponsored) × 0.5 XLM`.
+- `TRUST_LINE_MAX_LIMIT = "922337203685.4775807"`.
+- Memo text only; rejected on Soroban `InvokeHostFunction`.
+- Soroban diagnostic-event decoding for SEP-41 `transfer` topics producing `StellarSorobanTransferEvent[]`, including SAC-vs-non-SAC asset resolution via `name()` on the token contract.
+- Three-way transaction data source for Soroban historical queries: Soroban RPC → Stellar Expert API fallback.
+- Horizon effects → balance-changes aggregation with the specific `account_created` + `account_credited` dedup rule for Soroban native transfers.
+- `createExactInSwapTransaction` honours `slippagePercent` as a hard minimum-receive bound and does not model slippage in balance-change prediction.
+
+## R7. Tron chain family — wired instances and assets
+
+- `TronMainnet` and `TronShastaTestnet` chain classes exposed from `./tron`, each wiring RPC URL and explorer identically to `omnichain-py`'s `impl/tron/chains.py`.
+- Chain IDs match: `CHAIN_ID_TRON_MAINNET = 728126428`, `CHAIN_ID_TRON_SHASTA = 2494104990`.
+- Env-var-driven RPC override reads: `TRONGRID_API_KEY`, `<NAME>_RPC_URL`, `TRON_<chainId>_RPC_URL`.
+- Preregistered assets: native `TRX`, `USDT` (mainnet `TR7NHqj…`), `USDC` (mainnet `TEkxiTe…`), Shasta `USDT` (`TG3XXyE…`), Shasta `TRX`.
+- `TRON_ASSETS_REQUIRING_ZERO_RESET_APPROVAL` exported, defaults to `[TRON_USDT]`; `TRON_MAINNET_STABLECOINS_PEG` map exported.
+
+## R8. Tron asset model
+
+- `TronAsset extends AbstractAsset` with fields `chainId`, `symbol`, `contractAddress` (nullable base58check `T…`), `decimals`.
+- Native: `symbol === 'TRX'`, decimals = 6, no contract address. TRC-20: non-empty base58check contract address.
+- `isNative()` returns `contractAddress === null`.
+- Constants: `NATIVE_DECIMALS = 6`.
+- `TronAssetBalance extends AbstractAssetBalance { amountHr: Decimal }`.
+- Chain factory `getTrc20Asset(symbol, contractAddress, decimals)` builds a TRC-20 `TronAsset`.
+- `TRC-10` is representable in the canonical transaction (`TransferAssetContract`) but has no `TronAsset` factory and is not surfaced by `getAssetBalance` / `createTransferTransaction` — same stance as Python.
+
+## R9. Tron chain surface
+
+Must expose, with the exact behaviour documented in `omnichain-py` `impl/tron/base.py`:
+
+- `blockTimeSeconds = 3.0`, `chainType = ChainType.TRON`, lazy async tronweb client with `TRONGRID_API_KEY`.
+- `getAssetBalance(asset, ownerAddress)` — `getAccountBalance` for native, `balanceOf(owner)` for TRC-20.
+- `createTransferTransaction(asset, amountHr, sender, receiver, isFullBalance, gasPricing, memo?)` — native via `trx.transfer`, TRC-20 via `contract.transfer(…).with_owner(sender).fee_limit(…)`; `isFullBalance` reserves `DEFAULT_TRX_FEE_LIMIT_SUN = 300_000` for native; optional memo attached as an on-chain `data` field.
+- `_resolveGasPricing(gasPricing)` honouring `TronGasPricing { feeLimitSun: number }`; non-NORMAL `FeePriority` tiers log a warning (Tron has no fee market).
+- `getChainParameters()` cached (LRU 1) returning `{ energyFee: number }` from `getChainParameters.getEnergyFee`.
+- `supportsFullTransactionSimulation(unsignedTx) → false`.
+- `simulateTransaction(tx, sender, filteredWallets?, filteredAssets?)` — only `TriggerSmartContract` entries supported via `wallet/triggerconstantcontract`; returns `(status, energyUsed, error)`; other contract types throw `NotImplementedError`; `balanceChanges` always `{}`.
+- `getTransactionStatus(txHash, filteredWallets?, filteredAssets?)` — `getTransactionInfo` + `getTransaction`, reads `receipt.result` / `result`, builds `TronTransactionFees`, inclusion time from `blockTimeStamp`, aggregates balance changes via `_balanceChangesFromInfo`.
+- `broadcastSignedTransaction(signedTx)` — tronweb `signed_transaction.broadcast()`; on `DUP_TRANSACTION_ERROR` / `SERVER_BUSY` / `BLOCK_UNSOLIDIFIED` preserve `txHash` from the signed object (txid is fixed at build time).
+- `verifySignature(publicKey, message, signedMessage)` classmethod — `PublicKey.verifyMsg(Buffer.from(message), Signature(Buffer.fromHex(sig)))`; accepts `PublicKey` or hex.
+- `_toBase58CheckAny(address)` tolerant normaliser handling base58check `T…`, 21-byte hex `0x41…`, and bare 20-byte hex (log topic suffix — prepends `41`).
+- `_parseTrc20TransferLog(log)` ABI-decoded Transfer event into `{ contract, from, to, value }` using topic `TRC20_TRANSFER_TOPIC = "ddf252ad…b3ef"`.
+- `TronAddressUtils.isHex(s)`, `TronAddressUtils.hexToVisible(hex)` statics.
+- Address validation: `validateWalletAddress` and `validateAssetIdentifier` accept base58check `T…` via `isBase58CheckAddress`.
+
+## R10. Tron transaction, status, simulation, and prerequisite models
+
+- `TronGasPricing extends AbstractGasPricing { chainType, feeLimitSun: number }`.
+- `TronUnsignedTransaction extends AbstractUnsignedTransaction { transaction }`; `txId` property returns the sha256 of `rawData` protobuf (hex). `canonicalTransaction` returns a strongly-typed `TronCanonicalTransaction` (zod discriminated-union, see R12). `toJson`/`fromJson` round-trip via the underlying `AsyncTransaction.to_json()` equivalent without a network call.
+- `TronSignedTransaction extends AbstractSignedTransaction { signedTransaction }`; `txId` / `txHash` identical (both fixed at build time); `toJson`/`fromJson` round-trip full JSON including `raw_data`, `txID`, `signatures`, `permission`.
+- `TronBroadcastTransactionResponse extends AbstractBroadcastTransactionResponse { chain, txHash, broadcastError }`.
+- `TronTransactionSimulationResult extends AbstractTransactionSimulationResult { energyUsed?: number }`.
+- `TronTransactionFees { feeInSun, energyUsage, energyFee, originEnergyUsage, energyUsageTotal, netUsage, netFee, energyPenaltyTotal, chainParamGetEnergyFee }` with a cross-field validator enforcing `energyUsageTotal === energyUsage + originEnergyUsage + energyFee / chainParamGetEnergyFee`.
+- `TronTransactionStatus extends AbstractTransactionStatus { fees? }`; static factories `successful`, `failed`, `pending`, `notFound`.
+- `TronApproveTransactionPrerequisite { chainId, asset: TronAsset, walletAddress, spenderContractAddress, amount: bigint, requiresZeroResetFirst: boolean }` (asserts non-native).
+- `TronHandledApprovePrerequisiteResponse { skipped, txHash?, zeroResetTxHash? }`.
+
+## R11. Tron wallet
+
+- `TronWallet extends AbstractBip32StyleSingleAccountWallet` with `chainType = ChainType.TRON`, `walletFamily = WalletFamily.TRON`.
+- Constructor `new TronWallet(privateKeyHex: string)` strips `0x`, derives `publicKey` and `address = toBase58CheckAddress(publicKey)`.
+- Static `TronWallet.fromMnemonic(mnemonic, derivationPath = "m/44'/195'/0'/0/0")`; derivation uses secp256k1 BIP44 via a `@scure/bip32` equivalent; `derivationPath(purpose=44, coinType=195, account=0, change=0, index=0)` returns `m/44'/195'/<account>'/<change>/<index>` with `purpose` and `coinType` enforced.
+- `handleTransactionPrerequisite(prerequisite, chain, feeLimitSun = DEFAULT_TRC20_APPROVE_FEE_LIMIT_SUN)` — checks current allowance; optionally performs USDT-style zero-reset first (by prerequisite flag OR per-chain membership in `ZERO_RESET_APPROVAL_TRC20_ADDRESSES`); sleeps `3 × blockTimeSeconds` between reset and approve; broadcasts `approve(spender, amount)` with the given fee limit.
+- `signTransaction(transaction, chain)` → tronweb-equivalent in-place sign of the carried transaction object.
+- `signMessage(message)` → `TronSignedMessage { signature: hex }` using `privateKey.signMsg(Buffer.from(message))`.
+- `verifySignature(message, signedMessage)` delegates to `TronChain.verifySignature`.
+
+## R12. Tron canonical-transaction schemas (`helpers/transaction.ts`)
+
+- Enums: `TronContractType` (12 members: `TransferContract`, `TransferAssetContract`, `TriggerSmartContract`, `CreateSmartContract`, `FreezeBalanceV2Contract`, `UnfreezeBalanceV2Contract`, `DelegateResourceContract`, `UnDelegateResourceContract`, `VoteWitnessContract`, `WithdrawBalanceContract`, `AccountUpdateContract`, `AccountPermissionUpdateContract`); `TronResourceCode` (`BANDWIDTH`, `ENERGY`).
+- 12 `*ContractValue` schemas + 12 `*ContractEntry` discriminated-union members with a `type` literal.
+- Auxiliary schemas: `VoteWitness`, `PermissionKey`, `Permission`.
+- `TronContractParameter<Value> { typeUrl, value }`.
+- `TronRawData { refBlockBytes, refBlockHash, timestamp, expiration, contract, data?, feeLimit?, refBlockNum?, scripts?, auths? }` — documents TAPoS replay protection.
+- `TronCanonicalTransaction { txId (alias "txID"), rawData, rawDataHex, signature: string[], permission?, ret?, visible? }`.
+- All schemas built with `zod` discriminated unions; mirror pydantic's `extra="allow"` / `populate_by_name=True` by using `.passthrough()` and alias-aware shapes.
+
+## R13. Family-specific primitives (Tron, parity-critical)
+
+- `wallet/triggerconstantcontract` response interpretation collapses three failure modes into `(ok, energy, error)`: API-validation failure, VM-revert, or OK with energy. Must match the Python branches byte-for-byte.
+- Fee receipt breakdown exposed through `TronTransactionFees` with validator — never silently dropped on partial information.
+- Historical balance deltas derived from three sources merged by `_balanceChangesFromInfo`: `rawData.contract[].TransferContract`, `info.internalTransactions[].callValueInfo[].callValue`, `info.log[]` with the TRC-20 Transfer topic. Fee is debited from the first contract's owner_address.
+- USDT zero-reset-first flow with the 3-block sleep is honored any time the target asset is in the per-chain reset set, even without `requiresZeroResetFirst`.
+- Smart-contract call encoding for TRC-20 transfer uses a tronweb builder that produces a canonical `TriggerSmartContract` with a pre-ABI-encoded `data` field (selector + args).
+- Fee-limit defaults: `DEFAULT_TRC20_TRANSFER_FEE_LIMIT_SUN = 15_000_000`, `DEFAULT_TRC20_APPROVE_FEE_LIMIT_SUN = 25_000_000`, `DEFAULT_TRX_FEE_LIMIT_SUN = 300_000`.
+
+## R14. Public exports and tests
+
+- `./stellar` and `./tron` subpath exports added to `package.json` alongside existing ones, with ESM, CJS, and types bundles. `./package.json` export unchanged.
+- `README.md` keywords and `description` fields updated so Stellar and Tron are advertised.
+- Jest test suites: `stellar/test/*.spec.ts` and `tron/test/*.spec.ts`. Each exported method must have at least a happy-path test plus one failure-mode test. Status aggregators must have round-trip tests built from fixtures captured from mainnet.
+- Family-specific invariant tests mandatory: Stellar asset-shape rejection (invalid issuer, decimals mismatch), trustline reserve math on native XLM, Soroban memo rejection, SEP-10 derivation-path rejection of non-SLIP-0010 inputs; Tron address-normaliser round-trip across the three input shapes, TRC-20 Transfer-log ABI decoding, `TronTransactionFees` validator rejecting imbalanced inputs, zero-reset-first on preregistered USDT, dup-tx broadcast keeping `txHash`.
+- Public exports from the two subpaths must include every type listed in R2–R5 (Stellar) and R8–R12 (Tron).
+
+---
+
+# Acceptance Criteria
+
+- **AC1 (R1)** `import { StellarMainnet, StellarTestnet } from '@getomnichain/omnichain/stellar'` returns pre-wired chains whose `chainId`, `blockTimeSeconds`, Horizon URL, Soroban RPC URL, explorer, and chain-agnostic identifier match the Python `impl/stellar/chains.py` values documented in R1.
+- **AC2 (R2)** `new StellarAsset({ code: 'USDC', issuer: 'GA5ZSE…', chainId: -3500, networkPassphrase })` constructs with `decimals = 7` and `contractId` deterministically derived; passing `code: 'USDC'` without an issuer and without the native constant throws.
+- **AC3 (R2)** `chain.createNonSacToken('CCT4ZY…')` returns a `StellarAsset` whose `decimals` and `symbol` come from `decimals()` / `symbol()` host-function reads, cached per contract id.
+- **AC4 (R3)** `chain.createTransferTransaction(xlm, 10, G_from, G_to)` returns an unsigned Payment transaction with no prerequisite; the same call with a SAC asset and a classic receiver that lacks a trustline returns one with a `StellarChangeTrustLineTransactionPrerequisite`.
+- **AC5 (R3)** `chain.getTransactionStatus(classicTxHash)` on a known mainnet classical Payment returns status `Success`, inclusion time, fees `{ feeStroops, feePayer }`, balance changes matching the Python reference byte-for-byte for the same hash.
+- **AC6 (R3)** `chain.getTransactionStatus(sorobanTxHash)` on a known mainnet Soroban `transfer` returns status `Success`, memo `null`, and balance changes derived from diagnostic events equal to the Python reference for the same hash.
+- **AC7 (R3)** `chain.simulateTransaction(unsignedSoroban, G_sender)` returns a `StellarTransactionSimulationResult` with non-null fees including `min_resource_fee`; `simulateTransaction(unsignedClassic, G_sender)` returns balance changes predicted from the operation list plus the fee delta on the sender.
+- **AC8 (R3)** `chain.broadcastSignedTransaction(signed)` on a stale sequence returns a response with `broadcastError` populated and `txHash` still present.
+- **AC9 (R4)** `StellarUnsignedTransaction` with a Soroban `InvokeHostFunction` and a non-null memo throws at `buildTransactionEnvelope` with a message matching Python's assert text.
+- **AC10 (R5)** `StellarWallet.fromMnemonic(mnemonic, "m/44'/148'/0'/0/0")` throws; `fromMnemonic(mnemonic, "m/44'/148'/0'")` succeeds and derives the same address as `omnichain-py` for the same mnemonic.
+- **AC11 (R5)** `wallet.signMessage("hello")` returns a hex signature verifiable by `StellarChain.verifySignature(wallet.publicKey, "hello", signed)`.
+- **AC12 (R6)** On a mainnet account with 3 subentries and no sponsorship entries, `chain.getAssetBalance(xlm, G_addr).amountHr` equals `total − 2.5 XLM` (base + subentries).
+- **AC13 (R7)** `import { TronMainnet, TronShastaTestnet } from '@getomnichain/omnichain/tron'` returns pre-wired chains whose `chainId`, `blockTimeSeconds`, RPC URL, and explorer match the Python values documented in R7.
+- **AC14 (R8)** `new TronAsset({ symbol: 'USDT', contractAddress: 'TR7NHqj…', decimals: 6, chainId: 728126428 })` constructs; passing a non-base58check contract address throws.
+- **AC15 (R9)** `chain.createTransferTransaction(usdt, 1n, Tsender, Treceiver)` returns an unsigned `TriggerSmartContract` whose `data` field is `transfer(address,uint256)` ABI-encoded with the matching selector and padded arguments.
+- **AC16 (R9)** `chain.getTransactionStatus(mainnetTrxTransferHash)` returns `Success`, inclusion time from `blockTimeStamp`, `fees: TronTransactionFees` whose cross-field validator passes, and balance changes matching the Python reference.
+- **AC17 (R9)** `chain.getTransactionStatus(mainnetTrc20TransferHash)` returns balance changes aggregated from the TRC-20 Transfer log plus the sender's fee debit, matching the Python reference byte-for-byte.
+- **AC18 (R9)** `chain.simulateTransaction(unsignedTriggerSmartContract, Tsender)` returns `(status, energyUsed, error)`; simulating any other contract type throws `NotImplementedError`.
+- **AC19 (R9)** `chain.broadcastSignedTransaction(signed)` under a stubbed `DUP_TRANSACTION_ERROR` returns a response whose `txHash` equals `signed.txHash` and whose `broadcastError` is populated.
+- **AC20 (R10)** `TronTransactionFees` constructed with `energyUsageTotal` that does not equal `energyUsage + originEnergyUsage + energyFee / chainParamGetEnergyFee` throws at validation.
+- **AC21 (R11)** `TronWallet.fromMnemonic(mnemonic)` derives the same address as `omnichain-py` for the same mnemonic on the default `m/44'/195'/0'/0/0`; a path with `purpose != 44` or `coinType != 195` throws.
+- **AC22 (R11)** On a chain whose `ZERO_RESET_APPROVAL_TRC20_ADDRESSES` includes the target asset, `handleTransactionPrerequisite(approvePrereq, chain)` with a non-zero current allowance first broadcasts `approve(spender, 0)`, waits `3 × blockTimeSeconds`, then broadcasts `approve(spender, amount)`.
+- **AC23 (R12)** A tronweb mainnet transaction JSON for each of the 12 `TronContractType` members parses into `TronCanonicalTransaction` and round-trips via `toJson`/`fromJson` without loss.
+- **AC24 (R13)** The three failure modes of `wallet/triggerconstantcontract` (API-validation failure, VM-revert, OK) map to `(ok=false, energy=0, error)`, `(ok=false, energy>0, error)`, `(ok=true, energy>0, error=null)` respectively, matching Python's `_interpret_trigger_constant_response` branches.
+- **AC25 (R14)** `require('@getomnichain/omnichain/stellar')` under CJS and `import … from '@getomnichain/omnichain/stellar'` under ESM both resolve; same for `/tron`. Types bundles are emitted. The existing `./evm`, `./solana`, `./utxo`, `./ton` exports and the root export produce byte-identical ESM output to the pre-task build.
+- **AC26 (R14)** Jest suites for Stellar and Tron run under `npm test` and cover every requirement at least once; mainnet-fixture status round-trips use fixtures committed under `test/fixtures/` (not live RPC calls).
+
+---
+
+# Constraints & Context
+
+## Starting points
+
+- Reference implementation: `omnichain-py` repo, `src/omnichain/impl/stellar/` (chains.py, assets.py, base.py — ~2475 LoC total) and `src/omnichain/impl/tron/` (chains.py, assets.py, base.py, helpers/transaction.py — ~2200 LoC total). Latest `omnichain-py` commit at the time of writing is `5c9d512 Add sushi fix Update rango`.
+- TypeScript reference layout: imitate the existing `./solana` subpath — `solana/solana_chain.ts`, `solana/solana_transaction_status.ts`, `solana/solana_wallet.ts`, `solana/index.ts`. Apply the same split for `./stellar` and `./tron`; the TS files are expected to be slightly larger than the Python originals (2500–3200 LoC Stellar; 2300–2800 LoC Tron).
+- Preregistered-asset constants: use the exact issuer / contract addresses listed in `impl/stellar/assets.py` and `impl/tron/assets.py`.
+- Address-normaliser decoding of ABI-padded TRC-20 Transfer-log topics: last 20 bytes drop the `41` prefix — see Python `_to_base58check_any` and `_parse_trc20_transfer_log`.
+
+## Compatibility constraints
+
+- Do not change the output of `./evm`, `./solana`, `./utxo`, `./ton`, or the root entry — those builds must remain byte-identical to the current release.
+- Do not change `AbstractChain`, `AbstractWallet`, `AbstractAsset`, `AbstractAssetBalance`, `AbstractUnsignedTransaction`, `AbstractSignedTransaction`, `AbstractBroadcastTransactionResponse`, `AbstractTransactionStatus`, `AbstractTransactionSimulationResult`, `AbstractSignedMessage`, `AbstractBip32StyleSingleAccountWallet`, `AbstractGasPricing`, `FeePriority`, `ChainType`, `WalletFamily`, or `TransactionStatusType` surface in a way that affects any other chain.
+- Add exactly two members to `ChainType`: `STELLAR`, `TRON`. Add exactly two members to `WalletFamily`: `STELLAR`, `TRON`.
+
+## Dependencies / blockers
+
+- `@stellar/stellar-sdk` and `tronweb` are new runtime dependencies; both must land in `package.json` with pinned minor versions, and their types must be exported transitively where the SDK consumer needs them.
+- No cross-repo dependency; this is an SDK-only task.
+- Backend / solver pickup is tracked separately and must not block the SDK release.
+
+## References
+
+- `omnichain-py` `src/omnichain/impl/stellar/base.py` — authoritative Stellar reference.
+- `omnichain-py` `src/omnichain/impl/tron/base.py` and `impl/tron/helpers/transaction.py` — authoritative Tron reference.
+- `omnichain-py` `src/omnichain/chain_ids.py` — chain id constants.
+- Stellar SDK (TS): `https://stellar.github.io/js-stellar-sdk/`.
+- tronweb (TS): `https://developers.tron.network/reference/tronweb-object`.
+- SEP-11 (SAC asset code), SEP-41 (Soroban token interface), SEP-53 (message signing).
+- SLIP-0010 Ed25519 derivation (Stellar); BIP44 secp256k1 (Tron).
+
+---
+
+# Open Questions
+
+- **Q1.** Package size budget: adding `@stellar/stellar-sdk` and `tronweb` roughly doubles the installed-size footprint. Both must ship, but should the SDK publish separate subpath packages (`@getomnichain/omnichain-stellar`, `@getomnichain/omnichain-tron`) or keep a single installable with heavy optionalDeps? Default here is single-package subpath exports, mirroring `./solana`.
+- **Q2.** Soroban diagnostic-event decoding depends on Stellar Expert's historical API for the fallback path. Is the retention guarantee from Stellar Expert acceptable for the solver's reconciliation window, or should we add a secondary indexer source now?
+- **Q3.** Version bump: this adds two new chain families, which under semver would be a minor bump. The requester has indicated a preference for a modest bump; the implementer should propose `0.5.1 → 0.6.0` and get confirmation before release.
+
+<!-- ====================== PART C - DEVIATIONS ====================== -->
+
+---
+
+# Deviations from the plan
+
+Decisions taken with the requester (sepehr) on 2026-10-03, before coding. They override Part A wherever the two disagree.
+
+- **Exact Python parity is the contract.** Every method, argument, default and behaviour of omnichain-py `impl/stellar` and `impl/tron` is ported, including `StellarWallet` and `TronWallet`.
+  - Names are camelCased; Python keyword arguments become one options object.
+  - TS-only code is limited to what the TS `Chain` base forces: thin adapters `getBalance`, `createTransferUnsignedTransaction`, `broadcast`, `verifyMessageSignature`, `getChainTipHeight`, and the batch form of `getTransactionStatus`.
+  - The Python base types the families need are ported as new shared modules, so `AbstractChain` / `AbstractAsset` / etc. from Part A map to the existing TS `Chain` / `Token` / `TransactionStatus` / `UnsignedTransaction`.
+- **No `tronweb` (R7–R13, Q1).** Python uses `tronpy`, a thin HTTP client. The port calls the same TronGrid endpoints with the same `raw_data` and takes the txID from `wallet/getsignweight`, exactly like tronpy. It uses `ethers` (secp256k1, keccak, ABI, BIP-32) and `bs58`, which the package already ships, so Tron adds no dependency.
+- **`@stellar/stellar-sdk` pinned to `^15.1.0`.** v16/v17 require Node ≥ 22; the package declares Node ≥ 20. v15.1 was verified against Stellar mainnet at protocol 29 (60/60 live transactions decoded).
+- **TronGrid key.** Constructor `trongridApiKey` plus `TRONGRID_API_KEY` env fallback, like Python. tronpy's bundled shared keys are not copied.
+- **Python bugs fixed rather than copied (approved list).**
+  - Transport/API errors during status throw `ChainError(RpcError)` instead of returning `NotFound`.
+  - Non-SAC Soroban balances use exact decimal conversion instead of float division.
+  - Debug `print()` calls are dropped.
+  - The Stellar `isFullBalance` no-op and the Tron 0.3 TRX full-balance reserve are kept as-is.
+- **Small additional divergences.**
+  - No logging, because the TS SDK has no logger.
+  - `StellarWallet` errors never echo the secret seed.
+  - `signAndBroadcastTransaction` drops the `broad_cast` spelling slip.
+  - Tron's TS `broadcast` adapter treats `DUP_TRANSACTION_ERROR` as success, like Solana's "already processed".
+- **Version 0.6.0** (Q3 resolved by the requester).
+- **Q2** stays as Python has it: Stellar Expert is the fallback source. Today's Soroban RPC exposes diagnostic events at the top level rather than under `events`, so in practice both SDKs use Stellar Expert for Soroban history.
+
+# Verification performed
+
+- **Wallet vectors.** All Python key and signature vectors (Stellar SEP-5 addresses + SEP-53 signatures; Tron BIP-44 addresses + tronpy message signatures) match byte for byte.
+- **Status parity.**
+  - Stellar mainnet: 5/5 of Python's mainnet status cases produce identical full output from both SDKs. The sixth is beyond SDF Horizon's ~1 year retention and is `NotFound` in both.
+  - Tron mainnet: 4/4 mainnet cases replayed through Python and TS from the same recorded RPC responses produce identical output, and Python issued no request TS did not.
+- **JSON wire format.** TS reproduces Python's payloads byte for byte and reads them back.
+- **Live Stellar testnet.**
+  - Classic transfer with memo, trustline open / skip / close through the wallet prerequisite flow, and a Soroban transfer to a contract (prepare, simulate, sign, broadcast, status).
+  - Both live transactions produce identical output from Python and TS.
+  - A transaction built by TS, signed by Python's `StellarWallet` from JSON and broadcast by TS landed successfully.
+- **Live Tron mainnet.** Balance reads, `resolveAsset`, USDT and TRX unsigned builds, USDT `triggerconstantcontract` simulation with real energy. The live transaction's canonical parse is identical in Python and TS.
+
+# Follow-ups raised
+
+- The Python `TronTransactionFees` validator uses the current energy price, so historical transactions executed under a different price fail status decoding in both SDKs. Several Shasta transactions fail this way, including the one in Python's own Shasta test. This should be fixed in omnichain-py first, then ported.
+- Python reads Soroban diagnostic events from `events.diagnosticEventsXdr`, but current RPCs return them at the top level, so the Soroban RPC path is effectively dead in both SDKs. This should be fixed in omnichain-py first, then ported.
+- The Stellar input design (Soroban deposit contract with intent id, TG t-6633) will need typed memos (ID/hash) and generic contract invocation. That is a separate card; Python only supports text memos today.

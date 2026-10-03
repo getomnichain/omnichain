@@ -3,8 +3,8 @@
 A service-agnostic abstraction layer for talking to blockchain networks. One
 shape (`Chain`, `Token`, `Address`, `UnsignedTransaction`) covers EVM
 (Ethereum / Arbitrum / Base / BNB / …), UTXO (Bitcoin / Litecoin /
-Dogecoin), Solana, and TON, with the same call surface regardless of
-underlying network.
+Dogecoin), Solana, Stellar, Tron, and TON, with the same call surface
+regardless of underlying network.
 
 This repository is the canonical source for the SDK. It is consumed by
 sister services (depositron, pluton-back-end, gasless) as a git submodule
@@ -18,7 +18,8 @@ mounted at each service's own `chain` directory.
 | `Token` | [token.ts](../token.ts) | Abstract base for an on-chain asset — `chainId`, `symbol`, `identifier` (or `NATIVE_TOKEN_IDENTIFIER`), `decimals` |
 | `Address` | [address.ts](../address.ts) | Abstract address with `canonical()` + `networkType` |
 | `UnsignedTransaction` | [unsigned_transaction.ts](../unsigned_transaction.ts) | Abstract base for an unsigned tx; per-chain subclasses add the bytes |
-| `NetworkType` | [network_type.ts](../network_type.ts) | Enum (`EVM`, `COSMOS`, `TON`, `SOLANA`, `BTC`) + `registerNonEvmChain(chainId, type)` registry |
+| `NetworkType` | [network_type.ts](../network_type.ts) | Enum (`EVM`, `COSMOS`, `TON`, `SOLANA`, `BTC`, `TRON`, `STELLAR`) + `registerNonEvmChain(chainId, type)` registry |
+| Python base types | [chain_type.ts](../chain_type.ts), [transaction_prerequisite.ts](../transaction_prerequisite.ts), [signed_transaction.ts](../signed_transaction.ts), [transaction_simulation.ts](../transaction_simulation.ts), [wallet.base.ts](../wallet.base.ts), [asset_balance.ts](../asset_balance.ts), [transaction_json.ts](../transaction_json.ts) | Ports of omnichain-py `base/base.py`: `ChainType`, `WalletFamily`, `FiatCurrency`, prerequisites + `UnsignedTransactionWithPrerequisites`, signed transaction + broadcast response, simulation result, signed message + wallet bases, asset balance, and the `{type, chain_id, …}` JSON envelope (`UnsignedTransaction.fromJson` / `AbstractSignedTransaction.fromJson` dispatch on `type`). Used by Stellar and Tron |
 | `TransactionStatus` | [transaction_status.ts](../transaction_status.ts) | Abstract base — chainId, status, inclusionAt, error, balanceChanges. Per-network subclasses: `EvmTransactionStatus` (+logs, +fees), `SolanaTransactionStatus` (+fees), `UtxoTransactionStatus` (+outputs, +vsize, +confirmations, +fees) |
 | `AssetBalanceChange` | [transaction_status.ts](../transaction_status.ts) | Per-(wallet, asset) balance delta. `.balanceChangeMr: bigint` is the source of truth; `.balanceChangeHr: Decimal` is a lazy accessor derived via exact string-shift (never loses wei). `.fromHr(hr, decimals)` factory for Python-parity construction. `NestedBalanceChanges = Map<wallet, Map<assetHash, {token, change}>>` |
 | `AbstractGasPricing` + subclasses | [abstract_gas_pricing.ts](../abstract_gas_pricing.ts), [evm/evm_gas_pricing.ts](../evm/evm_gas_pricing.ts), [solana/solana_gas_pricing.ts](../solana/solana_gas_pricing.ts), [utxo/utxo_gas_pricing.ts](../utxo/utxo_gas_pricing.ts) | Python-parity explicit-fee override types. `GasPricingType = FeePriority \| AbstractGasPricing`. Type surface only in Wave 2B — per-chain builders don't consume `CreateTransferRequest.gasPricing` yet |
@@ -34,6 +35,8 @@ mounted at each service's own `chain` directory.
 | **EVM** (Ethereum, Arbitrum, Base, BNB, …) | [evm/](../evm) | `EvmChain` over `ethers.js` v6 + ERC-20 support — see [evm.md](./evm.md) |
 | **UTXO** (Bitcoin, Litecoin, Dogecoin + testnets) | [utxo/](../utxo) | `UtxoChain` + `BtcChain` over `bitcoinjs-lib` v7 + `coininfo` — see [utxo.md](./utxo.md) |
 | **Solana** (mainnet, devnet, testnet) | [solana/](../solana) | `SolanaChain` over `@solana/web3.js` v1 + SPL Token / Token-2022 — see [solana.md](./solana.md) |
+| **Stellar** (mainnet, testnet) | [stellar/](../stellar) | `StellarChain` over `@stellar/stellar-sdk` (Horizon + Soroban RPC) — see [stellar.md](./stellar.md) |
+| **Tron** (mainnet, Shasta) | [tron/](../tron) | `TronChain` over the TronGrid HTTP API (tronpy port) — see [tron.md](./tron.md) |
 | **TON** | [ton/](../ton) | `TonAddress` only (no full chain yet) |
 
 ## Quickstart
@@ -170,8 +173,9 @@ NetworkType` (`network_type.ts`).
 Behavior in v0:
 
 - **Static seeds at module load** (from `chain_ids.ts`): BTC family
-  (`-1/-2/-3`), Solana family (`-2000/-2001/-2002`), TON family
-  (`-4000/-4001`), Tron family (`728126428/2494104990`).
+  (`-1/-2/-3`), Solana family (`-2000/-2001/-2002`), Stellar family
+  (`-3500/-3501`), TON family (`-4000/-4001`), Tron family
+  (`728126428/2494104990`).
 - **`networkTypeOf(chainId)`**: returns the registered NetworkType if
   present. For unregistered positive ids returns `EVM`. For unregistered
   negative ids throws `ChainError(ChainNotSupported)` — fail-closed so a
@@ -192,8 +196,9 @@ Behavior in v0:
 
 `addressFor(chainId, raw)` reads from this registry via `networkTypeOf`
 and dispatches to the appropriate `Address` subclass — currently EVM,
-Solana, BTC, TON. TRON and COSMOS families throw `ChainNotSupported`
-(no Address parser yet).
+Solana, BTC, TON, Tron (`TronAddress`, canonical base58check `T…`) and
+Stellar (`StellarAddress`, `G…`/`M…`). The COSMOS family throws
+`ChainNotSupported` (no Address parser yet).
 
 ## Chain IDs
 
@@ -203,7 +208,9 @@ Solana, BTC, TON. TRON and COSMOS families throw `ChainNotSupported`
   - BTC family: `-1` mainnet, `-2` testnet, `-3` signet
   - LTC `-10`, DOGE `-12`, DASH `-14`, ZEC `-16`, BCH `-18` (mainnets only — testnets for these families are not defined in v0)
   - Solana `-2000` mainnet, `-2001` testnet, `-2002` devnet
+  - Stellar `-3500` mainnet, `-3501` testnet
   - TON `-4000` mainnet, `-4001` testnet
+  - Tron keeps its real positive ids (`728126428` mainnet, `2494104990` Shasta)
   Consumers **should not** invent overlapping negative IDs for their own
   chains. `registerNonEvmChain` throws `ChainError(InvalidArgument)` on
   family conflict. Notable overlap: TON's native `global_id = -3` collides
@@ -272,3 +279,5 @@ Add `Foo` enum value to [network_type.ts](../network_type.ts), create
 - [evm.md](./evm.md) — EVM chains and ERC-20
 - [utxo.md](./utxo.md) — Bitcoin / Litecoin / Dogecoin, fee estimation, asset filtering
 - [solana.md](./solana.md) — Solana, SPL Token, Token-2022, priority-fee model
+- [stellar.md](./stellar.md) — Stellar classic + Soroban, trustlines, SEP-5/SEP-53 wallet
+- [tron.md](./tron.md) — Tron TRX + TRC-20, energy fees, approvals, canonical transactions

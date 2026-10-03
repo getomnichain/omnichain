@@ -8,6 +8,75 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-03
+
+Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). Both are ports of `impl/stellar` and `impl/tron`: same methods (camelCased), same arguments and defaults, same RPC calls, same balance-change rules, same wallets and the same JSON wire format. They were verified against Python on mainnet and testnet:
+- Every mainnet case from Python's integration tests produces identical output.
+- Every key and signature vector from Python's unit tests is byte-identical.
+- A transaction built by TS, signed by Python's `StellarWallet` and broadcast by TS lands on testnet.
+
+### Added
+
+- **`@getomnichain/omnichain/stellar`**:
+  - Chains: `StellarMainnet` / `StellarTestnet`.
+  - Assets: `StellarAsset` (native, SAC, non-SAC Soroban), `STELLAR_XLM` / `STELLAR_USDC` / `STELLAR_EURC` / `STELLAR_BNUSD` plus testnet assets, `STELLAR_MAINNET_STABLECOINS_PEG`.
+  - `StellarChain` methods:
+    - transfers: `createTransferTransaction` (classic `Payment` or Soroban `transfer`, with trustline prerequisites), `createExactInSwapTransaction`;
+    - status: `getTransactionStatus` (Horizon effects, Soroban diagnostic events, Stellar Expert fallback, memo, fees);
+    - simulation and broadcast: `simulateTransaction`, `broadcastSignedTransaction`;
+    - reads: `getAssetBalance` (reserve-aware), `getWalletBalance`, `getTrustLineLimit`, `resolveAsset`, `createSacToken`, `createNonSacToken`;
+    - utilities: `verifySignature` (SEP-53), `getAccountNextSequence`.
+  - Models: `StellarUnsignedTransaction` (intent → envelope at sign time), `StellarSignedTransaction`, `StellarWallet` (SEP-5 mnemonic, SEP-53 messages, trustline handling, Friendbot), `StellarAddress`, `StellarGasPricing`.
+- **`@getomnichain/omnichain/tron`**:
+  - Chains: `TronMainnet` / `TronShastaTestnet`.
+  - Assets: `TronAsset` (TRX + TRC-20), `TRON_TRX` / `TRON_USDT` / `TRON_USDC` plus Shasta assets, `TRON_ASSETS_REQUIRING_ZERO_RESET_APPROVAL`, `TRON_MAINNET_STABLECOINS_PEG`.
+  - `TronChain` methods:
+    - transfers: `createTransferTransaction` (TransferContract / TRC-20 `TriggerSmartContract`, memo, fee limit);
+    - status: `getTransactionStatus` (TransferContract + internal transactions + TRC-20 logs + fee);
+    - simulation and broadcast: `simulateTransaction` (`wallet/triggerconstantcontract`, energy), `broadcastSignedTransaction` (duplicate-tolerant);
+    - reads: `getAssetBalance`, `resolveAsset`, `getChainParameters`;
+    - utilities: `verifySignature`.
+  - Models: `TronTransactionFees` (with Python's cross-field validator), `TronWallet` (BIP-44 secp256k1, tronpy-compatible message signatures, USDT zero-reset approve flow), `TronAddress`, `TronGasPricing`, `parseTronCanonicalTransaction` (the 12-contract schema from `helpers/transaction.py`).
+  - Ports of the tronpy pieces Python relies on: `TronClient`, `TronTransaction` / `TronTransactionBuilder`, `TronContract`, and the keys module (`TronPrivateKey` / `TronPublicKey` / `TronSignature`, base58check helpers).
+- **Python base types** used by both families:
+  - enums `ChainType`, `WalletFamily`, `FiatCurrency`;
+  - `AbstractTransactionPrerequisite`, `AbstractHandledPrerequisiteResponse`, `UnsignedTransactionWithPrerequisites`;
+  - `AbstractSignedTransaction`, `AbstractBroadcastTransactionResponse`;
+  - `AbstractTransactionSimulationResult` with `TransactionSimulationStatusTypes`;
+  - `AbstractSignedMessage`, `AbstractWallet`, `AbstractBip32StyleSingleAccountWallet`, `AbstractAssetBalance`;
+  - the BIP-39 helpers `mnemonicToSeedSep5` / `mnemonicToSeedBip39`.
+- **JSON wire format shared with Python** — `toJson()` / `toJsonStr()` / `fromJson()` on the Stellar and Tron unsigned/signed transactions, using Python's `{type, chain_id, …}` envelope. `UnsignedTransaction.fromJson` and `AbstractSignedTransaction.fromJson` dispatch on `type`, so payloads move between Python and TS processes unchanged.
+- **`NetworkType.STELLAR`**, with the Stellar chain ids seeded in the registry. `addressFor` now parses Tron (`TronAddress`) and Stellar (`StellarAddress`) addresses instead of throwing `ChainNotSupported`.
+- **Tests** — 147 new tests:
+  - Python's wallet vectors;
+  - mainnet status cases replayed offline from recorded RPC responses;
+  - Python JSON payload fixtures;
+  - builders, simulation, broadcast, prerequisites, canonical transactions.
+
+### Changed
+
+- `UnsignedTransaction` gains `toJson()` / `toJsonStr()` (throwing `FeatureNotSupported` for models without a JSON form, as in Python) and a static `fromJson`.
+- New runtime dependency `@stellar/stellar-sdk` `^15.1.0`, the newest line that still supports Node 20 (v17 requires Node ≥ 22.12). Tron adds no dependency.
+
+### Note — differences from omnichain-py
+
+- Transport and API failures during `getTransactionStatus` (Horizon 429/5xx, TronGrid rate limits) throw `ChainError(RpcError)`; Python reports them as `NotFound`. Real "not found" answers still return `NotFound`.
+- Non-SAC Soroban balances are converted exactly; Python divides with a float.
+- Tron debug `print()` calls and Python's log lines are not ported. tronpy's bundled shared TronGrid keys are not shipped.
+- `StellarWallet` errors never include the secret seed.
+- `AbstractWallet.signAndBroadcastTransaction` is Python's `sign_and_broad_cast_transaction` without the spelling slip.
+- The TS `Chain` adapters wrap the Python-parity methods: `getBalance`, `createTransferUnsignedTransaction`, `broadcast`, `verifyMessageSignature`, `getChainTipHeight`, and batch `getTransactionStatus`.
+  - Stellar's adapter rejects `isFullBalance`, because Python ignores it and the TS request then has no amount.
+  - Tron's `broadcast` adapter treats `DUP_TRANSACTION_ERROR` as success.
+  - `wait` / `confirmations` options are rejected, as on UTXO.
+
+### Note — upstream behaviour mirrored as-is
+
+- Today's Soroban RPC returns diagnostic events at the top level, not under `events` where Python reads them. Historical Soroban statuses therefore resolve through the Stellar Expert API in both SDKs.
+- `TronTransactionFees` validates against the *current* energy price. Transactions executed under an older price fail that check in both SDKs, which affects some historical Shasta transactions.
+
+---
+
 ## [0.5.1] — 2026-09-22
 
 Surfaces Solana finality on `SolanaTransactionStatus` (RIN-296, SDK half of RIN-285). Non-blocking pollers can now read one status snapshot and see how close to finality a tx is, matching the pattern EVM (`blockNumber` + tip derivation) and UTXO (RIN-195's carried `confirmations`) already use.
