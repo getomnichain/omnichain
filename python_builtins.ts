@@ -71,6 +71,33 @@ export function pyIntOf(value: unknown): bigint {
   );
 }
 
+export function pyDecimalStr(text: string): string {
+  const match = /^([+-])?(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(text.trim());
+  if (match === null || (match[2] ?? '') + (match[3] ?? '') === '') {
+    throw new ChainError(ChainErrorKinds.InvalidArgument, `[<class 'decimal.ConversionSyntax'>]`);
+  }
+  const sign = match[1] === '-' ? '-' : '';
+  const fraction = match[3] ?? '';
+  const digits = BigInt(`${match[2] ?? ''}${fraction}` || '0').toString();
+  const exponent = Number(match[4] ?? '0') - fraction.length;
+  const leftDigits = exponent + digits.length;
+  const dotPlace = exponent <= 0 && leftDigits > -6 ? leftDigits : 1;
+  let integerPart: string;
+  let fractionPart: string;
+  if (dotPlace <= 0) {
+    integerPart = '0';
+    fractionPart = `.${'0'.repeat(-dotPlace)}${digits}`;
+  } else if (dotPlace >= digits.length) {
+    integerPart = digits + '0'.repeat(dotPlace - digits.length);
+    fractionPart = '';
+  } else {
+    integerPart = digits.slice(0, dotPlace);
+    fractionPart = `.${digits.slice(dotPlace)}`;
+  }
+  const exponentPart = leftDigits === dotPlace ? '' : `E${leftDigits - dotPlace >= 0 ? '+' : ''}${leftDigits - dotPlace}`;
+  return sign + integerPart + fractionPart + exponentPart;
+}
+
 export function pyTruthy(value: unknown): boolean {
   if (value === null || value === undefined || value === false || value === 0 || value === 0n || value === '') return false;
   if (Array.isArray(value)) return value.length > 0;

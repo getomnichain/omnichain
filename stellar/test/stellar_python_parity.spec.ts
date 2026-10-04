@@ -7,8 +7,11 @@ import { inspect } from 'node:util';
 
 import {
   Account,
+  AccountRequiresMemoError,
   Asset as StellarSdkAsset,
   Keypair,
+  Memo,
+  MuxedAccount,
   Networks,
   Operation,
   Transaction,
@@ -59,6 +62,7 @@ interface HorizonStub {
   requests: string[];
   ledgers: HorizonReply;
   submit: HorizonReply;
+  accounts: Record<string, HorizonReply>;
   close: () => Promise<void>;
 }
 
@@ -67,6 +71,7 @@ async function startHorizon(): Promise<HorizonStub> {
     requests: [] as string[],
     ledgers: { status: 200, body: {} } as HorizonReply,
     submit: { status: 200, body: {} } as HorizonReply,
+    accounts: {} as Record<string, HorizonReply>,
   };
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
     req.resume();
@@ -77,7 +82,7 @@ async function startHorizon(): Promise<HorizonStub> {
           ? stub.ledgers
           : req.url === '/transactions' && req.method === 'POST'
             ? stub.submit
-            : { status: 404, body: { type: 'https://stellar.org/horizon-errors/not_found', title: 'Resource Missing', status: 404 } };
+            : stub.accounts[(req.url ?? '').replace('/accounts/', '')] ?? { status: 404, body: { type: 'https://stellar.org/horizon-errors/not_found', title: 'Resource Missing', status: 404 } };
       res.writeHead(reply.status, { 'Content-Type': 'application/hal+json; charset=utf-8' });
       res.end(JSON.stringify(reply.body));
     });
@@ -199,6 +204,61 @@ describe('Horizon over real HTTP (stellar-sdk http client, not hand-built errors
     expect(horizon.requests).toEqual(['GET /ledgers?order=desc&limit=1']);
   });
 
+
+  it('SEP-29 is checked on the base G account of a muxed destination, as stellar-sdk Python does', async () => {
+    const chain = chainOn(horizon.url);
+    horizon.accounts = {
+      [RECEIVER.address]: {
+        status: 200,
+        body: { id: RECEIVER.address, account_id: RECEIVER.address, data: { 'config.memo_required': 'MQ==' }, _links: {} },
+      },
+    };
+    const muxed = new MuxedAccount(new Account(RECEIVER.address, '0'), '9').accountId();
+    const build = (memo: Memo) => {
+      const tx = new TransactionBuilder(new Account(SENDER.address, '100'), { fee: '100', networkPassphrase: Networks.PUBLIC, memo })
+        .addOperation(Operation.payment({ destination: muxed, asset: StellarSdkAsset.native(), amount: '1' }))
+        .setTimeout(300)
+        .build();
+      tx.sign(Keypair.fromSecret(SENDER.secretSeed));
+      return tx.toXDR();
+    };
+    try {
+      const signed = new StellarSignedTransaction({ chainId: chain.chainId, signedXdr: build(Memo.none()), networkPassphrase: Networks.PUBLIC });
+      const refused = await chain.broadcastSignedTransaction(signed);
+      expect(refused.broadcastError).toBeInstanceOf(AccountRequiresMemoError);
+      expect(refused.broadcastError).toMatchObject({ message: 'Destination account requires a memo in the transaction.', accountId: RECEIVER.address, operationIndex: 0 });
+      expect(horizon.requests).toEqual([`GET /accounts/${RECEIVER.address}`]);
+      await expect(chain.broadcast(signed.signedXdr)).rejects.toMatchObject({ kind: ChainErrorKinds.BroadcastRejected });
+
+      horizon.requests.length = 0;
+      const withMemo = build(Memo.text('invoice'));
+      horizon.submit = { status: 200, body: { hash: new StellarSignedTransaction({ chainId: chain.chainId, signedXdr: withMemo, networkPassphrase: Networks.PUBLIC }).txHash } };
+      await expect(chain.broadcast(withMemo)).resolves.toMatch(/^[0-9a-f]{64}$/);
+      expect(horizon.requests).toEqual(['POST /transactions']);
+    } finally {
+      horizon.accounts = {};
+    }
+  });
+
+  it('a strict-send path query sends source_amount as Python str(Decimal), so a dust amount uses exponent notation', async () => {
+    const chain = chainOn(horizon.url);
+    const request = {
+      sendAsset: chain.nativeAsset,
+      receiveAsset: chain.createSacToken('USDC', USDC_ISSUER),
+      senderAddress: SENDER.address,
+      receiverAddress: RECEIVER.address,
+      slippageTolerancePercent: new Decimal(1),
+    };
+    for (const [amount, expected] of [
+      ['0.0000001', '1E-7'],
+      ['0.5', '0.5'],
+    ]) {
+      horizon.requests.length = 0;
+      await chain.createExactInSwapTransaction({ ...request, sendAmount: new Decimal(amount) }).catch(() => undefined);
+      const query = horizon.requests.find((r) => r.startsWith('GET /paths/strict-send'));
+      expect(new URL(`http://h${query?.slice(4)}`).searchParams.get('source_amount')).toBe(expected);
+    }
+  });
 
   it('a Horizon 400 on submit is BroadcastRejected with the result codes; 5xx stays RpcError', async () => {
     const chain = chainOn(horizon.url);
@@ -761,5 +821,23 @@ describe('round-7 parity: Soroban JSON-RPC replies are read like stellar-sdk Pyt
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+});
+
+describe('round-8 parity: gasPricing None is rejected like Python', () => {
+  it('createTransferTransaction with gasPricing null raises "Unsupported gas_pricing None"', async () => {
+    const chain = chainOn('http://127.0.0.1:9');
+    Object.defineProperty(chain, 'asyncHorizonServer', {
+      get: () => ({ ledgers: () => ({ order: () => ({ limit: () => ({ call: async () => ({ records: [{ base_fee_in_stroops: 100 }] }) }) }) }) }),
+    });
+    await expect(
+      chain.createTransferTransaction({
+        asset: chain.nativeAsset,
+        amountHr: new Decimal(1),
+        senderAddress: SENDER.address,
+        receiverAddress: RECEIVER.address,
+        gasPricing: null as never,
+      }),
+    ).rejects.toThrow('Unsupported gas_pricing None');
   });
 });

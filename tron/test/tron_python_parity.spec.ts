@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inspect } from 'node:util';
 
+import { Decimal } from 'decimal.js';
 import { AbiCoder, keccak256, toUtf8Bytes } from 'ethers';
 
 import { FiatCurrency } from '../../chain_type.ts';
@@ -18,7 +19,7 @@ import { TRONPY_USER_AGENT, TronClient, TronJson, TronTvmError } from '../tron_c
 import { TronContract } from '../tron_contract.ts';
 import { tronAbiDecodeSingle, tronAbiEncodeSingle } from '../tron_abi.ts';
 import { TronPrivateKey, TronPublicKey, TronSignature } from '../tron_keys.ts';
-import { TronHandledApprovePrerequisiteResponse, TronSignedTransaction, TronTransactionSimulationResult, tronTransactionFromJson } from '../tron_transactions.ts';
+import { TronApproveTransactionPrerequisite, TronHandledApprovePrerequisiteResponse, TronSignedTransaction, TronTransactionSimulationResult, tronTransactionFromJson } from '../tron_transactions.ts';
 import { TronTransactionStatus } from '../tron_transaction_status.ts';
 import { TronWallet } from '../tron_wallet.ts';
 
@@ -512,4 +513,59 @@ describe('round-3 parity: TronChain construction', () => {
       expect([networkTypeRegistrations().get(chainId), tryNetworkTypeOf(chainId)]).toEqual(before);
     },
   );
+});
+
+describe('round-8 parity: constant-call replies are read like tronpy trigger_constant_contract', () => {
+  const replies = JSON.parse(
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'tronpy_constant_call_replies.json'), 'utf8'),
+  ) as { name: string; reply: TronJson; value?: string; error?: string }[];
+
+  it.each(replies.map((c) => [c.name, c] as const))('%s', async (_name, c) => {
+    const client = new TronClient({ endpointUri: 'http://127.0.0.1:9/' });
+    client.makeRequest = async () => c.reply;
+    const outcome = client.triggerConstSmartContractFunction(USDT_CONTRACT, USDT_CONTRACT, 'allowance(address,address)', '00');
+    if (c.error === undefined) {
+      await expect(outcome).resolves.toBe(c.value);
+    } else {
+      await expect(outcome).rejects.toThrow(c.error);
+    }
+  });
+
+  it('a malformed allowance reply stops the approve flow before any broadcast, as in Python', async () => {
+    for (const result of ['message', null, true] as unknown[]) {
+      const broadcasts: TronJson[] = [];
+      const client = new TronClient({ endpointUri: 'http://127.0.0.1:9/' });
+      client.makeRequest = async (method: string, params: TronJson = {}) => {
+        if (method === 'wallet/triggerconstantcontract') return { result, constant_result: ['00'.repeat(32)] };
+        if (method === 'wallet/broadcasttransaction') broadcasts.push(params);
+        return { result: true, txid: 'aa'.repeat(32) };
+      };
+      const chain = new TronChain({ name: 'Tron Stub', chainId: CHAIN_ID_TRON_MAINNET, defaultRpcUrl: 'http://127.0.0.1:9/', explorerUrl: 'https://tronscan.org' });
+      Object.defineProperty(chain, 'client', { get: () => client });
+      const prerequisite = new TronApproveTransactionPrerequisite({
+        chainId: chain.chainId,
+        asset: chain.getTrc20Asset('USDC', 'TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8', 6),
+        walletAddress: WALLET.address,
+        spenderContractAddress: USDT_CONTRACT,
+        amount: 1_000n,
+      });
+      await expect(WALLET.handleTransactionPrerequisite(prerequisite, chain)).rejects.toBeInstanceOf(Error);
+      expect(broadcasts).toEqual([]);
+    }
+  });
+});
+
+describe('round-8 parity: gasPricing None is rejected like Python', () => {
+  it('createTransferTransaction with gasPricing null raises "Unsupported gas_pricing None"', async () => {
+    const chain = new TronChain({ name: 'Tron Stub', chainId: CHAIN_ID_TRON_MAINNET, defaultRpcUrl: 'http://127.0.0.1:9/', explorerUrl: 'https://tronscan.org' });
+    await expect(
+      chain.createTransferTransaction({
+        asset: chain.nativeAsset,
+        amountHr: new Decimal(1),
+        senderAddress: WALLET.address,
+        receiverAddress: USDT_CONTRACT,
+        gasPricing: null as never,
+      }),
+    ).rejects.toThrow('Unsupported gas_pricing None');
+  });
 });

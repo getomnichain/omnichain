@@ -414,7 +414,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     this.assertOwnAsset(req.asset);
     const sender = TronChain.formatWalletAddress(req.senderAddress);
     const receiver = TronChain.formatWalletAddress(req.receiverAddress);
-    const feeLimitSun = this._resolveGasPricing(req.gasPricing ?? FeePriority.NORMAL);
+    const feeLimitSun = this._resolveGasPricing(req.gasPricing === undefined ? FeePriority.NORMAL : req.gasPricing);
     let amountMr = hrDecimalToMinorUnits(new Decimal(req.amountHr.toString()), req.asset.decimals);
 
     let builder: TronTransactionBuilder;

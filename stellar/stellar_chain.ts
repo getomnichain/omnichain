@@ -9,6 +9,7 @@ import {
   Horizon,
   Keypair,
   Memo,
+  MemoNone,
   MuxedAccount,
   NotFoundError,
   Operation,
@@ -35,7 +36,7 @@ import {
 } from '../chain.base.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
-import { pyDecodeUtf8, pyEncodeUtf8, PyStringContainer, pyContains, pyStringContainer, pyItem, pyIntOf, pyTruthy } from '../python_builtins.ts';
+import { pyDecodeUtf8, pyEncodeUtf8, PyStringContainer, pyContains, pyStringContainer, pyItem, pyIntOf, pyTruthy, pyDecimalStr } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
 import {
   isPydanticAbsent,
@@ -564,9 +565,32 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     return decimals;
   }
 
+  async _checkMemoRequired(transaction: Transaction): Promise<void> {
+    if (transaction.memo.type !== MemoNone) return;
+    const checked = new Set<string>();
+    for (const [index, operation] of transaction.operations.entries()) {
+      if (!MEMO_REQUIRED_OPERATION_TYPES.has(operation.type)) continue;
+      const destination = StellarChain._muxedToClassic((operation as { destination: string }).destination);
+      if (checked.has(destination)) continue;
+      checked.add(destination);
+      if (destination.startsWith('M')) continue;
+      let account: Record<string, unknown>;
+      try {
+        account = (await this.asyncHorizonServer.accounts().accountId(destination).call()) as unknown as Record<string, unknown>;
+      } catch (err) {
+        if (err instanceof NotFoundError) continue;
+        throw err;
+      }
+      const data = ('data_attr' in account ? account.data_attr : pyItem(account, 'data')) as Record<string, unknown>;
+      if (data[MEMO_REQUIRED_CONFIG_KEY] === MEMO_REQUIRED_CONFIG_VALUE) {
+        throw new AccountRequiresMemoError('Destination account requires a memo in the transaction.', destination, index);
+      }
+    }
+  }
+
   async _submitTransaction(envelope: Transaction): Promise<unknown> {
     const horizon = this.asyncHorizonServer;
-    await horizon.checkMemoRequired(envelope);
+    await this._checkMemoRequired(envelope);
     const response = await horizon.httpClient.post(
       horizon.serverURL.clone().segment('transactions').toString(),
       `tx=${encodeURIComponent(envelope.toEnvelope().toXDR().toString('base64'))}`,
@@ -753,7 +777,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
           amountHr: req.amountHr,
         });
 
-    const baseFee = await this._resolveGasPricing(req.gasPricing ?? FeePriority.NORMAL);
+    const baseFee = await this._resolveGasPricing(req.gasPricing === undefined ? FeePriority.NORMAL : req.gasPricing);
 
     const unsignedTx = new StellarUnsignedTransaction({
       chainId: this.chainId,
@@ -777,10 +801,9 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
   ): Promise<UnsignedTransactionWithPrerequisites<StellarUnsignedTransaction, AbstractTransactionPrerequisite>> {
     const senderClassicAddress = StellarChain.toClassicAccountId(req.senderAddress);
     const receiverClassicAddress = StellarChain.toClassicAccountId(req.receiverAddress);
-    const sendAmount = new Decimal(req.sendAmount.toString()).toFixed();
 
     const sendPath = await this.asyncHorizonServer
-      .strictSendPaths(req.sendAsset.toSdkAsset(), sendAmount, [req.receiveAsset.toSdkAsset()])
+      .strictSendPaths(req.sendAsset.toSdkAsset(), pyDecimalStr(req.sendAmount.toString()), [req.receiveAsset.toSdkAsset()])
       .call();
     const records = sendPath.records;
     if (records.length === 0) {
@@ -1625,6 +1648,10 @@ function firstHostFunctionResult(results: SorobanSimulateHostFunctionResult[] | 
   if (results.length === 0) throw new ChainError(ChainErrorKinds.SimulationFailed, 'list index out of range');
   return xdr.ScVal.fromXDR(results[0].xdr, 'base64');
 }
+
+const MEMO_REQUIRED_OPERATION_TYPES: ReadonlySet<string> = new Set(['payment', 'accountMerge', 'pathPaymentStrictSend', 'pathPaymentStrictReceive']);
+const MEMO_REQUIRED_CONFIG_KEY = 'config.memo_required';
+const MEMO_REQUIRED_CONFIG_VALUE = 'MQ==';
 
 function transactionXdrOperations(tx: Transaction): xdr.Operation[] {
   const envelope = tx.toEnvelope();

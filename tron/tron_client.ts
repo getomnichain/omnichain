@@ -2,7 +2,7 @@ import { Decimal } from 'decimal.js';
 
 import { bytesFromHex } from '../bytes_from_hex.ts';
 import { ChainError, ChainErrorKind, ChainErrorKinds, sanitizeMessage } from '../errors.ts';
-import { pyDecodeUtf8 } from '../python_builtins.ts';
+import { pyDecodeUtf8, pyItem } from '../python_builtins.ts';
 import { pyRepr, pyStr, pyTypeName } from '../python_repr.ts';
 import { minorUnitsToHrString } from '../transaction_status.ts';
 import { toBase58CheckAddress } from './tron_keys.ts';
@@ -226,9 +226,11 @@ export class TronClient {
       visible: true,
     });
     this.handleApiError(ret);
-    const result = (ret.result ?? {}) as TronJson;
-    if (result !== null && typeof result === 'object' && 'message' in result) {
-      let message = pyStr(result.message);
+    const result = 'result' in ret ? ret.result : {};
+    if (pyIn('message', result)) {
+      if (typeof result === 'string') throw new ChainError(ChainErrorKinds.RpcError, "string indices must be integers, not 'str'");
+      if (Array.isArray(result)) throw new ChainError(ChainErrorKinds.RpcError, 'list indices must be integers or slices, not str');
+      let message = pyStr((result as TronJson).message);
       const constantResult = (ret.constant_result as unknown[] | undefined) ?? [];
       const revertString = decodeRevertString(constantResult[0]);
       if (revertString !== null) message = `${message}: ${revertString}`;
@@ -244,7 +246,7 @@ export class TronClient {
     parameter: string,
   ): Promise<string> {
     const ret = await this.triggerConstantContract(ownerAddress, contractAddress, functionSelector, parameter);
-    return (ret.constant_result as string[])[0];
+    return pyFirstItem(pyItem(ret, 'constant_result')) as string;
   }
 
   async broadcast(transactionJson: TronJson): Promise<TronJson> {
@@ -256,6 +258,26 @@ export class TronClient {
   async getSignWeight(transactionJson: TronJson): Promise<TronJson> {
     return this.makeRequest('wallet/getsignweight', transactionJson);
   }
+}
+
+function pyIn(item: string, container: unknown): boolean {
+  if (typeof container === 'string') return container.includes(item);
+  if (Array.isArray(container)) return container.some((element) => element === item);
+  if (container !== null && typeof container === 'object') return item in container;
+  throw new ChainError(ChainErrorKinds.RpcError, `argument of type '${pyTypeName(container)}' is not iterable`);
+}
+
+function pyFirstItem(sequence: unknown): unknown {
+  if (Array.isArray(sequence)) {
+    if (sequence.length === 0) throw new ChainError(ChainErrorKinds.RpcError, 'list index out of range');
+    return sequence[0];
+  }
+  if (typeof sequence === 'string') {
+    if (sequence.length === 0) throw new ChainError(ChainErrorKinds.RpcError, 'string index out of range');
+    return [...sequence][0];
+  }
+  if (sequence !== null && typeof sequence === 'object') throw new ChainError(ChainErrorKinds.RpcError, '0');
+  throw new ChainError(ChainErrorKinds.RpcError, `'${pyTypeName(sequence)}' object is not subscriptable`);
 }
 
 function decodeApiMessage(payload: TronJson): unknown {
