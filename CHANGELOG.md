@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.6.0] — 2026-10-03
+## [0.6.0] — 2026-10-04
 
 Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). Both are ports of `impl/stellar` and `impl/tron`: same methods (camelCased), same arguments and defaults, same RPC calls, same balance-change rules, same wallets and the same JSON wire format. They were verified against Python on mainnet and testnet:
 - Every mainnet case from Python's integration tests produces identical output.
