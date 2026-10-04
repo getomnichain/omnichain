@@ -10,6 +10,12 @@ Every wire-level operation a consumer needs is on `Chain` or its typed subclasse
 | `chain.getProvider().getTransactionCount(addr, 'pending')` | `chain.getPendingNonce(addr)` |
 | `chain.getProvider().getCode(addr)` + custom `0xef0100` parse | `chain.getDelegation(addr)` |
 | `chain.getProvider().getStorage(addr, slot)` | `chain.getStorageAt(addr, slot)` |
+| `new Psbt()` + `addInput({ nonWitnessUtxo, witnessUtxo })` per pre-selected input | `chain.assembleTransaction({ inputs, outputs })` |
+| `psbt.signAllInputs(signer)` | `unsigned.signWith(signer)` |
+| `psbt.finalizeAllInputs()` + `psbt.extractTransaction()` | `unsigned.finalize()` → `{ hex, txid, vsize }` |
+| `Transaction.fromHex(parentHex).outs[vout]` | `utxoFromRawTransaction(parentHex, vout, ownerAddress)` |
+| `payments.p2wpkh({ pubkey, network }).address` | `chain.addressForPublicKey(pubkey)` |
+| `networks.Network` type | `UtxoNetworkInfo` |
 | `chain.getProvider().call(tx)` | `chain.call({ to, data, ... })` |
 | `chain.getProvider().estimateGas(tx)` | `chain.call({ to, data, ..., estimateGas: true })` |
 | `chain.getConnection().sendRawTransaction(bytes, opts)` | `chain.broadcast(bytes, opts)` |

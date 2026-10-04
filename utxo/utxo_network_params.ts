@@ -19,10 +19,12 @@ export const RBF_SEQUENCE = 0xfffffffd;
 export const OP_RETURN_MAX_BYTES = 80;
 export const DEFAULT_DUST_SATS = 546;
 
+export type UtxoNetworkInfo = networks.Network;
+
 export interface UtxoNetworkParams {
   name: string;
   slip44CoinId: number;
-  networkInfo: networks.Network;
+  networkInfo: UtxoNetworkInfo;
   supportedDerivationPurposes: ReadonlySet<number>;
   dustValueSats: number;
   walletAddressRegex: RegExp;

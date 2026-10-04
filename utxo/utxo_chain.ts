@@ -17,7 +17,7 @@ import {
   CreateTransferRequest,
   VerifyMessageSignatureRequest,
 } from '../chain.base.ts';
-import { ChainError, ChainErrorKinds, sanitizeMessage } from '../errors.ts';
+import { ChainError, ChainErrorKinds, ChainErrorMeta, sanitizeMessage } from '../errors.ts';
 import { NetworkType, registerNonEvmChain } from '../network_type.ts';
 import { Priority } from '../priority.ts';
 import { Token } from '../token.ts';
@@ -40,9 +40,14 @@ import {
   selectCoins,
 } from './coin_selection.ts';
 import { costOfChangeSats, estimateTxVBytes, outputVBytes } from './fee.ts';
+import { isByteArray, sameBytes } from './bytes.ts';
+import { isCompressedPublicKey, singleKeyPayment } from './keys.ts';
+import { decodeRawTransaction } from './raw_transaction.ts';
 import {
   UtxoScriptType,
   UtxoScriptTypes,
+  UtxoSingleKeyScriptType,
+  addressToScriptPubKey,
   buildOpReturnScript,
   detectScriptType,
   scriptTypeForAddress,
@@ -52,11 +57,17 @@ import { UtxoChainTipProvider } from './tools/chain_tip_provider.ts';
 import { UtxoFeeEstimator } from './tools/fee_estimator.ts';
 import { UtxoRawTransactionProvider } from './tools/raw_transaction_provider.ts';
 import { UtxoProvider } from './tools/utxo_provider.ts';
-import { UnspentTransactionOutput } from './utxo.ts';
+import {
+  AssembleUtxoTransactionRequest,
+  UnspentTransactionOutput,
+  UtxoPsbtInput,
+  UtxoPsbtOutput,
+} from './utxo.ts';
 import {
   FINAL_SEQUENCE,
   OP_RETURN_MAX_BYTES,
   RBF_SEQUENCE,
+  UtxoNetworkInfo,
   UtxoNetworkParams,
 } from './utxo_network_params.ts';
 
@@ -434,6 +445,96 @@ export class UtxoChain extends Chain {
     return this.buildTransfer(req as CreateUtxoTransferOptions, undefined);
   }
 
+  assembleTransaction(request: AssembleUtxoTransactionRequest): UnsignedUtxoTransaction {
+    const { inputs, outputs } = request;
+    if (inputs.length === 0) {
+      throw this.invalidArgument('assembleTransaction: at least one input is required');
+    }
+    if (outputs.length === 0) {
+      throw this.invalidArgument('assembleTransaction: at least one output is required');
+    }
+
+    const spentOutpoints = new Set<string>();
+    const inputScriptTypes = inputs.map((input, index) => {
+      const scriptType = this.checkPsbtInput(input, index);
+      const outpoint = `${input.utxo.txid.toLowerCase()}:${input.utxo.vout}`;
+      if (spentOutpoints.has(outpoint)) {
+        throw this.invalidArgument(`assembleTransaction: inputs[${index}] spends ${outpoint} a second time`);
+      }
+      spentOutpoints.add(outpoint);
+      return scriptType;
+    });
+
+    const resolvedOutputs = outputs.map((output, index) => this.resolvePsbtOutput(output, index));
+    const opReturnDataLengths = resolvedOutputs.flatMap((o) =>
+      o.opReturnDataLength === null ? [] : [o.opReturnDataLength],
+    );
+    if (opReturnDataLengths.length > 1) {
+      throw this.invalidArgument('assembleTransaction: at most one opReturn output is allowed');
+    }
+
+    const totalInputSats = inputs.reduce((sum, { utxo }) => sum + utxo.valueSats, 0);
+    const totalOutputSats = resolvedOutputs.reduce((sum, o) => sum + o.valueSats, 0);
+    if (totalOutputSats > totalInputSats) {
+      throw this.invalidArgument(
+        `assembleTransaction: outputs total ${totalOutputSats} sats but inputs only ${totalInputSats} sats`,
+      );
+    }
+
+    const sequence = (request.rbfEnabled ?? this.rbfEnabled) ? RBF_SEQUENCE : FINAL_SEQUENCE;
+    const psbt = new Psbt({ network: this.params.networkInfo });
+    const inputsToSign: Record<string, number[]> = {};
+    inputs.forEach(({ utxo, parentTxHex }, index) => {
+      this.addInputToPsbt({ psbt, utxo, sequence, parentTxHex });
+      (inputsToSign[utxo.ownerAddress] ??= []).push(index);
+    });
+    for (const output of resolvedOutputs) {
+      psbt.addOutput({ script: output.script, value: BigInt(output.valueSats) });
+    }
+
+    const estimatedVBytes = estimateTxVBytes(
+      inputScriptTypes,
+      resolvedOutputs.flatMap((o) => (o.opReturnDataLength === null ? [detectScriptType(o.script)] : [])),
+      opReturnDataLengths,
+    );
+    const feeSats = totalInputSats - totalOutputSats;
+    return new UnsignedUtxoTransaction({
+      chainId: this.chainId,
+      params: this.params,
+      psbtBase64: psbt.toBase64(),
+      selectedInputs: inputs.map(({ utxo }) => utxo),
+      feeSats,
+      feeRateSatsPerVByte: feeSats / estimatedVBytes,
+      estimatedVBytes,
+      totalInputSats,
+      totalOutputSats,
+      changeAddress: null,
+      inputsToSign,
+    });
+  }
+
+  addressForPublicKey(
+    publicKey: Uint8Array,
+    scriptType: UtxoSingleKeyScriptType = UtxoScriptTypes.P2WPKH,
+  ): string {
+    if (!isCompressedPublicKey(publicKey)) {
+      throw this.invalidArgument('addressForPublicKey: publicKey must be a 33-byte compressed secp256k1 public key');
+    }
+    if (scriptType !== UtxoScriptTypes.P2WPKH && scriptType !== UtxoScriptTypes.P2PKH) {
+      throw this.invalidArgument(
+        `addressForPublicKey: scriptType must be '${UtxoScriptTypes.P2WPKH}' or '${UtxoScriptTypes.P2PKH}', got ${String(scriptType)}`,
+      );
+    }
+    if (scriptType === UtxoScriptTypes.P2WPKH && !this.params.networkInfo.bech32) {
+      throw new ChainError(
+        ChainErrorKinds.FeatureNotSupported,
+        `${this.name}: the network has no segwit addresses; use scriptType '${UtxoScriptTypes.P2PKH}'`,
+        { chainId: this.chainId },
+      );
+    }
+    return singleKeyPayment(publicKey, scriptType, this.params.networkInfo).address!;
+  }
+
   async broadcast(signed: string | Uint8Array, opts?: BroadcastOpts): Promise<string> {
     if (opts && (opts as { signal?: unknown }).signal !== undefined) {
       throw new ChainError(
@@ -761,6 +862,93 @@ export class UtxoChain extends Chain {
     psbt.addInput(input);
   }
 
+  private checkPsbtInput({ utxo, parentTxHex }: UtxoPsbtInput, index: number): UtxoScriptType {
+    const field = `assembleTransaction: inputs[${index}]`;
+    const parent = decodeRawTransaction(parentTxHex);
+    if (parent === null) {
+      throw this.invalidArgument(`${field}.parentTxHex is not a valid transaction`);
+    }
+    const parentTxid = parent.getId();
+    if (typeof utxo.txid !== 'string' || utxo.txid.toLowerCase() !== parentTxid) {
+      throw this.invalidArgument(
+        `${field}: parentTxHex is transaction ${parentTxid}, not utxo.txid ${String(utxo.txid)}`,
+        { txHash: parentTxid },
+      );
+    }
+    const parentOutput = Number.isInteger(utxo.vout) && utxo.vout >= 0 ? parent.outs[utxo.vout] : undefined;
+    if (parentOutput === undefined) {
+      throw this.invalidArgument(
+        `${field}: transaction ${parentTxid} has no output ${utxo.vout} (it has ${parent.outs.length})`,
+        { txHash: parentTxid },
+      );
+    }
+    if (Number(parentOutput.value) !== utxo.valueSats) {
+      throw this.invalidArgument(
+        `${field}: utxo.valueSats ${utxo.valueSats} does not match the parent output value ${parentOutput.value}`,
+        { txHash: parentTxid },
+      );
+    }
+    const script = Buffer.from(parentOutput.script);
+    if (typeof utxo.scriptPubKeyHex !== 'string' || utxo.scriptPubKeyHex.toLowerCase() !== script.toString('hex')) {
+      throw this.invalidArgument(
+        `${field}: utxo.scriptPubKeyHex does not match the parent output script`,
+        { txHash: parentTxid },
+      );
+    }
+    const scriptType = detectScriptType(script);
+    if (scriptType === UtxoScriptTypes.OpReturn || scriptType === UtxoScriptTypes.NonStandard) {
+      throw this.invalidArgument(`${field}: cannot spend an output of script type ${scriptType}`, { txHash: parentTxid });
+    }
+    if (!sameBytes(this.outputScriptFor(utxo.ownerAddress, `${field}.utxo.ownerAddress`), script)) {
+      throw this.invalidArgument(
+        `${field}: utxo.ownerAddress ${utxo.ownerAddress} does not own the output it spends`,
+        { txHash: parentTxid, address: utxo.ownerAddress },
+      );
+    }
+    return scriptType;
+  }
+
+  private resolvePsbtOutput(output: UtxoPsbtOutput, index: number): ResolvedPsbtOutput {
+    const field = `assembleTransaction: outputs[${index}]`;
+    if (output.kind === 'address') {
+      const script = this.outputScriptFor(output.address, `${field}.address`);
+      if (!Number.isSafeInteger(output.valueSats) || output.valueSats < this.params.dustValueSats) {
+        throw this.invalidArgument(
+          `${field}.valueSats must be an integer of at least ${this.params.dustValueSats} sats (dust), got ${output.valueSats}`,
+        );
+      }
+      return { script, valueSats: output.valueSats, opReturnDataLength: null };
+    }
+    if (output.kind === 'opReturn') {
+      if (!isByteArray(output.data) || output.data.length > OP_RETURN_MAX_BYTES) {
+        throw this.invalidArgument(`${field}.data must be a byte array of at most ${OP_RETURN_MAX_BYTES} bytes`);
+      }
+      return { script: buildOpReturnScript(output.data), valueSats: 0, opReturnDataLength: output.data.length };
+    }
+    throw this.invalidArgument(
+      `${field}.kind must be 'address' or 'opReturn', got ${String((output as { kind?: unknown }).kind)}`,
+    );
+  }
+
+  private outputScriptFor(address: string, field: string): Uint8Array {
+    const script = this.validateAddress(address) ? tryOutputScript(address, this.params.networkInfo) : null;
+    if (script === null) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidAddress,
+        `${this.name}: ${field} is not a valid address: ${String(address)}`,
+        { chainId: this.chainId, address },
+      );
+    }
+    return script;
+  }
+
+  private invalidArgument(message: string, meta: Omit<ChainErrorMeta, 'chainId'> = {}): ChainError {
+    return new ChainError(ChainErrorKinds.InvalidArgument, `${this.name}: ${message}`, {
+      chainId: this.chainId,
+      ...meta,
+    });
+  }
+
   protected async resolveFeeRate(
     overrideRate: number | undefined,
     targetBlocks: number | undefined
@@ -814,6 +1002,20 @@ export class UtxoChain extends Chain {
 
   protected runCoinSelection(params: CoinSelectionParams): CoinSelectionResult {
     return selectCoins(params);
+  }
+}
+
+interface ResolvedPsbtOutput {
+  script: Uint8Array;
+  valueSats: number;
+  opReturnDataLength: number | null;
+}
+
+function tryOutputScript(address: string, network: UtxoNetworkInfo): Uint8Array | null {
+  try {
+    return addressToScriptPubKey(address, network);
+  } catch {
+    return null;
   }
 }
 

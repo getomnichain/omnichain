@@ -12,6 +12,32 @@ export interface UnspentTransactionOutput {
   ownerAddress: string;
 }
 
+export interface UtxoPsbtInput {
+  utxo: UnspentTransactionOutput;
+  parentTxHex: string;
+}
+
+export type UtxoPsbtOutput =
+  | { kind: 'address'; address: string; valueSats: number }
+  | { kind: 'opReturn'; data: Uint8Array };
+
+export interface AssembleUtxoTransactionRequest {
+  inputs: readonly UtxoPsbtInput[];
+  outputs: readonly UtxoPsbtOutput[];
+  rbfEnabled?: boolean;
+}
+
+export interface UtxoSigner {
+  publicKey: Uint8Array;
+  sign(hash: Uint8Array): Uint8Array;
+}
+
+export interface FinalizedUtxoTransaction {
+  hex: string;
+  txid: string;
+  vsize: number;
+}
+
 export interface UtxoTransactionInput {
   txid: string;
   vout: number;

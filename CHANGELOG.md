@@ -8,6 +8,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.2] — 2026-10-04
+
+Adds multi-signer UTXO transactions (RIN-267). A consumer that spends pre-selected inputs owned by several keys can now assemble, sign per key, finalize and broadcast without importing `bitcoinjs-lib`. Keys stay with the consumer; the SDK receives signer objects.
+
+### Added
+
+- **`UtxoChain.assembleTransaction({ inputs, outputs, rbfEnabled? }): UnsignedUtxoTransaction`**: builds from explicit inputs (`{ utxo, parentTxHex }`) and outputs (`{ kind: 'address', address, valueSats }` or `{ kind: 'opReturn', data }`), in the given order, with no coin selection and no automatic change.
+  - Inputs are added the way `createTransferUnsignedTransaction` adds them (`nonWitnessUtxo` always, `witnessUtxo` on segwit and P2SH, RBF or final sequence).
+  - `feeSats` is inputs minus outputs, `feeRateSatsPerVByte` is `feeSats / estimatedVBytes`, `changeAddress` is `null`, and `inputsToSign` groups input indices by `ownerAddress`.
+  - Every input is checked against its parent transaction (txid, output value, output script) and against its `ownerAddress`, so the reported fee is what the chain will charge.
+  - Address outputs must be at or above the chain's dust value; at most one OP_RETURN output of up to 80 bytes; outputs may not exceed inputs.
+- **`UnsignedUtxoTransaction.signWith(signer): UnsignedUtxoTransaction`**: signs the P2WPKH and P2PKH inputs whose script belongs to `signer.publicKey` and returns a new transaction, so calls chain. Repeating a key is a no-op; a key that owns no input throws. Taproot, P2WSH and P2SH inputs are never signed. Works on transactions from `createTransferUnsignedTransaction` too.
+- **`UnsignedUtxoTransaction.finalize(): { hex, txid, vsize }`**: requires a signature on every input (naming the first unsigned index), verifies every signature in strict low-S mode, refuses a fee rate of 5000 sat/vB or more, and returns broadcast-ready hex with its txid and real vsize.
+- **`UtxoChain.addressForPublicKey(publicKey, scriptType = 'p2wpkh')`**: P2WPKH or P2PKH address of a 33-byte compressed public key on the chain's network. P2WPKH on a network without segwit (Dogecoin) throws `FeatureNotSupported`.
+- **`utxoFromRawTransaction(rawTxHex, vout, ownerAddress)`**: reads one output of a raw transaction into an `UnspentTransactionOutput`, without a network call; the txid is computed from the hex.
+- **Types**: `UtxoPsbtInput`, `UtxoPsbtOutput`, `AssembleUtxoTransactionRequest`, `UtxoSigner`, `FinalizedUtxoTransaction`, `UtxoSingleKeyScriptType`, and `UtxoNetworkInfo`, which is now the declared type of `UtxoNetworkParams.networkInfo` (same structure as before).
+
+### Note
+
+- Additive only; no existing method changes behaviour. All errors are `ChainError` (`InvalidArgument`, `InvalidAddress`, or `FeatureNotSupported`).
+- TypeScript-only; omnichain-py has no counterpart.
+
 ## [0.6.1] — 2026-10-04
 
 Adds a raw storage-slot read to `EvmChain` (RIN-320). Consumers can read contract state, including an EIP-7702 delegate's state in the EOA's own storage, without reaching through `getProvider()`.
@@ -516,6 +538,7 @@ Initial npm release of `@getomnichain/omnichain`. Replaces prior vendored-submod
 
 ---
 
+[0.6.2]: https://github.com/getomnichain/omnichain/releases/tag/v0.6.2
 [0.6.1]: https://github.com/getomnichain/omnichain/releases/tag/v0.6.1
 [0.5.1]: https://github.com/getomnichain/omnichain/releases/tag/v0.5.1
 [0.5.0]: https://github.com/getomnichain/omnichain/releases/tag/v0.5.0
