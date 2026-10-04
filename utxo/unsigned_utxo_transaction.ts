@@ -64,7 +64,8 @@ export class UnsignedUtxoTransaction extends UnsignedTransaction {
       throw this.invalid('signWith: signer.publicKey must be a 33-byte compressed secp256k1 public key');
     }
     const psbt = this.toPsbt();
-    const owned = this.inputIndicesOwnedBy(psbt, signer.publicKey);
+    const prevouts = this.verifiedPrevouts(psbt, 'signWith');
+    const owned = this.inputIndicesOwnedBy(prevouts, signer.publicKey);
     if (owned.length === 0) {
       throw this.invalid('signWith: the signer owns none of the inputs');
     }
@@ -94,6 +95,7 @@ export class UnsignedUtxoTransaction extends UnsignedTransaction {
 
   finalize(): FinalizedUtxoTransaction {
     const psbt = this.toPsbt();
+    this.verifiedPrevouts(psbt, 'finalize');
     psbt.data.inputs.forEach((input, index) => {
       if (!input.partialSig || input.partialSig.length === 0) {
         throw this.invalid(`finalize: input ${index} is not signed`);
@@ -112,14 +114,51 @@ export class UnsignedUtxoTransaction extends UnsignedTransaction {
     return { hex: tx.toHex(), txid: tx.getId(), vsize: tx.virtualSize() };
   }
 
-  private inputIndicesOwnedBy(psbt: Psbt, publicKey: Uint8Array): number[] {
+  private verifiedPrevouts(psbt: Psbt, method: string): Prevout[] {
+    const prevouts = psbt.data.inputs.map((input, index) => {
+      if (!input.nonWitnessUtxo) {
+        throw this.invalid(`${method}: input ${index} carries no parent transaction (nonWitnessUtxo)`);
+      }
+      const parent = parseParent(input.nonWitnessUtxo);
+      if (parent === null) {
+        throw this.invalid(`${method}: input ${index} has a parent transaction that does not parse`);
+      }
+      const spent = psbt.txInputs[index];
+      if (!sameBytes(parent.getHash(), spent.hash)) {
+        throw this.invalid(`${method}: input ${index} has a parent transaction that is not the one it spends`);
+      }
+      const prevout = parent.outs[spent.index];
+      if (prevout === undefined) {
+        throw this.invalid(`${method}: input ${index} spends output ${spent.index}, which its parent transaction does not have`);
+      }
+      if (input.witnessUtxo && input.witnessUtxo.value !== prevout.value) {
+        throw this.invalid(
+          `${method}: input ${index} declares ${input.witnessUtxo.value} sats, but its parent output holds ${prevout.value} sats`,
+        );
+      }
+      if (input.witnessUtxo && !sameBytes(input.witnessUtxo.script, prevout.script)) {
+        throw this.invalid(`${method}: input ${index} declares a script that differs from its parent output`);
+      }
+      return prevout;
+    });
+    const realFeeSats =
+      prevouts.reduce((sum, prevout) => sum + prevout.value, 0n) -
+      psbt.txOutputs.reduce((sum, output) => sum + output.value, 0n);
+    if (Number(realFeeSats) !== this.feeSats) {
+      throw this.invalid(
+        `${method}: the transaction would pay ${realFeeSats} sats in fees, not the reported ${this.feeSats} sats`,
+      );
+    }
+    return prevouts;
+  }
+
+  private inputIndicesOwnedBy(prevouts: readonly Prevout[], publicKey: Uint8Array): number[] {
     const ownedScripts = [UtxoScriptTypes.P2WPKH, UtxoScriptTypes.P2PKH].map(
       (scriptType) => singleKeyPayment(publicKey, scriptType, this.params.networkInfo).output!,
     );
-    return psbt.txInputs.flatMap((_, index) => {
-      const script = prevoutScript(psbt, index);
-      return script !== null && ownedScripts.some((owned) => sameBytes(owned, script)) ? [index] : [];
-    });
+    return prevouts.flatMap((prevout, index) =>
+      ownedScripts.some((owned) => sameBytes(owned, prevout.script)) ? [index] : [],
+    );
   }
 
   private withPsbt(psbt: Psbt): UnsignedUtxoTransaction {
@@ -148,11 +187,14 @@ export class UnsignedUtxoTransaction extends UnsignedTransaction {
   }
 }
 
-function prevoutScript(psbt: Psbt, index: number): Uint8Array | null {
-  const input = psbt.data.inputs[index];
-  if (input.witnessUtxo) return input.witnessUtxo.script;
-  if (!input.nonWitnessUtxo) return null;
-  return Transaction.fromBuffer(input.nonWitnessUtxo).outs[psbt.txInputs[index].index]?.script ?? null;
+type Prevout = Transaction['outs'][number];
+
+function parseParent(nonWitnessUtxo: Uint8Array): Transaction | null {
+  try {
+    return Transaction.fromBuffer(nonWitnessUtxo);
+  } catch {
+    return null;
+  }
 }
 
 function hasSignatureFrom(psbt: Psbt, index: number, publicKey: Uint8Array): boolean {

@@ -241,6 +241,10 @@ await btc.broadcast(hex);
   original is unchanged. Signing again with the same key is a no-op. It
   throws if the key owns none of the inputs. Taproot, P2WSH and P2SH
   inputs are never signed by it.
+- Before signing, and again in `finalize`, every input is checked against
+  its parent transaction: the parent must be present and be the one the
+  input spends, a declared amount and script must match the parent output,
+  and the real fee must equal `feeSats`. Otherwise nothing is signed.
 - `finalize` throws if any input is unsigned (naming the index),
   verifies every signature (rejecting high-S ones), refuses a fee rate
   of 5000 sat/vB or more, and returns the raw hex, txid and vsize.

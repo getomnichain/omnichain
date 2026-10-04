@@ -105,6 +105,12 @@ Impact:
   - Throws when the key owns none of the inputs (the caller wired the wrong signer).
   - Inputs of other script types (P2TR, P2WSH, P2SH) are never signed.
   - Works on any `UnsignedUtxoTransaction`, including those from `createTransferUnsignedTransaction`.
+  - Before calling the signer, checks every input against its parent transaction (R4a). If any check fails, nothing is signed.
+- **R4a. Parent checks in `signWith` and `finalize`.** For every input:
+  - the PSBT carries its parent transaction (`nonWitnessUtxo`), and the parent is the transaction the input spends;
+  - when a `witnessUtxo` is present, its amount and script equal the parent output's;
+  - the real fee (parent output amounts minus output amounts) equals the reported `feeSats`.
+  This covers transactions not built by `assembleTransaction`, such as those from `createTransferUnsignedTransaction` with a provider that misreports an amount. bitcoinjs signs over the parent's real amount while its fee-rate cap reads the declared one, so without these checks a misreported amount could be signed into a valid, fee-burning transaction.
 - **R5. `UnsignedUtxoTransaction.finalize(): FinalizedUtxoTransaction`.**
   - Every input must carry a signature; otherwise it throws, naming the first unsigned input index.
   - Every signature is verified with tiny-secp256k1 in strict mode before anything is extracted. Strict mode also rejects high-S signatures, which nodes refuse to relay. An invalid signature throws, naming the input index.
@@ -307,6 +313,7 @@ await chain.broadcast(hex);
 ## Security Considerations
 
 - Fee correctness: every input's value and script come from its parent transaction (R2). The reported `feeSats` is what the chain will charge, and a wrong `valueSats` cannot silently overpay a non-segwit input.
+- The same holds for transactions built elsewhere: `signWith` and `finalize` refuse any input whose declared amount or script differs from its parent, and any transaction whose real fee differs from `feeSats` (R4a). The signer is never called for such a transaction.
 - Signing can only go to the inputs the key really owns: matching is by script, not by caller-supplied address strings.
 - Every signature is verified (strict, low-S) before extraction, so a faulty signer is caught before broadcast instead of by the network.
 - bitcoinjs's fee-rate cap (5000 sat/vB) blocks a fee-burning transaction at `finalize`.

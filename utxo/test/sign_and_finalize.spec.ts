@@ -291,3 +291,136 @@ describe('UnsignedUtxoTransaction.finalize', () => {
     expect(err.message).toContain('fees');
   });
 });
+
+describe('UnsignedUtxoTransaction parent checks', () => {
+  function countingSigner(key: TestKey): { signer: UtxoSigner; calls: () => number } {
+    let calls = 0;
+    return {
+      signer: signerReturning(key, (hash) => {
+        calls += 1;
+        return ecc.sign(hash, key.privateKey);
+      }),
+      calls: () => calls,
+    };
+  }
+
+  function rebuilt(
+    unsigned: UnsignedUtxoTransaction,
+    mutate: (psbt: ReturnType<UnsignedUtxoTransaction['toPsbt']>) => void,
+    overrides: { feeSats?: number } = {},
+  ): UnsignedUtxoTransaction {
+    const psbt = unsigned.toPsbt();
+    mutate(psbt);
+    return new UnsignedUtxoTransaction({
+      chainId: unsigned.chainId,
+      params: unsigned.params,
+      psbtBase64: psbt.toBase64(),
+      selectedInputs: unsigned.selectedInputs,
+      feeSats: overrides.feeSats ?? unsigned.feeSats,
+      feeRateSatsPerVByte: unsigned.feeRateSatsPerVByte,
+      estimatedVBytes: unsigned.estimatedVBytes,
+      totalInputSats: unsigned.totalInputSats,
+      totalOutputSats: unsigned.totalOutputSats,
+      changeAddress: unsigned.changeAddress,
+      inputsToSign: { ...unsigned.inputsToSign },
+    });
+  }
+
+  async function transferWithMisreportedValue(scriptType: typeof UtxoScriptTypes.P2WPKH | typeof UtxoScriptTypes.P2PKH) {
+    const real = fundedInput(chain, owner1, 10_000_000, scriptType);
+    const tool = new SingleUtxoTool({ ...real, utxo: { ...real.utxo, valueSats: 200_000 } });
+    const transferChain = bitcoinTestnetChain({
+      chainId: chain.chainId,
+      utxoProvider: tool,
+      rawTxProvider: tool,
+      feeEstimator: tool,
+      broadcaster: tool,
+      chainTipProvider: tool,
+    });
+    return transferChain.createTransferUnsignedTransaction({
+      from: real.utxo.ownerAddress,
+      to: recipient,
+      amount: 50_000n,
+      tokenIdentifier: undefined,
+    });
+  }
+
+  it('refuses to sign a segwit input whose declared amount is lower than its parent output, before calling the signer', async () => {
+    const unsigned = await transferWithMisreportedValue(UtxoScriptTypes.P2WPKH);
+    const { signer, calls } = countingSigner(owner1);
+
+    const err = rejection(() => unsigned.signWith(signer));
+
+    expect(err.kind).toBe(ChainErrorKinds.InvalidArgument);
+    expect(err.message).toContain('signWith: input 0 declares 200000 sats, but its parent output holds 10000000 sats');
+    expect(calls()).toBe(0);
+  });
+
+  it('refuses to sign a legacy input whose real fee differs from the reported fee, before calling the signer', async () => {
+    const unsigned = await transferWithMisreportedValue(UtxoScriptTypes.P2PKH);
+    const { signer, calls } = countingSigner(owner1);
+
+    const err = rejection(() => unsigned.signWith(signer));
+
+    expect(err.kind).toBe(ChainErrorKinds.InvalidArgument);
+    expect(err.message).toContain(`not the reported ${unsigned.feeSats} sats`);
+    expect(err.message).toContain(`would pay ${9_800_000 + unsigned.feeSats} sats in fees`);
+    expect(calls()).toBe(0);
+  });
+
+  it('refuses to finalize a signed transaction whose declared amount was changed afterwards', () => {
+    const signed = threeOwnerTransaction().signWith(owner1.signer).signWith(owner2.signer).signWith(ownerZ.signer);
+    const tampered = rebuilt(signed, (psbt) => {
+      psbt.data.inputs[0].witnessUtxo = { ...psbt.data.inputs[0].witnessUtxo!, value: 1_000n };
+    });
+
+    const err = rejection(() => tampered.finalize());
+
+    expect(err.kind).toBe(ChainErrorKinds.InvalidArgument);
+    expect(err.message).toContain('finalize: input 0 declares 1000 sats, but its parent output holds 30000 sats');
+  });
+
+  it('refuses to finalize when the reported fee is not the real fee', () => {
+    const signed = threeOwnerTransaction().signWith(owner1.signer).signWith(owner2.signer).signWith(ownerZ.signer);
+
+    const err = rejection(() => rebuilt(signed, () => undefined, { feeSats: signed.feeSats - 1 }).finalize());
+
+    expect(err.kind).toBe(ChainErrorKinds.InvalidArgument);
+    expect(err.message).toContain(`finalize: the transaction would pay ${signed.feeSats} sats in fees, not the reported ${signed.feeSats - 1} sats`);
+  });
+
+  it('refuses a declared script that differs from the parent output', () => {
+    const other = fundedInput(chain, owner2, 30_000);
+    const tampered = rebuilt(threeOwnerTransaction(), (psbt) => {
+      psbt.data.inputs[0].witnessUtxo = { script: Transaction.fromHex(other.parentTxHex).outs[0].script, value: 30_000n };
+    });
+
+    const err = rejection(() => tampered.signWith(owner2.signer));
+
+    expect(err.kind).toBe(ChainErrorKinds.InvalidArgument);
+    expect(err.message).toContain('signWith: input 0 declares a script that differs from its parent output');
+  });
+
+  it('refuses an input without its parent transaction', () => {
+    const tampered = rebuilt(threeOwnerTransaction(), (psbt) => {
+      delete psbt.data.inputs[1].nonWitnessUtxo;
+    });
+
+    const err = rejection(() => tampered.signWith(owner1.signer));
+
+    expect(err.kind).toBe(ChainErrorKinds.InvalidArgument);
+    expect(err.message).toContain('signWith: input 1 carries no parent transaction (nonWitnessUtxo)');
+  });
+
+  it('refuses a parent transaction that is not the one the input spends', () => {
+    const other = fundedInput(chain, owner1, 30_000);
+    const tampered = rebuilt(threeOwnerTransaction(), (psbt) => {
+      psbt.data.inputs[0].nonWitnessUtxo = Buffer.from(other.parentTxHex, 'hex');
+    });
+
+    const err = rejection(() => tampered.signWith(owner1.signer));
+
+    expect(err.kind).toBe(ChainErrorKinds.InvalidArgument);
+    expect(err.message).toContain('signWith: input 0 has a parent transaction that is not the one it spends');
+  });
+});
