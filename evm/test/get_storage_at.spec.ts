@@ -6,7 +6,8 @@ import { EvmChain } from '../evm_chain.ts';
 
 const OWNER = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
 const WORD = `0x${'00'.repeat(31)}07`;
-const SECRET = 'SECRET-KEY-ABC123';
+const SECRET = 'sk7Q2x';
+const KEYED_RPC_URL = `https://rpc.example.com/v1/${SECRET}`;
 
 interface RpcCall {
   method: string;
@@ -15,24 +16,31 @@ interface RpcCall {
 
 type RpcReply = { result: unknown } | { error: { code: number; message: string } };
 
-function makeChain(rpcUrl = 'http://127.0.0.1:1'): EvmChain {
-  return new EvmChain({
+const chains: EvmChain[] = [];
+
+function makeChain(
+  rpc: { rpcUrl: string } | { rpcUrls: string[] } = { rpcUrl: 'http://127.0.0.1:1' },
+): EvmChain {
+  const chain = new EvmChain({
     chainId: 1,
     name: 'TestChain',
     blockTimeSeconds: 12,
     nativeSymbol: 'ETH',
     nativeDecimals: 18,
     explorerBaseUrl: 'https://example.com',
-    rpcUrl,
+    ...rpc,
   });
+  chains.push(chain);
+  return chain;
 }
 
-function stubRpc(reply: RpcReply): RpcCall[] {
+function stubRpc(reply: RpcReply | Error): RpcCall[] {
   const calls: RpcCall[] = [];
   jest.spyOn(JsonRpcProvider.prototype, '_send').mockImplementation(async (payload) =>
     (Array.isArray(payload) ? payload : [payload]).map(({ id, method, params }) => {
       if (method === 'eth_chainId') return { id, result: '0x1' };
       calls.push({ method, params });
+      if (reply instanceof Error) throw reply;
       return { id, ...reply } as JsonRpcResult;
     }),
   );
@@ -50,12 +58,22 @@ async function rejection(promise: Promise<unknown>): Promise<ChainError> {
 }
 
 describe('EvmChain.getStorageAt', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    for (const chain of chains.splice(0)) {
+      (chain as unknown as { _provider: JsonRpcProvider | null })._provider?.destroy();
+    }
+    jest.restoreAllMocks();
+  });
 
-  it('sends one eth_getStorageAt for the normalized address and slot, on a chain without supports7702', async () => {
+  it.each([
+    ['checksummed', OWNER],
+    ['lowercase without 0x', OWNER.slice(2).toLowerCase()],
+    ['all uppercase', `0x${OWNER.slice(2).toUpperCase()}`],
+    ['0X prefix', `0X${OWNER.slice(2)}`],
+  ])('sends one eth_getStorageAt for a %s address, on a chain without supports7702', async (_label, address) => {
     const calls = stubRpc({ result: WORD });
 
-    const word = await makeChain().getStorageAt(OWNER.slice(2).toLowerCase(), 2n);
+    const word = await makeChain().getStorageAt(address, 2n);
 
     expect(word).toBe(WORD);
     expect(calls).toEqual([
@@ -105,29 +123,43 @@ describe('EvmChain.getStorageAt', () => {
   it.each([
     ['negative', -1n],
     ['2^256', 2n ** 256n],
-    ['a number', 2 as unknown as bigint],
-    ['a string', '2' as unknown as bigint],
+    ['a number', 2],
+    ['a string', '2'],
+    ['null', null],
+    ['undefined', undefined],
+    ['an object without a prototype', Object.create(null)],
   ])('rejects a slot that is %s before any RPC call', async (_label, slot) => {
     const calls = stubRpc({ result: WORD });
 
-    const err = await rejection(makeChain().getStorageAt(OWNER, slot));
+    const err = await rejection(makeChain().getStorageAt(OWNER, slot as bigint));
 
     expect(err.kind).toBe(ChainErrorKinds.InvalidArgument);
     expect(calls).toEqual([]);
   });
 
-  it('maps a node error to RpcError with the address and without the RPC key', async () => {
-    const rpcUrl = `https://rpc.example.com/v1/${SECRET}`;
-    stubRpc({ error: { code: -32000, message: `upstream connection reset by ${rpcUrl}` } });
+  it('reports a missing RPC configuration as RpcNotConfigured', async () => {
+    const err = await rejection(makeChain({ rpcUrls: ['  '] }).getStorageAt(OWNER, 2n));
 
-    const err = await rejection(makeChain(rpcUrl).getStorageAt(OWNER.toLowerCase(), 2n));
+    expect(err.kind).toBe(ChainErrorKinds.RpcNotConfigured);
+  });
+
+  it.each([
+    ['a node error', { error: { code: -32000, message: `upstream connection reset by ${KEYED_RPC_URL}` } }],
+    ['a transport failure', new Error(`request to ${KEYED_RPC_URL} failed: ECONNRESET`)],
+  ])('maps %s to RpcError with the address and without the RPC key', async (_label, failure) => {
+    stubRpc(failure);
+
+    const err = await rejection(makeChain({ rpcUrl: KEYED_RPC_URL }).getStorageAt(OWNER.toLowerCase(), 2n));
+    const cause = err.cause as Error;
 
     expect(err.kind).toBe(ChainErrorKinds.RpcError);
     expect(err.meta.address).toBe(OWNER);
+    expect(err.meta.rpcHost).toBe('https://rpc.example.com');
     expect(err.message).toContain(`Failed to read storage slot 2 of ${OWNER}`);
-    expect(err.message).toContain('rpc.example.com');
-    expect(err.message).not.toContain(SECRET);
-    expect(String((err.cause as Error).message)).not.toContain(SECRET);
+    expect(err.message).toContain('https://rpc.example.com');
+    for (const text of [err.message, err.stack, cause.message, cause.stack]) {
+      expect(text).not.toContain(SECRET);
+    }
   });
 
   it.each([

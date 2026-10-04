@@ -27,7 +27,7 @@ The method is the same kind of addition as `getPendingNonce` and `getDelegation`
 
 - `EvmChain.getStorageAt(address: string, slot: bigint): Promise<string>` in `evm/evm_chain.ts`.
 - Unit tests in `evm/test/get_storage_at.spec.ts`.
-- Docs: `docs/CONNECTIONS.md` (escape-hatch table row), `docs/EIP7702.md` (reading the delegate's state from the EOA).
+- Docs: `docs/CONNECTIONS.md` (escape-hatch table row).
 - `CHANGELOG.md` entry and version bump to `0.6.1` (`package.json`, `package-lock.json`).
 - Release: PR, merge, tag `v0.6.1`, npm publish (per the omnichain release flow).
 
@@ -59,6 +59,7 @@ The method is the same kind of addition as `getPendingNonce` and `getDelegation`
 - Errors:
   - invalid address → `ChainError(InvalidAddress)`, with no RPC call;
   - slot that is not a `bigint` in range → `ChainError(InvalidArgument)`, with no RPC call;
+  - no RPC endpoint configured → `ChainError(RpcNotConfigured)`, unchanged from the provider lookup;
   - transport failure, node error, or a reply that is not a hex word of at most 32 bytes → `ChainError(RpcError)`, with `address` in the context and the RPC URL sanitized out of the message and cause.
 - No code comments; self-documenting code, matching the file.
 
@@ -71,7 +72,6 @@ The method is the same kind of addition as `getPendingNonce` and `getDelegation`
 - `evm/evm_chain.ts`
 - `evm/test/get_storage_at.spec.ts` (new)
 - `docs/CONNECTIONS.md`
-- `docs/EIP7702.md`
 - `CHANGELOG.md`
 - `package.json`, `package-lock.json`
 
@@ -111,6 +111,7 @@ await chain.getStorageAt('0x000000000000000000000000000000000000dEaD', 2n);
 
 - `ChainError(InvalidAddress)`: `address` is not a valid EVM address.
 - `ChainError(InvalidArgument)`: `slot` is negative, above `2^256 − 1`, or not a `bigint`.
+- `ChainError(RpcNotConfigured)`: the chain has no RPC endpoint configured.
 - `ChainError(RpcError)`: the RPC call failed or returned something that is not a storage word.
 
 ---
@@ -125,7 +126,7 @@ await chain.getStorageAt('0x000000000000000000000000000000000000dEaD', 2n);
 - RPC failures surface as `RpcError` with the address in context and no RPC URL or API key in the message.
 - Works on a chain constructed without `supports7702`.
 - Verified live: on a real RPC endpoint, the branch build reads a known slot of a mainnet contract and returns the expected word.
-- `CHANGELOG.md` has a `0.6.1` entry; `docs/CONNECTIONS.md` and `docs/EIP7702.md` document the method.
+- `CHANGELOG.md` has a `0.6.1` entry; `docs/CONNECTIONS.md` documents the method.
 - Typecheck, build and the full test suite pass.
 
 ---
@@ -175,7 +176,8 @@ await chain.getStorageAt('0x000000000000000000000000000000000000dEaD', 2n);
 
 - Invalid address → `InvalidAddress`, provider not called.
 - Negative slot, slot `2^256`, `number` slot → `InvalidArgument`, provider not called.
-- Provider throws → `RpcError` with `address` in context and the RPC URL sanitized.
+- Provider throws, or the node returns an error → `RpcError` with `address` in context and the RPC URL sanitized.
+- No RPC endpoint configured → `RpcNotConfigured`.
 - Provider returns more than 32 bytes or non-hex → `RpcError`.
 
 ## CI Requirements
@@ -218,7 +220,7 @@ await chain.getStorageAt('0x000000000000000000000000000000000000dEaD', 2n);
 
 - `EvmChain.getStorageAt` in `evm/evm_chain.ts`
 - `evm/test/get_storage_at.spec.ts`
-- `docs/CONNECTIONS.md`, `docs/EIP7702.md`, `CHANGELOG.md` updates
+- `docs/CONNECTIONS.md` and `CHANGELOG.md` updates
 - `@getomnichain/omnichain@0.6.1` on npm, tag `v0.6.1`
 
 ---

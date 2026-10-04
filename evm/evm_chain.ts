@@ -793,13 +793,14 @@ export class EvmChain extends Chain {
     if (typeof slot !== 'bigint' || slot < 0n || slot > MaxUint256) {
       throw new ChainError(
         ChainErrorKinds.InvalidArgument,
-        `getStorageAt: slot must be a bigint in 0..2^256-1, got ${String(slot)}`,
+        `getStorageAt: slot must be a bigint in 0..2^256-1, got ${typeof slot === 'bigint' ? slot.toString() : typeof slot}`,
         { chainId: this.chainId },
       );
     }
     const normalized = this.normalizeAddressOrThrow(address, 'getStorageAt.address');
+    const provider = this.getProvider();
     try {
-      return zeroPadValue(await this.getProvider().getStorage(normalized, slot), 32);
+      return zeroPadValue(await provider.getStorage(normalized, slot), 32);
     } catch (err) {
       throw this.rpcError(`Failed to read storage slot ${slot} of ${normalized}`, err, { address: normalized });
     }
