@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-10-04
+
+Adds a raw storage-slot read to `EvmChain` (RIN-320). Consumers can read contract state, including an EIP-7702 delegate's state in the EOA's own storage, without reaching through `getProvider()`.
+
+### Added
+
+- **`EvmChain.getStorageAt(address, slot): Promise<string>`**: one `eth_getStorageAt` call. Returns the 32-byte word as a `0x`-prefixed lowercase hex string (66 characters); an unset slot returns 32 zero bytes. Works on every `EvmChain`; `supports7702` is not required.
+  - Invalid address → `ChainError(InvalidAddress)`. A slot that is not a `bigint` in `0 … 2^256 − 1` → `ChainError(InvalidArgument)`. Both are raised before any RPC call.
+  - RPC failure, or a reply that is not a hex word of at most 32 bytes → `ChainError(RpcError)`, with `address` in `meta` and the RPC URL sanitized.
+
+### Note
+
+- Additive only. TypeScript-only for now; omnichain-py parity is tracked in RIN-322.
+
 ## [0.6.0] — 2026-10-04
 
 Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). Both are ports of `impl/stellar` and `impl/tron`: same methods (camelCased), same arguments and defaults, same RPC calls, same balance-change rules, same wallets and the same JSON wire format. They were verified against Python on mainnet and testnet:
@@ -502,6 +516,7 @@ Initial npm release of `@getomnichain/omnichain`. Replaces prior vendored-submod
 
 ---
 
+[0.6.1]: https://github.com/getomnichain/omnichain/releases/tag/v0.6.1
 [0.5.1]: https://github.com/getomnichain/omnichain/releases/tag/v0.5.1
 [0.5.0]: https://github.com/getomnichain/omnichain/releases/tag/v0.5.0
 [0.4.0]: https://github.com/getomnichain/omnichain/releases/tag/v0.4.0
