@@ -14,6 +14,8 @@ export const UtxoScriptTypes = {
 
 export type UtxoScriptType = (typeof UtxoScriptTypes)[keyof typeof UtxoScriptTypes];
 
+export type UtxoSingleKeyScriptType = typeof UtxoScriptTypes.P2WPKH | typeof UtxoScriptTypes.P2PKH;
+
 export function detectScriptType(script: Uint8Array): UtxoScriptType {
   const s = script;
   if (

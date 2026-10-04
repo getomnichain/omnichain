@@ -14,8 +14,9 @@ rune / rare-sat filtering).
 
 - [utxo_chain.ts](../utxo/utxo_chain.ts) — `UtxoChain extends Chain`
 - [utxo_network_params.ts](../utxo/utxo_network_params.ts) — `UtxoNetworkParams`, SLIP-44 coin ids, derivation purposes, dust default, RBF sequence
-- [unsigned_utxo_transaction.ts](../utxo/unsigned_utxo_transaction.ts) — `UnsignedUtxoTransaction { psbtBase64, selectedInputs, feeSats, inputsToSign, … }`
-- [utxo.ts](../utxo/utxo.ts) — `UnspentTransactionOutput`, `RawTransactionView`, `FeeEstimate`, `AddressBalance`
+- [unsigned_utxo_transaction.ts](../utxo/unsigned_utxo_transaction.ts) — `UnsignedUtxoTransaction { psbtBase64, selectedInputs, feeSats, inputsToSign, … }`, `signWith`, `finalize`
+- [utxo.ts](../utxo/utxo.ts) — `UnspentTransactionOutput`, `RawTransactionView`, `FeeEstimate`, `AddressBalance`, `UtxoPsbtInput`, `UtxoPsbtOutput`, `UtxoSigner`, `FinalizedUtxoTransaction`
+- [raw_transaction.ts](../utxo/raw_transaction.ts) — `utxoFromRawTransaction` (reads one output of a raw transaction, no network call)
 - [script.ts](../utxo/script.ts) — `detectScriptType`, `buildOpReturnScript`, `scriptTypeForAddress`
 - [fee.ts](../utxo/fee.ts) — per-script-type vByte tables, fee math
 - [coin_selection.ts](../utxo/coin_selection.ts) — branch-and-bound + accumulator fallback over effective-value
@@ -184,11 +185,74 @@ this is intentional. Legacy inputs need `nonWitnessUtxo` for correctness;
 SegWit/Taproot inputs technically don't, but hardware wallets like Trezor
 and Phantom demand it. Populating both is the safe default.
 
+## Building from explicit inputs
+
+`assembleTransaction` builds a transaction from inputs you have already
+chosen, owned by any number of keys, with no coin selection and no
+automatic change. Each input carries its parent transaction:
+
+```ts
+const unsigned = btc.assembleTransaction({
+  inputs: [
+    { utxo: vaultUtxo, parentTxHex: vaultParentHex },
+    { utxo: operatorUtxo, parentTxHex: operatorParentHex },
+  ],
+  outputs: [
+    { kind: 'address', address: recipient, valueSats: 50_000 },
+    { kind: 'address', address: operatorAddress, valueSats: operatorChange },
+    { kind: 'opReturn', data: memoBytes },
+  ],
+  rbfEnabled: true,                     // optional, defaults to the chain's setting
+});
+```
+
+- Inputs and outputs keep the order given. If you want change, add it
+  as an `address` output.
+- `feeSats` is inputs minus outputs; `feeRateSatsPerVByte` is
+  `feeSats / estimatedVBytes`; `changeAddress` is `null`.
+- Every input is checked against its parent transaction: the txid,
+  the output's value and script, and that `ownerAddress` owns that
+  script. A mismatch throws, so the reported fee is the fee the chain
+  will charge.
+- Address outputs must be at or above the chain's dust value; at most
+  one OP_RETURN output of up to 80 bytes; outputs may not exceed inputs.
+
+`utxoFromRawTransaction(parentTxHex, vout, ownerAddress)` turns an output
+of a raw transaction you already hold into an `UnspentTransactionOutput`,
+without a network call.
+
 ## Signing
 
-The chain module never holds keys. You hand the PSBT to whatever signs
-it — a user's wallet, a hardware device, an external service. For
-testing or for protocol-controlled wallets that talk to Bitcoin Core:
+The chain module never holds keys. `signWith` takes a signer object — a
+33-byte compressed public key and a function that signs a 32-byte hash
+with a 64-byte compact ECDSA signature (what `ecpair` and
+`tiny-secp256k1` produce):
+
+```ts
+const { hex, txid, vsize } = unsigned
+  .signWith(vaultSigner)
+  .signWith(operatorSigner)
+  .finalize();
+await btc.broadcast(hex);
+```
+
+- `signWith` signs the P2WPKH and P2PKH inputs whose script belongs to
+  the signer's key and returns a new `UnsignedUtxoTransaction`; the
+  original is unchanged. Signing again with the same key is a no-op. It
+  throws if the key owns none of the inputs. Taproot, P2WSH and P2SH
+  inputs are never signed by it.
+- Before signing, and again in `finalize`, every input is checked against
+  its parent transaction: the parent must be present and be the one the
+  input spends, a declared amount and script must match the parent output,
+  and the real fee must equal `feeSats`. Otherwise nothing is signed.
+- `finalize` throws if any input is unsigned (naming the index),
+  verifies every signature (rejecting high-S ones), refuses a fee rate
+  of 5000 sat/vB or more, and returns the raw hex, txid and vsize.
+- Both work on transactions from `createTransferUnsignedTransaction` too.
+
+Alternatively, hand the PSBT to whatever signs it — a user's wallet, a
+hardware device, an external service. For testing or for
+protocol-controlled wallets that talk to Bitcoin Core:
 
 ```ts
 // Sign via Bitcoin Core's wallet (it has the keys for sender's address):
@@ -219,6 +283,17 @@ btc.validateTokenIdentifier('NATIVE');                                    // tru
 All five address types are supported per chain: P2PKH (`1…`), P2SH
 (`3…`), P2WPKH (`bc1q…` 42-char bech32), P2WSH (`bc1q…` 62-char bech32),
 P2TR (`bc1p…` bech32m).
+
+To derive the address of a public key on the chain's network:
+
+```ts
+btc.addressForPublicKey(publicKey);                       // P2WPKH (default)
+btc.addressForPublicKey(publicKey, UtxoScriptTypes.P2PKH); // P2PKH
+```
+
+Dogecoin has no segwit, so P2WPKH there throws `FeatureNotSupported`.
+`UtxoNetworkInfo` is the type of `chain.params.networkInfo`, for code that
+needs to name the network type without importing `bitcoinjs-lib`.
 
 ## Asset filtering (Bitcoin only)
 

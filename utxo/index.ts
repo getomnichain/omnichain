@@ -1,6 +1,7 @@
 export * from './coin_selection.ts';
 export * from './ecc.ts';
 export * from './fee.ts';
+export { utxoFromRawTransaction } from './raw_transaction.ts';
 export * from './script.ts';
 export * from './tools/broadcaster.ts';
 export * from './tools/chain_tip_provider.ts';
