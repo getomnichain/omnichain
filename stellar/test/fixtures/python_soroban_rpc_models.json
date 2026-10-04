@@ -1,0 +1,557 @@
+{
+ "simulate": [
+  {
+   "name": "base",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "5000",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": true,
+   "minResourceFee": 5000
+  },
+  {
+   "name": "minResourceFee \"\"",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "minResourceFee \" \"",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": " ",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "minResourceFee 0x10",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "0x10",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "minResourceFee [1]",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": [
+     1
+    ],
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "minResourceFee 1_000",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "1_000",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": true,
+   "minResourceFee": 1000
+  },
+  {
+   "name": "minResourceFee 1.0",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "1.0",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": true,
+   "minResourceFee": 1
+  },
+  {
+   "name": "minResourceFee 1.5",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "1.5",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "minResourceFee float 1.5",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": 1.5,
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "minResourceFee 1e3",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "1e3",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "minResourceFee {}",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": {},
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "minResourceFee true",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": true,
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": true,
+   "minResourceFee": 1
+  },
+  {
+   "name": "minResourceFee \" 7 \"",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": " 7 ",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": true,
+   "minResourceFee": 7
+  },
+  {
+   "name": "no latestLedger",
+   "result": {
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "5000",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "error false",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "5000",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ],
+    "error": false
+   },
+   "valid": false
+  },
+  {
+   "name": "results [{}]",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "5000",
+    "results": [
+     {}
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "results [null]",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "5000",
+    "results": [
+     null
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "results {}",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "5000",
+    "results": {}
+   },
+   "valid": false
+  },
+  {
+   "name": "auth \"abc\"",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "5000",
+    "results": [
+     {
+      "auth": "abc",
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "events \"x\"",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "5000",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ],
+    "events": "x"
+   },
+   "valid": false
+  },
+  {
+   "name": "restorePreamble {}",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "5000",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ],
+    "restorePreamble": {}
+   },
+   "valid": false
+  },
+  {
+   "name": "stateChanges ok",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "5000",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ],
+    "stateChanges": [
+     {
+      "type": "created",
+      "key": "k",
+      "after": "a"
+     }
+    ]
+   },
+   "valid": true,
+   "minResourceFee": 5000
+  },
+  {
+   "name": "stateChanges bad",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "5000",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ],
+    "stateChanges": [
+     {
+      "type": 1,
+      "key": "k"
+     }
+    ]
+   },
+   "valid": false
+  },
+  {
+   "name": "extra field",
+   "result": {
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "minResourceFee": "5000",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ],
+    "foo": 1
+   },
+   "valid": true,
+   "minResourceFee": 5000
+  }
+ ],
+ "envelope": [
+  {
+   "name": "base",
+   "reply": {
+    "jsonrpc": "2.0",
+    "id": "abc",
+    "result": {
+     "x": 1
+    }
+   },
+   "valid": true,
+   "raises": false,
+   "message": null,
+   "code": null
+  },
+  {
+   "name": "error null with result",
+   "reply": {
+    "jsonrpc": "2.0",
+    "id": "abc",
+    "result": {
+     "x": 1
+    },
+    "error": null
+   },
+   "valid": true,
+   "raises": false,
+   "message": null,
+   "code": null
+  },
+  {
+   "name": "id int",
+   "reply": {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "result": {
+     "x": 1
+    }
+   },
+   "valid": true,
+   "raises": false,
+   "message": null,
+   "code": null
+  },
+  {
+   "name": "id null",
+   "reply": {
+    "jsonrpc": "2.0",
+    "result": {
+     "x": 1
+    }
+   },
+   "valid": false
+  },
+  {
+   "name": "no jsonrpc",
+   "reply": {
+    "id": "abc",
+    "result": {
+     "x": 1
+    }
+   },
+   "valid": false
+  },
+  {
+   "name": "jsonrpc 2",
+   "reply": {
+    "jsonrpc": 2,
+    "id": "abc",
+    "result": {
+     "x": 1
+    }
+   },
+   "valid": false
+  },
+  {
+   "name": "error no message",
+   "reply": {
+    "jsonrpc": "2.0",
+    "id": "abc",
+    "result": {
+     "x": 1
+    },
+    "error": {
+     "code": -32602
+    }
+   },
+   "valid": true,
+   "raises": true,
+   "message": "None",
+   "code": -32602
+  },
+  {
+   "name": "error code string",
+   "reply": {
+    "jsonrpc": "2.0",
+    "id": "abc",
+    "result": {
+     "x": 1
+    },
+    "error": {
+     "code": "x",
+     "message": "m"
+    }
+   },
+   "valid": false
+  },
+  {
+   "name": "error {}",
+   "reply": {
+    "jsonrpc": "2.0",
+    "id": "abc",
+    "result": {
+     "x": 1
+    },
+    "error": {}
+   },
+   "valid": false
+  },
+  {
+   "name": "error \"boom\"",
+   "reply": {
+    "jsonrpc": "2.0",
+    "id": "abc",
+    "result": {
+     "x": 1
+    },
+    "error": "boom"
+   },
+   "valid": false
+  },
+  {
+   "name": "error false",
+   "reply": {
+    "jsonrpc": "2.0",
+    "id": "abc",
+    "result": {
+     "x": 1
+    },
+    "error": false
+   },
+   "valid": false
+  },
+  {
+   "name": "error data number",
+   "reply": {
+    "jsonrpc": "2.0",
+    "id": "abc",
+    "result": {
+     "x": 1
+    },
+    "error": {
+     "code": 1,
+     "message": "m",
+     "data": 5
+    }
+   },
+   "valid": false
+  },
+  {
+   "name": "error ok",
+   "reply": {
+    "jsonrpc": "2.0",
+    "id": "abc",
+    "result": {
+     "x": 1
+    },
+    "error": {
+     "code": -32602,
+     "message": "invalid",
+     "data": "d"
+    }
+   },
+   "valid": true,
+   "raises": true,
+   "message": "invalid",
+   "code": -32602
+  }
+ ]
+}

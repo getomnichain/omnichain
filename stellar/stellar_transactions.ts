@@ -10,7 +10,6 @@ import {
   StrKey,
   Transaction,
   TransactionBuilder,
-  rpc,
   xdr,
 } from '@stellar/stellar-sdk';
 import { Decimal } from 'decimal.js';
@@ -18,6 +17,14 @@ import { Decimal } from 'decimal.js';
 import type { Chain } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause } from '../errors.ts';
 import { pyEncodeUtf8 } from '../python_builtins.ts';
+import {
+  isPydanticAbsent,
+  isPydanticDict,
+  isPydanticLaxInt,
+  isPydanticOptionalStr,
+  isPydanticOptionalStrList,
+  pydanticLaxIntValue,
+} from '../python_pydantic.ts';
 import { pyBalanceChangesRepr, pyBytesRepr, pyRepr, pyStr } from '../python_repr.ts';
 import { NetworkType } from '../network_type.ts';
 import { AbstractBroadcastTransactionResponse, AbstractSignedTransaction } from '../signed_transaction.ts';
@@ -98,31 +105,83 @@ export function sorobanRpcError(err: unknown, chainId: number, rpcUrl: string | 
   return new ChainError(ChainErrorKinds.RpcError, String(err), { chainId });
 }
 
-export function sorobanJsonReply<T>(reply: unknown, method: string, chainId: number): T {
-  if (reply === null || typeof reply !== 'object' || Array.isArray(reply)) {
-    throw new ChainError(ChainErrorKinds.RpcError, `Soroban ${method} returned a reply that is not a JSON object`, { chainId });
-  }
-  return reply as T;
-}
-
 const SOROBAN_OPERATION_TYPES = new Set(['invokeHostFunction', 'extendFootprintTtl', 'restoreFootprint']);
 
-function simulationResultsRepr(results: rpc.Api.RawSimulateTransactionResponse['results']): string {
-  if (results === undefined || results === null) return 'None';
+function simulationResultsRepr(results: SorobanSimulateHostFunctionResult[] | null): string {
+  if (results === null) return 'None';
   const items = results.map(
     (r) => `SimulateHostFunctionResult(auth=${r.auth === undefined || r.auth === null ? 'None' : pyRepr(r.auth)}, xdr=${pyRepr(r.xdr)})`,
   );
   return `[${items.join(', ')}]`;
 }
 
-export async function prepareSorobanTransaction(tx: Transaction, chain: StellarChain): Promise<Transaction> {
-  let reply: unknown;
+export interface SorobanSimulateHostFunctionResult {
+  auth?: string[] | null;
+  xdr: string;
+}
+
+export interface SorobanSimulateTransactionResponse {
+  error: string | null;
+  transactionData: string | null;
+  minResourceFee: bigint | null;
+  events: string[] | null;
+  results: SorobanSimulateHostFunctionResult[] | null;
+}
+
+function isSimulateHostFunctionResult(value: unknown): boolean {
+  return isPydanticDict(value) && typeof value.xdr === 'string' && isPydanticOptionalStrList(value.auth);
+}
+
+function isRestorePreamble(value: unknown): boolean {
+  return isPydanticDict(value) && typeof value.transactionData === 'string' && isPydanticLaxInt(value.minResourceFee);
+}
+
+function isLedgerEntryChange(value: unknown): boolean {
+  return (
+    isPydanticDict(value) &&
+    typeof value.type === 'string' &&
+    typeof value.key === 'string' &&
+    isPydanticOptionalStr(value.before) &&
+    isPydanticOptionalStr(value.after)
+  );
+}
+
+export function validateSimulateTransactionResponse(result: unknown, chainId: number): SorobanSimulateTransactionResponse {
+  const valid =
+    isPydanticDict(result) &&
+    isPydanticOptionalStr(result.error) &&
+    isPydanticOptionalStr(result.transactionData) &&
+    (isPydanticAbsent(result.minResourceFee) || isPydanticLaxInt(result.minResourceFee)) &&
+    isPydanticOptionalStrList(result.events) &&
+    (isPydanticAbsent(result.results) || (Array.isArray(result.results) && result.results.every(isSimulateHostFunctionResult))) &&
+    (isPydanticAbsent(result.restorePreamble) || isRestorePreamble(result.restorePreamble)) &&
+    (isPydanticAbsent(result.stateChanges) || (Array.isArray(result.stateChanges) && result.stateChanges.every(isLedgerEntryChange))) &&
+    isPydanticLaxInt(result.latestLedger);
+  if (!valid) {
+    throw new ChainError(ChainErrorKinds.RpcError, 'Soroban simulateTransaction result does not match the SimulateTransactionResponse model', { chainId });
+  }
+  const fields = result as Record<string, unknown>;
+  return {
+    error: (fields.error ?? null) as string | null,
+    transactionData: (fields.transactionData ?? null) as string | null,
+    minResourceFee: isPydanticAbsent(fields.minResourceFee) ? null : pydanticLaxIntValue(fields.minResourceFee),
+    events: (fields.events ?? null) as string[] | null,
+    results: (fields.results ?? null) as SorobanSimulateHostFunctionResult[] | null,
+  };
+}
+
+export async function simulateSorobanTransaction(tx: Transaction, chain: StellarChain): Promise<SorobanSimulateTransactionResponse> {
+  let result: unknown;
   try {
-    reply = await chain.asyncSorobanServer._simulateTransaction(tx);
+    result = await chain._sorobanRpc('simulateTransaction', { transaction: tx.toXDR(), resourceConfig: null, authMode: null });
   } catch (err) {
     throw sorobanRpcError(err, chain.chainId, chain.sorobanRpcUrl);
   }
-  const simulation = sorobanJsonReply<rpc.Api.RawSimulateTransactionResponse>(reply, 'simulateTransaction', chain.chainId);
+  return validateSimulateTransactionResponse(result, chain.chainId);
+}
+
+export async function prepareSorobanTransaction(tx: Transaction, chain: StellarChain): Promise<Transaction> {
+  const simulation = await simulateSorobanTransaction(tx, chain);
   if (simulation.error) {
     throw new ChainError(
       ChainErrorKinds.SimulationFailed,
@@ -133,7 +192,7 @@ export async function prepareSorobanTransaction(tx: Transaction, chain: StellarC
   return assembleSorobanTransaction(tx, simulation, chain.chainId);
 }
 
-export function assembleSorobanTransaction(tx: Transaction, simulation: rpc.Api.RawSimulateTransactionResponse, chainId: number): Transaction {
+export function assembleSorobanTransaction(tx: Transaction, simulation: SorobanSimulateTransactionResponse, chainId: number): Transaction {
   const envelope = tx.toEnvelope();
   const transaction = envelope.v1().tx();
   const operations = transaction.operations();
@@ -144,7 +203,7 @@ export function assembleSorobanTransaction(tx: Transaction, simulation: rpc.Api.
       { chainId },
     );
   }
-  if (simulation.transactionData === undefined || simulation.transactionData === null) {
+  if (simulation.transactionData === null) {
     throw new ChainError(ChainErrorKinds.RpcError, '', { chainId });
   }
   const sorobanData = xdr.SorobanTransactionData.fromXDR(simulation.transactionData, 'base64');
@@ -152,10 +211,10 @@ export function assembleSorobanTransaction(tx: Transaction, simulation: rpc.Api.
   if (transaction.ext().switch() === 1) {
     fee -= transaction.ext().sorobanData().resourceFee().toBigInt();
   }
-  if (simulation.minResourceFee === undefined || simulation.minResourceFee === null) {
+  if (simulation.minResourceFee === null) {
     throw new ChainError(ChainErrorKinds.RpcError, '', { chainId });
   }
-  fee += BigInt(simulation.minResourceFee);
+  fee += simulation.minResourceFee;
   transaction.fee(Number(fee));
   transaction.ext(new xdr.TransactionExt(1, sorobanData));
 

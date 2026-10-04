@@ -56,7 +56,7 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
   - `pyRepr` / `pyStr` / `pyTypeRepr` / `pyFloatRepr`, so error and `toString` texts match Python's;
   - `pyJsonDumps`: `toJsonStr` output is byte-identical to omnichain-py's `to_json_str` and accepts its `json.dumps` options;
   - `tronAbiEncodeSingle` / `tronAbiDecodeSingle`, a port of tronpy's `trx_abi` (strict eth_abi decoding with Tron addresses).
-- **Tests** — 878 new tests:
+- **Tests** — 917 new tests:
   - Python's wallet vectors;
   - mainnet status cases replayed offline from recorded RPC responses;
   - Python JSON payload fixtures;
@@ -85,7 +85,7 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
 
 ### Note — differences from omnichain-py
 
-- Transport and API failures during `getTransactionStatus` (Horizon 429/5xx, TronGrid rate limits) throw `ChainError(RpcError)`; Python reports them as `NotFound`. Real "not found" answers still return `NotFound`.
+- Transport and API failures of the transaction lookup during `getTransactionStatus` (Horizon 429/5xx, TronGrid rate limits) throw `ChainError(RpcError)`; Python reports them as `NotFound`. Real "not found" answers still return `NotFound`.
 - Non-SAC Soroban balances are converted exactly; Python divides with a float.
 - Tron debug `print()` calls and Python's log lines are not ported. tronpy's bundled shared TronGrid keys are not shipped.
 - `StellarWallet` errors never include the secret seed.

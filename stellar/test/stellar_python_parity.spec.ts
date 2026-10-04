@@ -38,6 +38,7 @@ import {
   StellarUnsignedTransaction,
   SorobanRpcErrorResponse,
   assembleSorobanTransaction,
+  validateSimulateTransactionResponse,
   stellarOperationAmount,
 } from '../stellar_transactions.ts';
 import { StellarTransactionStatus } from '../stellar_transaction_status.ts';
@@ -403,9 +404,9 @@ describe('round-2 parity: Python-typed failures instead of raw SDK errors', () =
     });
     const unsigned = new StellarUnsignedTransaction({ chainId: chain.chainId, sourceAccountId: SENDER.address, operations: [invoke], baseFee: 100 });
     const horizon = { loadAccount: async (id: string) => new Account(id, '1') };
-    let simulate: () => Promise<unknown> = async () => ({ id: '1', latestLedger: 1, error: 'host invocation failed' });
+    let simulate: () => Promise<unknown> = async () => ({ latestLedger: 1, error: 'host invocation failed' });
     Object.defineProperty(chain, 'asyncHorizonServer', { get: () => horizon });
-    Object.defineProperty(chain, 'asyncSorobanServer', { get: () => ({ _simulateTransaction: () => simulate() }) });
+    chain._sorobanRpc = () => simulate();
     await expect(unsigned.buildTransactionEnvelope(chain)).rejects.toMatchObject({
       kind: ChainErrorKinds.SimulationFailed,
       message: 'Simulation transaction failed, the response contains error information.',
@@ -553,7 +554,7 @@ describe('round-5 parity: every Soroban failure surfaces as ChainError(RpcError)
   }
 
   const replies: [string, (res: ServerResponse) => void, string][] = [
-    ['HTTP 500', (res) => res.writeHead(500).end('boom'), 'Request failed with status code 500'],
+    ['HTTP 500 with a body that is not JSON', (res) => res.writeHead(500).end('boom'), ''],
     ['an HTML 200', (res) => res.writeHead(200, { 'Content-Type': 'text/html' }).end('<html>maintenance</html>'), ''],
     [
       'a JSON-RPC error without code',
@@ -651,14 +652,114 @@ describe('round-6 parity: Soroban prepare assembles the transaction like stellar
   const tx = () => TransactionBuilder.fromXDR(fixture.tx, Networks.PUBLIC) as Transaction;
 
   it.each(['min_above_resource', 'min_below_resource'])('%s: fee = classic fee + minResourceFee, byte-identical envelope', (name) => {
-    const assembled = assembleSorobanTransaction(tx(), fixture.cases[name].simulation, CHAIN_ID_STELLAR_MAINNET);
+    const assembled = assembleSorobanTransaction(
+      tx(),
+      validateSimulateTransactionResponse(fixture.cases[name].simulation, CHAIN_ID_STELLAR_MAINNET),
+      CHAIN_ID_STELLAR_MAINNET,
+    );
     expect(assembled.fee).toBe(String(fixture.cases[name].fee));
     expect(assembled.toXDR()).toBe(fixture.cases[name].expected);
   });
 
   it.each(['invalid_[]', 'invalid_None'])('%s: raises Python\'s ValueError text', (name) => {
-    expect(() => assembleSorobanTransaction(tx(), fixture.cases[name].simulation, CHAIN_ID_STELLAR_MAINNET)).toThrow(
+    expect(() =>
+      assembleSorobanTransaction(tx(), validateSimulateTransactionResponse(fixture.cases[name].simulation, CHAIN_ID_STELLAR_MAINNET), CHAIN_ID_STELLAR_MAINNET),
+    ).toThrow(
       new ChainError(ChainErrorKinds.InvalidArgument, (fixture.cases[name].error as string).replace('ValueError: ', '')),
     );
+  });
+});
+
+describe('round-7 parity: Soroban JSON-RPC replies are read like stellar-sdk Python _post and its pydantic models', () => {
+  const models = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'python_soroban_rpc_models.json'), 'utf8')) as {
+    simulate: { name: string; result: unknown; valid: boolean; minResourceFee?: number | null }[];
+    envelope: { name: string; reply: Record<string, unknown>; valid: boolean; raises?: boolean; message?: string | null; code?: number | null }[];
+  };
+
+  it.each(models.simulate.map((c) => [c.name, c] as const))('simulate result %s: accepted and minResourceFee as in SimulateTransactionResponse', (_name, c) => {
+    if (c.valid) {
+      const sim = validateSimulateTransactionResponse(c.result, CHAIN_ID_STELLAR_MAINNET);
+      expect(sim.minResourceFee).toBe(c.minResourceFee === null || c.minResourceFee === undefined ? null : BigInt(c.minResourceFee));
+    } else {
+      expect(() => validateSimulateTransactionResponse(c.result, CHAIN_ID_STELLAR_MAINNET)).toThrow(
+        expect.objectContaining({ kind: ChainErrorKinds.RpcError }),
+      );
+    }
+  });
+
+  async function rpcStub(status: number, reply: unknown): Promise<{ url: string; close: () => Promise<void> }> {
+    const server = createServer((req, res) => {
+      req.resume();
+      req.on('end', () => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(reply)));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return {
+      url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    };
+  }
+
+  function sorobanChain(url: string): StellarChain {
+    return new StellarChain({
+      name: 'Stellar Local Soroban',
+      defaultHorizonUrl: 'http://127.0.0.1:9',
+      defaultSorobanRpcUrl: url,
+      explorerUrl: 'https://stellar.expert/explorer/public',
+      stellarExpertApiUrl: 'https://api.stellar.expert/explorer/public',
+      networkPassphrase: Networks.PUBLIC,
+      chainId: CHAIN_ID_STELLAR_MAINNET,
+      chainAgnosticStellarIdentifier: 'pubnet',
+    });
+  }
+
+  it.each(models.envelope.map((c) => [c.name, c] as const))('JSON-RPC envelope %s: handled as Response[Any] + error check', async (_name, c) => {
+    const stub = await rpcStub(200, c.reply);
+    try {
+      const outcome = await sorobanChain(stub.url)
+        ._sorobanRpc('getTransaction', { hash: 'ab'.repeat(32) })
+        .then(
+          (result) => ({ result }),
+          (error: unknown) => ({ error }),
+        );
+      if (c.valid && !c.raises) {
+        expect(outcome).toEqual({ result: c.reply.result });
+      } else if (c.valid && c.raises) {
+        expect((outcome as { error: unknown }).error).toBeInstanceOf(SorobanRpcErrorResponse);
+        expect((outcome as { error: unknown }).error).toMatchObject({ message: c.message ?? 'None', code: c.code });
+      } else {
+        expect((outcome as { error: unknown }).error).toBeInstanceOf(ChainError);
+        expect((outcome as { error: unknown }).error).not.toBeInstanceOf(SorobanRpcErrorResponse);
+        expect((outcome as { error: unknown }).error).toMatchObject({ kind: ChainErrorKinds.RpcError });
+      }
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('an HTTP error status with a valid result is used, as Python ignores the status', async () => {
+    const stub = await rpcStub(500, { jsonrpc: '2.0', id: 'x', result: { ok: 1 } });
+    try {
+      await expect(sorobanChain(stub.url)._sorobanRpc('getTransaction', { hash: 'ab'.repeat(32) })).resolves.toEqual({ ok: 1 });
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('host-call results are decoded lazily from results[0]; a void decimals() falls back to 7 like Python', async () => {
+    const u32 = nativeToScVal(18, { type: 'u32' }).toXDR('base64');
+    let results: unknown[] = [{ xdr: u32 }, { xdr: 'zzzz' }];
+    const server = createServer((req, res) => {
+      req.resume();
+      req.on('end', () => res.writeHead(200).end(JSON.stringify({ jsonrpc: '2.0', id: 'x', result: { latestLedger: 1, results } })));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const chain = sorobanChain(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+    try {
+      await expect(chain._getAssetDecimalsInternal('X', STELLAR_USDC.contractId)).resolves.toBe(18);
+      results = [{ xdr: xdr.ScVal.scvVoid().toXDR('base64') }];
+      await expect(chain._getAssetDecimalsInternal('X', STELLAR_USDC.contractId)).resolves.toBe(7);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });

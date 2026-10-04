@@ -50,18 +50,15 @@ function replayChain(overrides: { transactionError?: Error; sorobanReply?: unkno
     ledgers: () => ({ ledger: (n: number) => ({ call: async () => rec.horizon.ledgers[String(n)] }) }),
     effects: () => ({ forTransaction: (id: string) => ({ limit: () => ({ call: async () => rec.horizon.effects[id] }) }) }),
   };
-  const soroban = {
-    _getTransaction: async (id: string) => {
-      if ('sorobanReply' in overrides) return overrides.sorobanReply;
-      const r = rec.soroban[id];
-      if (r === undefined) throw new Error('not recorded');
-      return r;
-    },
+  chain._sorobanRpc = async (_method: string, params: Record<string, unknown>) => {
+    if ('sorobanReply' in overrides) return overrides.sorobanReply;
+    const r = rec.soroban[params.hash as string];
+    if (r === undefined) throw new Error('not recorded');
+    return r;
   };
   Object.defineProperty(chain, 'asyncHorizonServer', { get: () => horizon });
-  Object.defineProperty(chain, 'asyncSorobanServer', { get: () => soroban });
   chain._getTransactionDataFromStellarExpert = async (token: string) => rec.expert[token] as never;
-  chain._callHostFunction = async (req) => rec.hostCalls[`${req.contractId}:${req.functionName}`].map((v) => xdr.ScVal.fromXDR(v, 'base64'));
+  chain._callHostFunction = async (req) => rec.hostCalls[`${req.contractId}:${req.functionName}`].map((v) => ({ xdr: v }));
   return chain;
 }
 

@@ -17,3 +17,26 @@ export function isPydanticLaxBool(value: unknown): boolean {
 export function isPydanticStrList(value: unknown): boolean {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
+
+export function pydanticLaxIntValue(value: unknown): bigint {
+  if (typeof value === 'boolean') return value ? 1n : 0n;
+  if (typeof value === 'number') return BigInt(value);
+  const trimmed = String(value).replace(PYDANTIC_TRIM, '');
+  return BigInt(trimmed.split('.')[0].replace(/_/g, ''));
+}
+
+export function isPydanticDict(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function isPydanticAbsent(value: unknown): boolean {
+  return value === undefined || value === null;
+}
+
+export function isPydanticOptionalStr(value: unknown): boolean {
+  return isPydanticAbsent(value) || typeof value === 'string';
+}
+
+export function isPydanticOptionalStrList(value: unknown): boolean {
+  return isPydanticAbsent(value) || isPydanticStrList(value);
+}

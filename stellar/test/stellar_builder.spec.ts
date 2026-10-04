@@ -98,15 +98,16 @@ function fakeChain(overrides: Partial<Fakes> = {}): { chain: StellarChain; fakes
       order: () => ({ limit: () => ({ call: async () => ({ records: [{ sequence: 64747332, base_fee_in_stroops: fakes.baseFee }] }) }) }),
     }),
   };
-  const soroban = {
-    _simulateTransaction: async (tx: Transaction) => {
-      fakes.prepared.push(tx);
-      return fakes.prepareSimulation;
-    },
-    simulateTransaction: async () => fakes.simulation,
-  };
+  const soroban = {};
   Object.defineProperty(chain, 'asyncHorizonServer', { get: () => horizon });
   Object.defineProperty(chain, 'asyncSorobanServer', { get: () => soroban });
+  chain._sorobanRpc = async (_method: string, params: Record<string, unknown>) => {
+    const tx = TransactionBuilder.fromXDR(params.transaction as string, Networks.PUBLIC) as Transaction;
+    const prepared = tx.toEnvelope().v1().tx().ext().switch() === 1;
+    if (prepared && fakes.simulation !== null) return fakes.simulation;
+    fakes.prepared.push(tx);
+    return fakes.prepareSimulation;
+  };
   chain._submitTransaction = async (tx: Transaction) => {
     if (fakes.submitError) throw fakes.submitError;
     fakes.submitted.push(tx);
@@ -249,23 +250,18 @@ describe('StellarUnsignedTransaction.buildTransactionEnvelope', () => {
     expect(fakes.prepared).toHaveLength(1);
   });
 
-  it('a Soroban JSON-RPC error response becomes a ChainError carrying its message, as Python raises SorobanRpcErrorResponse', async () => {
+  it('a Soroban transport failure becomes a ChainError carrying its message', async () => {
     const { chain } = fakeChain();
-    const rpcError = { code: -32602, message: 'invalid parameters' };
-    Object.assign(chain.asyncSorobanServer, {
-      simulateTransaction: async () => Promise.reject(rpcError),
-      _simulateTransaction: async () => Promise.reject(rpcError),
-      getAccount: async () => Promise.reject(rpcError),
-    });
-    const expected = { kind: ChainErrorKinds.RpcError, message: expect.stringContaining('invalid parameters') };
+    chain._sorobanRpc = async () => Promise.reject(new Error('socket hang up'));
+    const expected = { kind: ChainErrorKinds.RpcError, message: 'socket hang up' };
     await expect(chain.resolveAsset(STELLAR_BNUSD.contractId)).rejects.toMatchObject(expected);
-    await expect(chain._callHostFunction({ contractId: STELLAR_BNUSD.contractId, functionName: 'decimals', parameters: [], accountId: SENDER.address })).rejects.toMatchObject(expected);
     const unsigned = chain.buildUnsignedTransaction({
       sourceAddress: SENDER.address,
       operations: [chain.buildTokenTransferOperation({ asset: sac(chain), senderAddress: SENDER.address, receiverAddress: CONTRACT, amountHr: new Decimal(1) })],
     });
     await expect(unsigned.buildTransactionEnvelope(chain)).rejects.toMatchObject(expected);
   });
+
 
   it('enforces Soroban rules: single InvokeHostFunction and no memo; rejects another chain', async () => {
     const { chain } = fakeChain();
@@ -347,9 +343,9 @@ describe('StellarChain.simulateTransaction', () => {
   it('Soroban: decodes the simulated diagnostic events and reports the min resource fee as fees', async () => {
     const meta = xdr.TransactionMeta.fromXDR(Object.values(recordings.expert)[0].meta, 'base64');
     const events = meta.v4().diagnosticEvents();
-    const { chain } = fakeChain({ simulation: { id: '1', latestLedger: 1, events, transactionData: {}, minResourceFee: '4321', _parsed: true } });
+    const { chain } = fakeChain({ simulation: { latestLedger: 1, events: events.map((e) => e.toXDR('base64')), minResourceFee: '4321' } });
     chain._callHostFunction = async (req) =>
-      req.functionName === 'decimals' ? [nativeToScVal(18, { type: 'u32' })] : [nativeToScVal('BnUSD', { type: 'string' })];
+      [{ xdr: (req.functionName === 'decimals' ? nativeToScVal(18, { type: 'u32' }) : nativeToScVal('BnUSD', { type: 'string' })).toXDR('base64') }];
     const unsigned = chain.buildUnsignedTransaction({
       sourceAddress: SENDER.address,
       operations: [chain.buildTokenTransferOperation({ asset: sac(chain), senderAddress: SENDER.address, receiverAddress: CONTRACT, amountHr: new Decimal(1) })],
@@ -361,7 +357,7 @@ describe('StellarChain.simulateTransaction', () => {
   });
 
   it('Soroban simulation errors become a Failed result', async () => {
-    const { chain } = fakeChain({ simulation: { id: '1', latestLedger: 1, events: [], error: 'HostError: trapped', _parsed: true } });
+    const { chain } = fakeChain({ simulation: { latestLedger: 1, events: [], error: 'HostError: trapped' } });
     const unsigned = chain.buildUnsignedTransaction({
       sourceAddress: SENDER.address,
       operations: [chain.buildTokenTransferOperation({ asset: sac(chain), senderAddress: SENDER.address, receiverAddress: CONTRACT, amountHr: new Decimal(1) })],
@@ -410,7 +406,7 @@ describe('StellarChain balances and trustlines', () => {
 
   it('non-SAC balance is exact (no float rounding on 18 decimals)', async () => {
     const { chain } = fakeChain();
-    chain._callHostFunction = async () => [nativeToScVal(123_456_789_012_345_678_901n, { type: 'i128' })];
+    chain._callHostFunction = async () => [{ xdr: nativeToScVal(123_456_789_012_345_678_901n, { type: 'i128' }).toXDR('base64') }];
     const bnusd = new StellarAsset({ chainId: chain.chainId, networkPassphrase: Networks.PUBLIC, code: 'BnUSD', issuer: null, contractId: STELLAR_BNUSD.contractId, decimals: 18 });
     expect((await chain.getAssetBalance(bnusd, SENDER.address)).toString()).toBe('123.456789012345678901');
   });
@@ -430,7 +426,7 @@ describe('StellarChain balances and trustlines', () => {
       decimals: nativeToScVal(7, { type: 'u32' }),
       name: nativeToScVal(`USDC:${USDC_ISSUER}`, { type: 'string' }),
     };
-    chain._callHostFunction = async (req) => [replies[req.functionName]];
+    chain._callHostFunction = async (req) => [{ xdr: replies[req.functionName].toXDR('base64') }];
     const resolved = await chain.resolveAsset(STELLAR_USDC.contractId);
     expect(resolved).toMatchObject({ code: 'USDC', issuer: USDC_ISSUER, contractId: STELLAR_USDC.contractId, decimals: 7 });
     replies.name = nativeToScVal('native', { type: 'string' });

@@ -76,7 +76,7 @@ const response = await TronMainnet.broadcastSignedTransaction(signed);
 | `print()` debugging in `simulate_transaction` / `get_transaction_status` | Removed | Library code must not write to stdout |
 | tronpy falls back to its own shared TronGrid keys | Anonymous access without a configured key | Those keys belong to the tronpy project |
 | On TronGrid `403 "Exceed the user daily usage"`, tronpy raises `ApiError('rate limit! please add more API keys')` and drops the key for the rest of the process | Same text as `ChainError(RpcError)`; the key is kept for later requests | One rate-limit window must not disable the client permanently |
-| `private_key_hex` / `_private_key` are plain attributes | `#private` fields; `wallet.privateKeyHex` still returns the key | `JSON.stringify` / `util.inspect` (getters included) never print the key or the TronGrid API key, and a non-JSON TronGrid reply never reaches an error text |
+| `private_key_hex` / `_private_key` are plain attributes | `#private` fields; `wallet.privateKeyHex` still returns the key | `JSON.stringify` and the default `util.inspect` never print the key or the TronGrid API key, and a non-JSON TronGrid reply never reaches an error text |
 | `is_base58check_address` raises `ValueError` on a bad checksum | Returns `false`; callers raise their own error | TS predicates do not throw |
 | `logger.warning` for non-NORMAL `FeePriority` | No logging | The TS SDK has no logger |
 

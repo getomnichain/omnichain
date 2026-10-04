@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import {
   Account,
@@ -37,7 +37,15 @@ import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
 import { pyDecodeUtf8, pyEncodeUtf8, PyStringContainer, pyContains, pyStringContainer, pyItem, pyIntOf, pyTruthy } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
-import { isPydanticLaxBool, isPydanticLaxInt, isPydanticStrList } from '../python_pydantic.ts';
+import {
+  isPydanticAbsent,
+  isPydanticDict,
+  isPydanticLaxBool,
+  isPydanticLaxInt,
+  isPydanticOptionalStr,
+  isPydanticStrList,
+  pydanticLaxIntValue,
+} from '../python_pydantic.ts';
 import { NetworkType } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
 import { AbstractSignedTransaction } from '../signed_transaction.ts';
@@ -67,7 +75,9 @@ import {
   parseSignedStellarEnvelope,
   parseStellarExpertTransactionInfo,
   stellarOperationAmount,
-  sorobanJsonReply,
+  SorobanRpcErrorResponse,
+  SorobanSimulateHostFunctionResult,
+  simulateSorobanTransaction,
   sorobanRpcError,
   stellarTextMemo,
   toClassicStellarAccountId,
@@ -467,7 +477,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     });
   }
 
-  async _callHostFunction(req: StellarCallHostFunctionRequest): Promise<xdr.ScVal[] | null> {
+  async _callHostFunction(req: StellarCallHostFunctionRequest): Promise<SorobanSimulateHostFunctionResult[] | null> {
     if (!StrKey.isValidContract(req.contractId)) {
       throw new ChainError(ChainErrorKinds.InvalidTokenIdentifier, '`contract_id` is invalid.', {
         chainId: this.chainId,
@@ -488,13 +498,42 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       )
       .setTimeout(300)
       .build();
-    const sim = sorobanJsonReply<rpc.Api.RawSimulateTransactionResponse>(
-      await this.soroban(this.asyncSorobanServer._simulateTransaction(tx)),
-      'simulateTransaction',
-      this.chainId,
-    );
-    return sim.results === undefined || sim.results === null ? null : sim.results.map((r) => xdr.ScVal.fromXDR(r.xdr, 'base64'));
+    return (await simulateSorobanTransaction(tx, this)).results;
   }
+
+  async _sorobanRpc(method: string, params: Record<string, unknown>): Promise<unknown> {
+    const soroban = this.asyncSorobanServer;
+    const body = { jsonrpc: '2.0', id: randomUUID().replace(/-/g, ''), method, params };
+    const config = { validateStatus: () => true, responseType: 'text', transformResponse: [(data: unknown) => data] };
+    const response = await soroban.httpClient.post(soroban.serverURL.toString(), body, config as never);
+    let reply: unknown;
+    try {
+      reply = JSON.parse(String(response.data));
+    } catch {
+      throw new ChainError(ChainErrorKinds.RpcError, `Soroban ${method} returned a body that is not valid JSON (HTTP ${response.status})`, {
+        chainId: this.chainId,
+      });
+    }
+    const error = isPydanticDict(reply) ? reply.error : undefined;
+    const validEnvelope =
+      isPydanticDict(reply) &&
+      typeof reply.jsonrpc === 'string' &&
+      (typeof reply.id === 'string' || isPydanticLaxInt(reply.id)) &&
+      (isPydanticAbsent(error) ||
+        (isPydanticDict(error) && isPydanticLaxInt(error.code) && isPydanticOptionalStr(error.message) && isPydanticOptionalStr(error.data)));
+    if (!validEnvelope) {
+      throw new ChainError(ChainErrorKinds.RpcError, `Soroban ${method} reply does not match the JSON-RPC Response model`, { chainId: this.chainId });
+    }
+    const envelope = reply as Record<string, unknown>;
+    if (isPydanticDict(error)) {
+      throw new SorobanRpcErrorResponse(Number(pydanticLaxIntValue(error.code)), error.message, error.data, this.chainId);
+    }
+    if (isPydanticAbsent(envelope.result)) {
+      throw new ChainError(ChainErrorKinds.RpcError, '', { chainId: this.chainId });
+    }
+    return envelope.result;
+  }
+
 
 
   async _getAssetDecimalsInternal(_symbol: string, identifier: string | null | undefined): Promise<number> {
@@ -504,7 +543,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
         functionName: 'decimals',
         parameters: [],
       });
-      return firstHostFunctionResult(decimalsResult).u32();
+      return scvalToUint32(firstHostFunctionResult(decimalsResult));
     } catch {
       return StellarAsset.DECIMALS;
     }
@@ -953,7 +992,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
 
       let sorobanTxResp: rpc.Api.RawGetTransactionResponse | null;
       try {
-        const reply: unknown = await this.asyncSorobanServer._getTransaction(txHash);
+        const reply = await this._sorobanRpc('getTransaction', { hash: txHash });
         sorobanTxResp = isGetTransactionResponse(reply) ? reply : null;
       } catch {
         sorobanTxResp = null;
@@ -1200,8 +1239,8 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const envelope = await transaction.buildTransactionEnvelope(this);
 
     if (transaction.isSorobanInvokeContractTransaction) {
-      const sim = await this.soroban(this.asyncSorobanServer.simulateTransaction(envelope));
-      if (rpc.Api.isSimulationError(sim) && sim.error) {
+      const sim = await simulateSorobanTransaction(envelope, this);
+      if (sim.error) {
         return new StellarTransactionSimulationResult({
           chainId: this.chainId,
           statusType: TransactionSimulationStatusTypes.Failed,
@@ -1209,17 +1248,22 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
           error: new Error(sim.error),
         });
       }
-      const balanceChanges = await this.getBalanceChangesFromDiagnosisEvents(sim.events, { filteredWallets, filteredAssets });
-      const minResourceFee = rpc.Api.isSimulationSuccess(sim) ? sim.minResourceFee : undefined;
+      if (sim.events === null) {
+        throw new ChainError(ChainErrorKinds.RpcError, "'NoneType' object is not iterable", { chainId: this.chainId });
+      }
+      const balanceChanges = await this.getBalanceChangesFromDiagnosisEvents(
+        sim.events.map((event) => xdr.DiagnosticEvent.fromXDR(event, 'base64')),
+        { filteredWallets, filteredAssets },
+      );
       return new StellarTransactionSimulationResult({
         chainId: this.chainId,
         statusType: TransactionSimulationStatusTypes.Success,
         balanceChanges,
         error: null,
         fees:
-          minResourceFee !== undefined && minResourceFee !== null
+          sim.minResourceFee !== null
             ? new StellarTransactionFees({
-                feeStroops: Math.trunc(Number(minResourceFee)),
+                feeStroops: Number(sim.minResourceFee),
                 feePayer: StellarChain._muxedToClassic(envelope.source),
               })
             : null,
@@ -1576,10 +1620,10 @@ function isGetTransactionResponse(reply: unknown): reply is rpc.Api.RawGetTransa
   );
 }
 
-function firstHostFunctionResult(results: xdr.ScVal[] | null): xdr.ScVal {
+function firstHostFunctionResult(results: SorobanSimulateHostFunctionResult[] | null): xdr.ScVal {
   if (results === null) throw new ChainError(ChainErrorKinds.SimulationFailed, "'NoneType' object is not subscriptable");
   if (results.length === 0) throw new ChainError(ChainErrorKinds.SimulationFailed, 'list index out of range');
-  return results[0];
+  return xdr.ScVal.fromXDR(results[0].xdr, 'base64');
 }
 
 function transactionXdrOperations(tx: Transaction): xdr.Operation[] {
