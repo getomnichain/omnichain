@@ -36,8 +36,8 @@ import {
 } from '../chain.base.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause, sanitizeMessage } from '../errors.ts';
-import { pyDecodeUtf8, pyEncodeUtf8, PyStringContainer, pyContains, pyStringContainer, pyItem, pyIntOf, pyTruthy, pyDecimalStr } from '../python_builtins.ts';
-import { pyRepr, pyTypeRepr } from '../python_repr.ts';
+import { pyDecodeUtf8, pyEncodeUtf8, PyStringContainer, pyContains, pyStringContainer, pyItem, pyIntOf, pyTruthy, pyDecimalStr, pyDecimalString } from '../python_builtins.ts';
+import { pyRepr, pyTypeRepr, pyTypeName } from '../python_repr.ts';
 import {
   isPydanticAbsent,
   isPydanticDict,
@@ -77,6 +77,7 @@ import {
   parseStellarExpertTransactionInfo,
   stellarOperationAmount,
   SorobanRpcErrorResponse,
+  loadStellarAccount,
   SorobanSimulateHostFunctionResult,
   simulateSorobanTransaction,
   sorobanRpcError,
@@ -581,7 +582,12 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
         if (err instanceof NotFoundError) continue;
         throw err;
       }
-      const data = ('data_attr' in account ? account.data_attr : pyItem(account, 'data')) as Record<string, unknown>;
+      const dataRenamedBySdk = isPydanticDict(account._links) && 'data' in account._links;
+      if (dataRenamedBySdk && !('data_attr' in account)) throw new ChainError(ChainErrorKinds.InvalidArgument, pyRepr('data'));
+      const data = dataRenamedBySdk ? account.data_attr : pyItem(account, 'data');
+      if (!isPydanticDict(data)) {
+        throw new ChainError(ChainErrorKinds.RpcError, `'${pyTypeName(data)}' object has no attribute 'get'`, { chainId: this.chainId });
+      }
       if (data[MEMO_REQUIRED_CONFIG_KEY] === MEMO_REQUIRED_CONFIG_VALUE) {
         throw new AccountRequiresMemoError('Destination account requires a memo in the transaction.', destination, index);
       }
@@ -621,7 +627,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
         const reservedStroops = BigInt(reserveUnits) * 5_000_000n;
         for (const b of balances) {
           if (b.asset_type === 'native') {
-            const totalStroops = hrDecimalToMinorUnits(new Decimal(String(b.balance)), StellarAsset.DECIMALS);
+            const totalStroops = hrDecimalToMinorUnits(new Decimal(pyDecimalString(pyItem(b, 'balance'))), StellarAsset.DECIMALS);
             const availableStroops = totalStroops - reservedStroops;
             return new Decimal(minorUnitsToHrString(availableStroops < 0n ? 0n : availableStroops, StellarAsset.DECIMALS));
           }
@@ -632,7 +638,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       for (const b of balances) {
         if (b.asset_type === 'native') continue;
         if (b.asset_code === asset.code && b.asset_issuer === asset.issuer) {
-          return new Decimal(String(b.balance));
+          return new Decimal(pyDecimalString(pyItem(b, 'balance')));
         }
       }
       return new Decimal(0);
@@ -654,12 +660,12 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const result = new AssetMap<StellarAsset, Decimal>();
     for (const b of balances) {
       if (b.asset_type === 'native') {
-        result.set(this._nativeAsset, new Decimal(String(b.balance)));
+        result.set(this._nativeAsset, new Decimal(pyDecimalString(pyItem(b, 'balance'))));
       } else {
         const code = b.asset_code;
         const issuer = b.asset_issuer;
         if (code === undefined || code === null || issuer === undefined || issuer === null) continue;
-        result.set(this.createSacToken(code, issuer), new Decimal(String(b.balance)));
+        result.set(this.createSacToken(code, issuer), new Decimal(pyDecimalString(pyItem(b, 'balance'))));
       }
     }
     return result;
@@ -676,8 +682,8 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     for (const b of (accountData.balances ?? []) as HorizonBalanceLine[]) {
       if (b.asset_type === 'native') continue;
       if (b.asset_code === asset.code && b.asset_issuer === asset.issuer) {
-        trustLine.limit = new Decimal(String(b.limit ?? '0'));
-        trustLine.balance = new Decimal(String(b.balance ?? '0'));
+        trustLine.limit = new Decimal(pyDecimalString('limit' in b ? b.limit : '0'));
+        trustLine.balance = new Decimal(pyDecimalString('balance' in b ? b.balance : '0'));
       }
     }
     return trustLine;
@@ -814,7 +820,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
     const path = bestRecord.path.map((p) =>
       p.asset_type === 'native' ? this._nativeAsset.toSdkAsset() : stellarSdkAsset(p.asset_code, p.asset_issuer),
     );
-    const destinationAmount = new PythonDecimal(bestRecord.destination_amount);
+    const destinationAmount = new PythonDecimal(pyDecimalString(pyItem(bestRecord, 'destination_amount')));
     const minimumReceiveValue = destinationAmount
       .mul(new PythonDecimal(1).minus(new PythonDecimal(req.slippageTolerancePercent.toString()).div(new PythonDecimal(100))))
       .toDecimalPlaces(req.receiveAsset.decimals, Decimal.ROUND_HALF_UP);
@@ -1147,7 +1153,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
       if (eType === 'account_credited' || eType === 'contract_credited') {
         const stellarAsset = buildAsset(rec);
         if (stellarAsset === null) continue;
-        AssetBalanceChange.upsert(balanceChanges, wallet, stellarAsset, AssetBalanceChange.fromHr(new Decimal(String(rec.amount)), stellarAsset.decimals));
+        AssetBalanceChange.upsert(balanceChanges, wallet, stellarAsset, AssetBalanceChange.fromHr(new Decimal(pyDecimalString(pyItem(rec, 'amount'))), stellarAsset.decimals));
       } else if (eType === 'account_debited' || eType === 'contract_debited') {
         const stellarAsset = buildAsset(rec);
         if (stellarAsset === null) continue;
@@ -1155,12 +1161,12 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
           balanceChanges,
           wallet,
           stellarAsset,
-          AssetBalanceChange.fromHr(new Decimal(String(rec.amount)).neg(), stellarAsset.decimals),
+          AssetBalanceChange.fromHr(new Decimal(pyDecimalString(pyItem(rec, 'amount'))).neg(), stellarAsset.decimals),
         );
       } else if (eType === 'account_created') {
         if (!includeNative) continue;
         const stellarAsset = this._nativeAsset;
-        const startingBalance = new Decimal(String(rec.starting_balance));
+        const startingBalance = new Decimal(pyDecimalString(pyItem(rec, 'starting_balance')));
         if (nativelyCreditedByOperation.has(`${operationId(rec)}|${wallet}`)) continue;
         AssetBalanceChange.upsert(balanceChanges, wallet, stellarAsset, AssetBalanceChange.fromHr(startingBalance, stellarAsset.decimals));
       }
@@ -1374,7 +1380,7 @@ export class StellarChain extends Chain implements SignedTransactionBroadcaster 
 
   async getAccountNextSequence(walletAddress: string): Promise<bigint> {
     const classicAddress = StellarChain.toClassicAccountId(walletAddress);
-    const account = await this.asyncHorizonServer.loadAccount(classicAddress);
+    const account = await loadStellarAccount(this, classicAddress);
     return BigInt(account.sequenceNumber()) + 1n;
   }
 

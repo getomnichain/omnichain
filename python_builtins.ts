@@ -98,6 +98,20 @@ export function pyDecimalStr(text: string): string {
   return sign + integerPart + fractionPart + exponentPart;
 }
 
+const PY_DECIMAL_FINITE = /^[+-]?(?=\d|\.\d)\d*(?:\.\d*)?(?:[eE][+-]?\d+)?$/;
+
+export function pyDecimalString(value: unknown): string {
+  if (typeof value === 'boolean') return value ? '1' : '0';
+  if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string') {
+    const text = value.replace(PY_STRIP_WHITESPACE, '').replace(/_/g, '');
+    if (PY_DECIMAL_FINITE.test(text)) return text.replace(/\.(?=[eE]|$)/, '');
+    throw new ChainError(ChainErrorKinds.InvalidArgument, "[<class 'decimal.ConversionSyntax'>]");
+  }
+  throw new ChainError(ChainErrorKinds.InvalidArgument, `conversion from ${pyTypeName(value)} to Decimal is not supported`);
+}
+
 export function pyTruthy(value: unknown): boolean {
   if (value === null || value === undefined || value === false || value === 0 || value === 0n || value === '') return false;
   if (Array.isArray(value)) return value.length > 0;
@@ -105,10 +119,11 @@ export function pyTruthy(value: unknown): boolean {
   return true;
 }
 
-const PY_WHITESPACE = /^[\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g;
+const PY_INT_WHITESPACE = /^[\t\n\v\f\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\t\n\v\f\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g;
+const PY_STRIP_WHITESPACE = /^[\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g;
 
 function parsePyInt(value: string, base: 10 | 16): bigint | null {
-  let text = [...value.replace(PY_WHITESPACE, '')]
+  let text = [...value.replace(PY_INT_WHITESPACE, '')]
     .map((char) => (/^\p{Nd}$/u.test(char) ? String(digitValue(char)) : char))
     .join('');
   let negative = false;

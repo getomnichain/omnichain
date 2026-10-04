@@ -19,7 +19,7 @@ import { TRONPY_USER_AGENT, TronClient, TronJson, TronTvmError } from '../tron_c
 import { TronContract } from '../tron_contract.ts';
 import { tronAbiDecodeSingle, tronAbiEncodeSingle } from '../tron_abi.ts';
 import { TronPrivateKey, TronPublicKey, TronSignature } from '../tron_keys.ts';
-import { TronApproveTransactionPrerequisite, TronHandledApprovePrerequisiteResponse, TronSignedTransaction, TronTransactionSimulationResult, tronTransactionFromJson } from '../tron_transactions.ts';
+import { TronApproveTransactionPrerequisite, TronHandledApprovePrerequisiteResponse, TronSignedTransaction, TronUnsignedTransaction, TronTransactionSimulationResult, tronTransactionFromJson } from '../tron_transactions.ts';
 import { TronTransactionStatus } from '../tron_transaction_status.ts';
 import { TronWallet } from '../tron_wallet.ts';
 
@@ -567,5 +567,18 @@ describe('round-8 parity: gasPricing None is rejected like Python', () => {
         gasPricing: null as never,
       }),
     ).rejects.toThrow('Unsupported gas_pricing None');
+  });
+});
+
+describe('round-9: caller JSON integers beyond 2^53 are refused instead of being rounded', () => {
+  it('TronUnsignedTransaction.fromJson, TronSignedTransaction.fromJson and the broadcast adapter refuse them', async () => {
+    const rawData = `{"contract":[{"parameter":{"value":{"amount":9007199254740993,"owner_address":"41a614f803b6fd780986a42c78ec9c7f77e6ded13c","to_address":"41a614f803b6fd780986a42c78ec9c7f77e6ded13c"},"type_url":"type.googleapis.com/protocol.TransferContract"},"type":"TransferContract"}],"ref_block_bytes":"0000","ref_block_hash":"0000000000000000","expiration":1,"timestamp":1}`;
+    const transaction = `{"txID":"${'ab'.repeat(32)}","raw_data":${rawData},"signature":[]}`;
+    const unsigned = `{"type":"TronUnsignedTransaction","chain_id":${CHAIN_ID_TRON_MAINNET},"unsigned_transaction":${transaction}}`;
+    const signed = `{"type":"TronSignedTransaction","chain_id":${CHAIN_ID_TRON_MAINNET},"signed_transaction":${transaction}}`;
+    expect(() => TronUnsignedTransaction.fromJson(unsigned)).toThrow('outside the JSON-safe integer range');
+    expect(() => TronSignedTransaction.fromJson(signed)).toThrow('outside the JSON-safe integer range');
+    const chain = new TronChain({ name: 'Tron Stub', chainId: CHAIN_ID_TRON_MAINNET, defaultRpcUrl: 'http://127.0.0.1:9/', explorerUrl: 'https://tronscan.org' });
+    await expect(chain.broadcast(transaction)).rejects.toMatchObject({ kind: ChainErrorKinds.InvalidArgument });
   });
 });

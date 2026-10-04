@@ -91,8 +91,7 @@ function fakeChain(overrides: Partial<Fakes> = {}): { chain: StellarChain; fakes
     chainAgnosticStellarIdentifier: 'pubnet',
   });
   const horizon = {
-    loadAccount: async (id: string) => new Account(id, String(fakes.accounts[id]?.sequence ?? '100')),
-    accounts: () => ({ accountId: (id: string) => ({ call: async () => fakes.accounts[id] }) }),
+    accounts: () => ({ accountId: (id: string) => ({ call: async () => ({ sequence: '100', ...fakes.accounts[id] }) }) }),
     strictSendPaths: () => ({ call: async () => ({ records: fakes.strictSendRecords }) }),
     ledgers: () => ({
       order: () => ({ limit: () => ({ call: async () => ({ records: [{ sequence: 64747332, base_fee_in_stroops: fakes.baseFee }] }) }) }),

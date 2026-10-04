@@ -56,7 +56,7 @@ Adds the Stellar and Tron chain families at parity with omnichain-py (RIN-315). 
   - `pyRepr` / `pyStr` / `pyTypeRepr` / `pyFloatRepr`, so error and `toString` texts match Python's;
   - `pyJsonDumps`: `toJsonStr` output is byte-identical to omnichain-py's `to_json_str` and accepts its `json.dumps` options;
   - `tronAbiEncodeSingle` / `tronAbiDecodeSingle`, a port of tronpy's `trx_abi` (strict eth_abi decoding with Tron addresses).
-- **Tests** — 956 new tests:
+- **Tests** — 988 new tests:
   - Python's wallet vectors;
   - mainnet status cases replayed offline from recorded RPC responses;
   - Python JSON payload fixtures;

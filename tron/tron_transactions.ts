@@ -31,6 +31,25 @@ export function tronTransactionFromJson(transactionJson: TronJson): TronTransact
   return new TronTransaction({ rawData: { ...transactionJson }, client: null });
 }
 
+export function assertJsonSafeIntegers(value: unknown): void {
+  if (typeof value === 'number') {
+    if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Tron JSON integer ${value} is outside the JSON-safe integer range and cannot be represented exactly`,
+      );
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach(assertJsonSafeIntegers);
+    return;
+  }
+  if (value !== null && typeof value === 'object') {
+    Object.values(value).forEach(assertJsonSafeIntegers);
+  }
+}
+
 export class TronUnsignedTransaction extends UnsignedTransaction {
   static readonly JSON_TYPE = 'TronUnsignedTransaction';
 
@@ -57,6 +76,7 @@ export class TronUnsignedTransaction extends UnsignedTransaction {
 
   static fromJson(data: JsonTransactionInput): TronUnsignedTransaction {
     const payload = parseJsonTransactionEnvelope(data, TronUnsignedTransaction.JSON_TYPE);
+    assertJsonSafeIntegers(payload);
     return new TronUnsignedTransaction({
       chainId: jsonPayloadItem(payload, 'chain_id') as number,
       transaction: tronTransactionFromJson(jsonPayloadItem(payload, 'transaction') as TronJson),
@@ -100,6 +120,7 @@ export class TronSignedTransaction extends AbstractSignedTransaction {
 
   static fromJson(data: JsonTransactionInput): TronSignedTransaction {
     const payload = parseJsonTransactionEnvelope(data, TronSignedTransaction.JSON_TYPE);
+    assertJsonSafeIntegers(payload);
     return new TronSignedTransaction({
       chainId: jsonPayloadItem(payload, 'chain_id') as number,
       signedTransaction: tronTransactionFromJson(jsonPayloadItem(payload, 'signed_transaction') as TronJson),

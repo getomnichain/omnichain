@@ -260,6 +260,87 @@ describe('Horizon over real HTTP (stellar-sdk http client, not hand-built errors
     }
   });
 
+  it('the wallet signs for the requested account with int(sequence), like stellar-sdk Python load_account', async () => {
+    const chain = chainOn(horizon.url);
+    horizon.ledgers = { status: 200, body: ledgersPage([{ sequence: 1, base_fee_in_stroops: 100 }]) };
+    const unsigned = chain.buildUnsignedTransaction({
+      sourceAddress: SENDER.address,
+      operations: [Operation.payment({ destination: RECEIVER.address, asset: StellarSdkAsset.native(), amount: '1' })],
+    });
+    try {
+      horizon.accounts = { [SENDER.address]: { status: 200, body: { account_id: RECEIVER.address, sequence: ' 41 ', _links: {} } } };
+      const signed = await SENDER.signTransaction(unsigned, chain);
+      const tx = TransactionBuilder.fromXDR(signed.signedXdr, Networks.PUBLIC) as Transaction;
+      expect(tx.source).toBe(SENDER.address);
+      expect(tx.sequence).toBe('42');
+      for (const sequence of ['1e3', '0x10', '1.0']) {
+        horizon.accounts = { [SENDER.address]: { status: 200, body: { account_id: SENDER.address, sequence, _links: {} } } };
+        await expect(SENDER.signTransaction(unsigned, chain)).rejects.toThrow(`invalid literal for int() with base 10: '${sequence}'`);
+      }
+    } finally {
+      horizon.accounts = {};
+    }
+  });
+
+  it('SEP-29 reads account data like Python: a malformed data field stops the broadcast before the POST', async () => {
+    const chain = chainOn(horizon.url);
+    const tx = new TransactionBuilder(new Account(SENDER.address, '100'), { fee: '100', networkPassphrase: Networks.PUBLIC })
+      .addOperation(Operation.payment({ destination: RECEIVER.address, asset: StellarSdkAsset.native(), amount: '1' }))
+      .setTimeout(300)
+      .build();
+    tx.sign(Keypair.fromSecret(SENDER.secretSeed));
+    const signed = new StellarSignedTransaction({ chainId: chain.chainId, signedXdr: tx.toXDR(), networkPassphrase: Networks.PUBLIC });
+    try {
+      for (const body of [
+        { data: [] },
+        { data: 'x' },
+        { data: 5 },
+        { data: true },
+        { _links: { data: { href: 'http://127.0.0.1/data' } } },
+      ]) {
+        horizon.requests.length = 0;
+        horizon.accounts = { [RECEIVER.address]: { status: 200, body: { account_id: RECEIVER.address, ...body } } };
+        const response = await chain.broadcastSignedTransaction(signed);
+        expect(response.broadcastError).not.toBeNull();
+        expect(horizon.requests).not.toContain('POST /transactions');
+      }
+      horizon.requests.length = 0;
+      horizon.submit = { status: 200, body: { hash: signed.txHash } };
+      horizon.accounts = {
+        [RECEIVER.address]: { status: 200, body: { account_id: RECEIVER.address, data: {}, data_attr: { 'config.memo_required': 'MQ==' }, _links: {} } },
+      };
+      await expect(chain.broadcast(signed.signedXdr)).resolves.toBe(signed.txHash);
+      expect(horizon.requests).toContain('POST /transactions');
+    } finally {
+      horizon.accounts = {};
+    }
+  });
+
+  it('Horizon amounts follow Python Decimal(): a radix-prefixed trustline limit stops the ChangeTrust before signing', async () => {
+    const chain = chainOn(horizon.url);
+    horizon.ledgers = { status: 200, body: ledgersPage([{ sequence: 1, base_fee_in_stroops: 100 }]) };
+    try {
+      horizon.requests.length = 0;
+      horizon.accounts = {
+        [RECEIVER.address]: {
+          status: 200,
+          body: {
+            account_id: RECEIVER.address,
+            sequence: '1',
+            balances: [{ asset_type: 'credit_alphanum4', asset_code: 'USDC', asset_issuer: USDC_ISSUER, limit: '0x10', balance: '0' }],
+            _links: {},
+          },
+        },
+      };
+      await expect(RECEIVER.ensureMinimumTrustLine(chain, 'USDC', USDC_ISSUER, new Decimal(StellarAsset.TRUST_LINE_MAX_LIMIT))).rejects.toThrow(
+        "[<class 'decimal.ConversionSyntax'>]",
+      );
+      expect(horizon.requests).not.toContain('POST /transactions');
+    } finally {
+      horizon.accounts = {};
+    }
+  });
+
   it('a Horizon 400 on submit is BroadcastRejected with the result codes; 5xx stays RpcError', async () => {
     const chain = chainOn(horizon.url);
     const xdr = signedPaymentXdr();
@@ -463,7 +544,7 @@ describe('round-2 parity: Python-typed failures instead of raw SDK errors', () =
       amountHr: new Decimal(1),
     });
     const unsigned = new StellarUnsignedTransaction({ chainId: chain.chainId, sourceAccountId: SENDER.address, operations: [invoke], baseFee: 100 });
-    const horizon = { loadAccount: async (id: string) => new Account(id, '1') };
+    const horizon = { accounts: () => ({ accountId: () => ({ call: async () => ({ sequence: '1' }) }) }) };
     let simulate: () => Promise<unknown> = async () => ({ latestLedger: 1, error: 'host invocation failed' });
     Object.defineProperty(chain, 'asyncHorizonServer', { get: () => horizon });
     chain._sorobanRpc = () => simulate();
@@ -535,8 +616,7 @@ describe('round-3 parity: SAC codes are kept exactly as given, as stellar-sdk Py
     let submitted: Transaction | null = null;
     Object.defineProperty(chain, 'asyncHorizonServer', {
       get: () => ({
-        loadAccount: async (id: string) => new Account(id, '100'),
-        accounts: () => ({ accountId: () => ({ call: async () => ({ balances: [] }) }) }),
+        accounts: () => ({ accountId: () => ({ call: async () => ({ sequence: '100', balances: [] }) }) }),
         ledgers: () => ({ order: () => ({ limit: () => ({ call: async () => ({ records: [{ base_fee_in_stroops: 100 }] }) }) }) }),
       }),
     });

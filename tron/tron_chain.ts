@@ -51,6 +51,7 @@ import {
   TronSignedTransaction,
   TronTransactionSimulationResult,
   TronUnsignedTransaction,
+  assertJsonSafeIntegers,
   tronTransactionFromJson,
 } from './tron_transactions.ts';
 
@@ -978,6 +979,7 @@ function parseTronSignedInput(signed: string | Uint8Array, chainId: number): Tro
       { chainId },
     );
   }
+  assertJsonSafeIntegers(payload);
   return new TronSignedTransaction({ chainId, signedTransaction: tronTransactionFromJson(payload) });
 }
 

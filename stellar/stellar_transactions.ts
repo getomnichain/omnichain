@@ -16,7 +16,7 @@ import { Decimal } from 'decimal.js';
 
 import type { Chain } from '../chain.base.ts';
 import { ChainError, ChainErrorKinds, sanitizeCause } from '../errors.ts';
-import { pyEncodeUtf8 } from '../python_builtins.ts';
+import { pyEncodeUtf8, pyIntOf, pyItem } from '../python_builtins.ts';
 import {
   isPydanticAbsent,
   isPydanticDict,
@@ -347,7 +347,7 @@ export class StellarUnsignedTransaction extends UnsignedTransaction {
       );
     }
 
-    const sourceAccount = await loadSourceAccount(chain, this.sourceAccountId);
+    const sourceAccount = await loadStellarAccount(chain, this.sourceAccountId);
     let baseFee = this.baseFee;
     if (baseFee === null) {
       baseFee = await chain.getBaseFee();
@@ -448,12 +448,11 @@ function rawEnvelopeOperations(envelope: Transaction): xdr.Operation[] {
   return [...inner.operations()];
 }
 
-async function loadSourceAccount(chain: StellarChain, sourceAccountId: string): Promise<Account | MuxedAccount> {
-  if (StrKey.isValidMed25519PublicKey(sourceAccountId)) {
-    const base = await chain.asyncHorizonServer.loadAccount(toClassicStellarAccountId(sourceAccountId));
-    return MuxedAccount.fromAddress(sourceAccountId, base.sequenceNumber());
-  }
-  return chain.asyncHorizonServer.loadAccount(sourceAccountId);
+export async function loadStellarAccount(chain: StellarChain, accountId: string): Promise<Account | MuxedAccount> {
+  const classicAccountId = toClassicStellarAccountId(accountId);
+  const record = (await chain.asyncHorizonServer.accounts().accountId(classicAccountId).call()) as unknown as Record<string, unknown>;
+  const sequence = pyIntOf(pyItem(record, 'sequence')).toString();
+  return StrKey.isValidMed25519PublicKey(accountId) ? MuxedAccount.fromAddress(accountId, sequence) : new Account(classicAccountId, sequence);
 }
 
 export class StellarSignedTransaction extends AbstractSignedTransaction {
