@@ -1,7 +1,7 @@
 {
   "name": "@getomnichain/omnichain",
-  "version": "0.5.1",
-  "description": "Multi-chain SDK for EVM, Solana, UTXO (BTC/LTC/DOGE/DASH/ZEC/BCH), TON, and Tron. TypeScript parity port of omnichain-py.",
+  "version": "0.6.0",
+  "description": "Multi-chain SDK for EVM, Solana, UTXO (BTC/LTC/DOGE/DASH/ZEC/BCH), Stellar, Tron, and TON. TypeScript parity port of omnichain-py.",
   "keywords": [
     "omnichain",
     "blockchain",
@@ -10,6 +10,7 @@
     "solana",
     "bitcoin",
     "utxo",
+    "stellar",
     "ton",
     "tron",
     "sdk",
@@ -54,6 +55,16 @@
       "import": "./dist/esm/ton/index.js",
       "require": "./dist/cjs/ton/index.js"
     },
+    "./stellar": {
+      "types": "./dist/esm/stellar/index.d.ts",
+      "import": "./dist/esm/stellar/index.js",
+      "require": "./dist/cjs/stellar/index.js"
+    },
+    "./tron": {
+      "types": "./dist/esm/tron/index.d.ts",
+      "import": "./dist/esm/tron/index.js",
+      "require": "./dist/cjs/tron/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -76,6 +87,7 @@
   "dependencies": {
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.98.0",
+    "@stellar/stellar-sdk": "^15.1.0",
     "axios": "^1.7.0",
     "bitcoinjs-lib": "^7.0.1",
     "bitcoinjs-message": "^2.2.0",

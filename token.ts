@@ -1,6 +1,8 @@
 import { ChainError, ChainErrorKinds } from './errors.ts';
 
 export abstract class Token {
+  protected static readonly allowsEmptySymbol: boolean = false;
+
   readonly chainId: number;
   readonly symbol: string;
   readonly identifier?: string;
@@ -15,7 +17,8 @@ export abstract class Token {
     if (!Number.isInteger(chainId)) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, 'Token chainId must be an integer');
     }
-    if (!symbol) {
+    const emptySymbolAllowed = symbol === '' && (new.target as unknown as { allowsEmptySymbol: boolean }).allowsEmptySymbol;
+    if (!symbol && !emptySymbolAllowed) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, 'Token symbol is required');
     }
     if (!Number.isInteger(decimals) || decimals < 0) {

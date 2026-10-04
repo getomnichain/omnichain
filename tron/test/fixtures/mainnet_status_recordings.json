@@ -1,0 +1,1100 @@
+{
+ "wallet/gettransactioninfobyid {\"value\":\"bb565717e908ac084c0471e2d608aae0ed1913c2dd9ef11c500193fbb6eb22d2\",\"visible\":true}": {
+  "id": "bb565717e908ac084c0471e2d608aae0ed1913c2dd9ef11c500193fbb6eb22d2",
+  "fee": 268000,
+  "blockNumber": 81902136,
+  "blockTimeStamp": 1776374145000,
+  "contractResult": [
+   ""
+  ],
+  "receipt": {
+   "net_fee": 268000
+  }
+ },
+ "wallet/gettransactionbyid {\"value\":\"bb565717e908ac084c0471e2d608aae0ed1913c2dd9ef11c500193fbb6eb22d2\",\"visible\":true}": {
+  "raw_data": {
+   "ref_block_bytes": "ba1e",
+   "ref_block_hash": "c931151aff261c00",
+   "expiration": 1776381322463,
+   "contract": [
+    {
+     "parameter": {
+      "value": {
+       "owner_address": "TAQ3S3o1LnHGo8yKob57zYfv64yz6L5UfY",
+       "to_address": "TXsyKz8dWjvphccqpJPTZsKXiyAJzvkGV5",
+       "amount": 20000000
+      },
+      "type_url": "type.googleapis.com/protocol.TransferContract"
+     },
+     "type": "TransferContract"
+    }
+   ],
+   "timestamp": 1776374122463
+  },
+  "signature": [
+   "2078b9f234968dc8085a4ffe82b7ccc6fd103931b1fb8a1ffa85a3e44b55bf9e206fe19c855ec9d91ee1b50754df452f7037d114835d5cd13dd878d374f073c600"
+  ],
+  "ret": [
+   {
+    "contractRet": "SUCCESS"
+   }
+  ],
+  "raw_data_hex": "0a02ba1e2208c931151aff261c0040dfc9cfc4d9335a68080112640a2d747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e5472616e73666572436f6e747261637412330a154104b2693fd601cb9eee0213e2b73f9e068c1afed7121541f05545f212d1b82f0b91df93e9434909226929651880dac40970df8f98c1d933",
+  "txID": "bb565717e908ac084c0471e2d608aae0ed1913c2dd9ef11c500193fbb6eb22d2"
+ },
+ "wallet/getchainparameters {\"visible\":true}": {
+  "chainParameter": [
+   {
+    "key": "getMaintenanceTimeInterval",
+    "value": 21600000
+   },
+   {
+    "key": "getAccountUpgradeCost",
+    "value": 9999000000
+   },
+   {
+    "key": "getCreateAccountFee",
+    "value": 100000
+   },
+   {
+    "key": "getTransactionFee",
+    "value": 1000
+   },
+   {
+    "key": "getAssetIssueFee",
+    "value": 1024000000
+   },
+   {
+    "key": "getWitnessPayPerBlock",
+    "value": 8000000
+   },
+   {
+    "key": "getWitnessStandbyAllowance",
+    "value": 115200000000
+   },
+   {
+    "key": "getCreateNewAccountFeeInSystemContract",
+    "value": 1000000
+   },
+   {
+    "key": "getCreateNewAccountBandwidthRate",
+    "value": 1
+   },
+   {
+    "key": "getAllowCreationOfContracts",
+    "value": 1
+   },
+   {
+    "key": "getRemoveThePowerOfTheGr",
+    "value": -1
+   },
+   {
+    "key": "getEnergyFee",
+    "value": 100
+   },
+   {
+    "key": "getExchangeCreateFee",
+    "value": 1024000000
+   },
+   {
+    "key": "getMaxCpuTimeOfOneTx",
+    "value": 80
+   },
+   {
+    "key": "getAllowUpdateAccountName"
+   },
+   {
+    "key": "getAllowSameTokenName",
+    "value": 1
+   },
+   {
+    "key": "getAllowDelegateResource",
+    "value": 1
+   },
+   {
+    "key": "getTotalEnergyLimit",
+    "value": 180000000000
+   },
+   {
+    "key": "getAllowTvmTransferTrc10",
+    "value": 1
+   },
+   {
+    "key": "getTotalEnergyCurrentLimit",
+    "value": 180000000000
+   },
+   {
+    "key": "getAllowMultiSign",
+    "value": 1
+   },
+   {
+    "key": "getAllowAdaptiveEnergy"
+   },
+   {
+    "key": "getTotalEnergyTargetLimit",
+    "value": 12500000
+   },
+   {
+    "key": "getTotalEnergyAverageUsage"
+   },
+   {
+    "key": "getUpdateAccountPermissionFee",
+    "value": 100000000
+   },
+   {
+    "key": "getMultiSignFee",
+    "value": 1000000
+   },
+   {
+    "key": "getAllowAccountStateRoot"
+   },
+   {
+    "key": "getAllowProtoFilterNum"
+   },
+   {
+    "key": "getAllowTvmConstantinople",
+    "value": 1
+   },
+   {
+    "key": "getAllowTvmSolidity059",
+    "value": 1
+   },
+   {
+    "key": "getAllowTvmIstanbul",
+    "value": 1
+   },
+   {
+    "key": "getAllowShieldedTRC20Transaction",
+    "value": 1
+   },
+   {
+    "key": "getForbidTransferToContract"
+   },
+   {
+    "key": "getAdaptiveResourceLimitTargetRatio",
+    "value": 10
+   },
+   {
+    "key": "getAdaptiveResourceLimitMultiplier",
+    "value": 1000
+   },
+   {
+    "key": "getChangeDelegation",
+    "value": 1
+   },
+   {
+    "key": "getWitness127PayPerBlock",
+    "value": 128000000
+   },
+   {
+    "key": "getAllowMarketTransaction"
+   },
+   {
+    "key": "getMarketSellFee"
+   },
+   {
+    "key": "getMarketCancelFee"
+   },
+   {
+    "key": "getAllowPBFT"
+   },
+   {
+    "key": "getAllowTransactionFeePool"
+   },
+   {
+    "key": "getMaxFeeLimit",
+    "value": 15000000000
+   },
+   {
+    "key": "getAllowOptimizeBlackHole",
+    "value": 1
+   },
+   {
+    "key": "getAllowNewResourceModel"
+   },
+   {
+    "key": "getAllowTvmFreeze"
+   },
+   {
+    "key": "getAllowTvmVote",
+    "value": 1
+   },
+   {
+    "key": "getAllowTvmLondon",
+    "value": 1
+   },
+   {
+    "key": "getAllowTvmCompatibleEvm"
+   },
+   {
+    "key": "getAllowAccountAssetOptimization"
+   },
+   {
+    "key": "getFreeNetLimit",
+    "value": 600
+   },
+   {
+    "key": "getTotalNetLimit",
+    "value": 43200000000
+   },
+   {
+    "key": "getAllowHigherLimitForMaxCpuTimeOfOneTx",
+    "value": 1
+   },
+   {
+    "key": "getAllowAssetOptimization",
+    "value": 1
+   },
+   {
+    "key": "getAllowNewReward",
+    "value": 1
+   },
+   {
+    "key": "getMemoFee",
+    "value": 1000000
+   },
+   {
+    "key": "getAllowDelegateOptimization",
+    "value": 1
+   },
+   {
+    "key": "getUnfreezeDelayDays",
+    "value": 14
+   },
+   {
+    "key": "getAllowOptimizedReturnValueOfChainId",
+    "value": 1
+   },
+   {
+    "key": "getAllowDynamicEnergy",
+    "value": 1
+   },
+   {
+    "key": "getDynamicEnergyThreshold",
+    "value": 5000000000
+   },
+   {
+    "key": "getDynamicEnergyIncreaseFactor",
+    "value": 2000
+   },
+   {
+    "key": "getDynamicEnergyMaxFactor",
+    "value": 34000
+   },
+   {
+    "key": "getAllowTvmShangHai",
+    "value": 1
+   },
+   {
+    "key": "getAllowCancelAllUnfreezeV2",
+    "value": 1
+   },
+   {
+    "key": "getMaxDelegateLockPeriod",
+    "value": 864000
+   },
+   {
+    "key": "getAllowOldRewardOpt",
+    "value": 1
+   },
+   {
+    "key": "getAllowEnergyAdjustment",
+    "value": 1
+   },
+   {
+    "key": "getMaxCreateAccountTxSize",
+    "value": 1000
+   },
+   {
+    "key": "getAllowStrictMath",
+    "value": 1
+   },
+   {
+    "key": "getConsensusLogicOptimization",
+    "value": 1
+   },
+   {
+    "key": "getAllowTvmCancun",
+    "value": 1
+   },
+   {
+    "key": "getAllowTvmBlob",
+    "value": 1
+   },
+   {
+    "key": "getAllowTvmSelfdestructRestriction",
+    "value": 1
+   },
+   {
+    "key": "getProposalExpireTime",
+    "value": 259200000
+   },
+   {
+    "key": "getAllowTvmOsaka",
+    "value": 1
+   },
+   {
+    "key": "getAllowTvmPrague",
+    "value": 1
+   },
+   {
+    "key": "getAllowHardenResourceCalculation"
+   },
+   {
+    "key": "getAllowHardenExchangeCalculation"
+   },
+   {
+    "key": "getAllowOptimizeTvmStorage"
+   }
+  ]
+ },
+ "wallet/gettransactioninfobyid {\"value\":\"0b70a0e89bed17d5ebd2ad141632de607c0e21c2b4bbbe4d2d1912b076aaed61\",\"visible\":true}": {
+  "id": "0b70a0e89bed17d5ebd2ad141632de607c0e21c2b4bbbe4d2d1912b076aaed61",
+  "blockNumber": 81902144,
+  "blockTimeStamp": 1776374169000,
+  "contractResult": [
+   "0000000000000000000000000000000000000000000000000000000000000000"
+  ],
+  "contract_address": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+  "receipt": {
+   "energy_usage": 64284,
+   "origin_energy_usage": 1,
+   "energy_usage_total": 64285,
+   "net_usage": 345,
+   "result": "SUCCESS",
+   "energy_penalty_total": 49635
+  },
+  "log": [
+   {
+    "address": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+    "topics": [
+     "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+     "0000000000000000000000005ff8979c6257855aece94217410b741e756cd96e",
+     "0000000000000000000000002a68baf67f1c497d9a4a609276a90dcd6ea77444"
+    ],
+    "data": "000000000000000000000000000000000000000000000000000000002c959300"
+   }
+  ]
+ },
+ "wallet/gettransactionbyid {\"value\":\"0b70a0e89bed17d5ebd2ad141632de607c0e21c2b4bbbe4d2d1912b076aaed61\",\"visible\":true}": {
+  "raw_data": {
+   "ref_block_bytes": "ba3e",
+   "ref_block_hash": "b8d163d535ca5498",
+   "expiration": 1776374284392,
+   "contract": [
+    {
+     "parameter": {
+      "value": {
+       "owner_address": "TJiezmqSGQn9wJLNsKAnJrv9dWTCqrVzCP",
+       "contract_address": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+       "data": "a9059cbb0000000000000000000000412a68baf67f1c497d9a4a609276a90dcd6ea77444000000000000000000000000000000000000000000000000000000002c959300"
+      },
+      "type_url": "type.googleapis.com/protocol.TriggerSmartContract"
+     },
+     "type": "TriggerSmartContract"
+    }
+   ],
+   "timestamp": 1776374163000,
+   "fee_limit": 30000000
+  },
+  "signature": [
+   "e2116f9b36b968c8dd42f93040e3106ed1554febf9d99a4ed69b951c080349fe5b187ffea46917738435b69dfcdf6fefc14da0efb428853b473607f3585a1d3800"
+  ],
+  "ret": [
+   {
+    "contractRet": "SUCCESS"
+   }
+  ],
+  "raw_data_hex": "0a02ba3e2208b8d163d535ca549840e880a2c1d9335aae01081f12a9010a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e747261637412740a15415ff8979c6257855aece94217410b741e756cd96e121541a614f803b6fd780986a42c78ec9c7f77e6ded13c2244a9059cbb0000000000000000000000412a68baf67f1c497d9a4a609276a90dcd6ea77444000000000000000000000000000000000000000000000000000000002c95930070b8cc9ac1d93390018087a70e",
+  "txID": "0b70a0e89bed17d5ebd2ad141632de607c0e21c2b4bbbe4d2d1912b076aaed61"
+ },
+ "wallet/gettransactioninfobyid {\"value\":\"3e4f592a61f46b5bf43c5c0a813a5e8066d5a6488fbef4245c99c938bc2a0360\",\"visible\":true}": {
+  "id": "3e4f592a61f46b5bf43c5c0a813a5e8066d5a6488fbef4245c99c938bc2a0360",
+  "fee": 11276600,
+  "blockNumber": 81898794,
+  "blockTimeStamp": 1776364119000,
+  "contractResult": [
+   "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000004ba28bb616ca62869c900000000000000000000000000000000000000000000000000000000188d4555"
+  ],
+  "contract_address": "TZFs5ch1R1C4mmjwrrmZqeqbUgGpxY1yWB",
+  "receipt": {
+   "energy_fee": 11276600,
+   "origin_energy_usage": 1139,
+   "energy_usage_total": 113905,
+   "net_usage": 540,
+   "result": "SUCCESS"
+  },
+  "log": [
+   {
+    "address": "TMacq4TDUw5q8NFBwmbY4RLXvzvG5JTkvi",
+    "topics": [
+     "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+     "0000000000000000000000004fcf203ebb0d69222475b042daafc792591bdf56",
+     "0000000000000000000000006aaeeed52c4ee7cc4d57d891b824c3e3cbc4e0c9"
+    ],
+    "data": "0000000000000000000000000000000000000000000004ba28bb616ca62869c9"
+   },
+   {
+    "address": "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR",
+    "topics": [
+     "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+     "0000000000000000000000006aaeeed52c4ee7cc4d57d891b824c3e3cbc4e0c9",
+     "000000000000000000000000ff7155b5df8008fbf3834922b2d52430b27874f5"
+    ],
+    "data": "00000000000000000000000000000000000000000000000000000000188d4555"
+   },
+   {
+    "address": "TKhJBwsH7hvegxrUHW4oHT5t1BUDds2UG4",
+    "topics": [
+     "1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1"
+    ],
+    "data": "000000000000000000000000000000000000000000253a37713aea92ea5448d0000000000000000000000000000000000000000000000000000000c1d5ee5b7b"
+   },
+   {
+    "address": "TKhJBwsH7hvegxrUHW4oHT5t1BUDds2UG4",
+    "topics": [
+     "d78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822",
+     "000000000000000000000000ff7155b5df8008fbf3834922b2d52430b27874f5",
+     "000000000000000000000000ff7155b5df8008fbf3834922b2d52430b27874f5"
+    ],
+    "data": "0000000000000000000000000000000000000000000004ba28bb616ca62869c90000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000188d4555"
+   },
+   {
+    "address": "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR",
+    "topics": [
+     "7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65",
+     "000000000000000000000000ff7155b5df8008fbf3834922b2d52430b27874f5"
+    ],
+    "data": "00000000000000000000000000000000000000000000000000000000188d4555"
+   }
+  ],
+  "internal_transactions": [
+   {
+    "hash": "640079f1a9c2cff46afdab03e81b2adde0563d0f78e1f7e50592b183d8e735d9",
+    "caller_address": "TZFs5ch1R1C4mmjwrrmZqeqbUgGpxY1yWB",
+    "transferTo_address": "TTfvyrAz86hbZk5iDpKD78pqLGgi8C7AAw",
+    "callValueInfo": [
+     {}
+    ],
+    "note": "63616c6c"
+   },
+   {
+    "hash": "8daef11c5d95455784ad63e427d2b75c7f1c3ac3c4ce818628af40f4b98ab39e",
+    "caller_address": "TTfvyrAz86hbZk5iDpKD78pqLGgi8C7AAw",
+    "transferTo_address": "TTfvyrAz86hbZk5iDpKD78pqLGgi8C7AAw",
+    "callValueInfo": [
+     {}
+    ],
+    "note": "63616c6c"
+   },
+   {
+    "hash": "8efea71a1b384d327cd01679411012c8444251a91de9823c89347bf8a5c61743",
+    "caller_address": "TZFs5ch1R1C4mmjwrrmZqeqbUgGpxY1yWB",
+    "transferTo_address": "TKhJBwsH7hvegxrUHW4oHT5t1BUDds2UG4",
+    "callValueInfo": [
+     {}
+    ],
+    "note": "63616c6c"
+   },
+   {
+    "hash": "1cf122e0fa92469c97012c6e16658222504ffe9381fa92d62164526b1f366734",
+    "caller_address": "TZFs5ch1R1C4mmjwrrmZqeqbUgGpxY1yWB",
+    "transferTo_address": "TMacq4TDUw5q8NFBwmbY4RLXvzvG5JTkvi",
+    "callValueInfo": [
+     {}
+    ],
+    "note": "63616c6c"
+   },
+   {
+    "hash": "a741c072165542c50348e34e39aecb5e85d2890810ecddc60b95e703445355df",
+    "caller_address": "TZFs5ch1R1C4mmjwrrmZqeqbUgGpxY1yWB",
+    "transferTo_address": "TKhJBwsH7hvegxrUHW4oHT5t1BUDds2UG4",
+    "callValueInfo": [
+     {}
+    ],
+    "note": "63616c6c"
+   },
+   {
+    "hash": "2f297a5feeb99a9aaed0fbcd44faed333085cc7fdfb98112fb803eff6fb6ef3f",
+    "caller_address": "TKhJBwsH7hvegxrUHW4oHT5t1BUDds2UG4",
+    "transferTo_address": "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR",
+    "callValueInfo": [
+     {}
+    ],
+    "note": "63616c6c"
+   },
+   {
+    "hash": "f54b76102ea1223d270e0331b802cfe3ce9d588aaa5b38daedf3f55c40d9fce1",
+    "caller_address": "TKhJBwsH7hvegxrUHW4oHT5t1BUDds2UG4",
+    "transferTo_address": "TMacq4TDUw5q8NFBwmbY4RLXvzvG5JTkvi",
+    "callValueInfo": [
+     {}
+    ],
+    "note": "63616c6c"
+   },
+   {
+    "hash": "8ea5efeb958c6a6f41b85f3012aad332d97208f8abf930e0f3a09f62bba6198f",
+    "caller_address": "TKhJBwsH7hvegxrUHW4oHT5t1BUDds2UG4",
+    "transferTo_address": "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR",
+    "callValueInfo": [
+     {}
+    ],
+    "note": "63616c6c"
+   },
+   {
+    "hash": "e4a2601fdafb1d77015fec30996a4d5616f832ce70cd8a7936a0168b6d98ef7f",
+    "caller_address": "TZFs5ch1R1C4mmjwrrmZqeqbUgGpxY1yWB",
+    "transferTo_address": "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR",
+    "callValueInfo": [
+     {}
+    ],
+    "note": "63616c6c"
+   },
+   {
+    "hash": "7226484380ddb552e51d3d106f323d4de51e8fac25db6296d1cc9546d1886eab",
+    "caller_address": "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR",
+    "transferTo_address": "TZFs5ch1R1C4mmjwrrmZqeqbUgGpxY1yWB",
+    "callValueInfo": [
+     {
+      "callValue": 411911509
+     }
+    ],
+    "note": "63616c6c"
+   },
+   {
+    "hash": "b62a72d77c1c90dbd2715636208567da38faf81fbfafcae3e9db86ddf9ed731e",
+    "caller_address": "TZFs5ch1R1C4mmjwrrmZqeqbUgGpxY1yWB",
+    "transferTo_address": "THFCWaSeVR4Cfw2ZcVGMthoJQftyVDjQux",
+    "callValueInfo": [
+     {
+      "callValue": 411911509
+     }
+    ],
+    "note": "63616c6c"
+   }
+  ]
+ },
+ "wallet/gettransactionbyid {\"value\":\"3e4f592a61f46b5bf43c5c0a813a5e8066d5a6488fbef4245c99c938bc2a0360\",\"visible\":true}": {
+  "raw_data": {
+   "ref_block_bytes": "ad14",
+   "ref_block_hash": "bc3d8d13c5da6da7",
+   "expiration": 1776367708944,
+   "contract": [
+    {
+     "parameter": {
+      "value": {
+       "owner_address": "THFCWaSeVR4Cfw2ZcVGMthoJQftyVDjQux",
+       "contract_address": "TZFs5ch1R1C4mmjwrrmZqeqbUgGpxY1yWB",
+       "data": "18cbafe50000000000000000000000000000000000000000000004ba28bb616ca62869c9000000000000000000000000000000000000000000000000000000001886fc4d00000000000000000000000000000000000000000000000000000000000000a00000000000000000000000004fcf203ebb0d69222475b042daafc792591bdf560000000000000000000000000000000000000000000000000000000069e12e3400000000000000000000000000000000000000000000000000000000000000020000000000000000000000007f5bd5235a22ebe67ff9c619082601273a0d3b70000000000000000000000000891cdb91d149f23b1a45d9c5ca78a88d0cb44c18"
+      },
+      "type_url": "type.googleapis.com/protocol.TriggerSmartContract"
+     },
+     "type": "TriggerSmartContract"
+    }
+   ],
+   "timestamp": 1776364108684,
+   "fee_limit": 300000000
+  },
+  "signature": [
+   "999b483dc934f488de3f0fb8fd0180d6f50bd84075095b73909d361b1cde068229dd8b9e92ae5e00d090017f72e373819f289ea78c6accc27bc781ebaf74502401"
+  ],
+  "ret": [
+   {
+    "contractRet": "SUCCESS"
+   }
+  ],
+  "raw_data_hex": "0a02ad142208bc3d8d13c5da6da74090d690bed9335af002081f12eb020a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e747261637412b5020a15414fcf203ebb0d69222475b042daafc792591bdf56121541ff7155b5df8008fbf3834922b2d52430b27874f522840218cbafe50000000000000000000000000000000000000000000004ba28bb616ca62869c9000000000000000000000000000000000000000000000000000000001886fc4d00000000000000000000000000000000000000000000000000000000000000a00000000000000000000000004fcf203ebb0d69222475b042daafc792591bdf560000000000000000000000000000000000000000000000000000000069e12e3400000000000000000000000000000000000000000000000000000000000000020000000000000000000000007f5bd5235a22ebe67ff9c619082601273a0d3b70000000000000000000000000891cdb91d149f23b1a45d9c5ca78a88d0cb44c18708cf7b4bcd933900180c6868f01",
+  "txID": "3e4f592a61f46b5bf43c5c0a813a5e8066d5a6488fbef4245c99c938bc2a0360"
+ },
+ "wallet/getcontract {\"value\":\"TMacq4TDUw5q8NFBwmbY4RLXvzvG5JTkvi\",\"visible\":true}": {
+  "origin_address": "TTfvyrAz86hbZk5iDpKD78pqLGgi8C7AAw",
+  "contract_address": "TMacq4TDUw5q8NFBwmbY4RLXvzvG5JTkvi",
+  "abi": {},
+  "consume_user_resource_percent": 100,
+  "code_hash": "27a188feafd6b72f7d85ccacb8ac472408e18b6a4f6544ba9126ffbdf6443408"
+ },
+ "wallet/triggerconstantcontract {\"owner_address\":\"T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb\",\"contract_address\":\"TMacq4TDUw5q8NFBwmbY4RLXvzvG5JTkvi\",\"function_selector\":\"symbol()\",\"parameter\":\"\",\"visible\":true}": {
+  "transaction": {
+   "raw_data": {
+    "ref_block_bytes": "3956",
+    "ref_block_hash": "b62750ace2262e61",
+    "expiration": 1791025782000,
+    "contract": [
+     {
+      "parameter": {
+       "value": {
+        "owner_address": "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb",
+        "contract_address": "TMacq4TDUw5q8NFBwmbY4RLXvzvG5JTkvi",
+        "data": "95d89b41"
+       },
+       "type_url": "type.googleapis.com/protocol.TriggerSmartContract"
+      },
+      "type": "TriggerSmartContract"
+     }
+    ],
+    "timestamp": 1791025724949
+   },
+   "ret": [
+    {}
+   ],
+   "raw_data_hex": "0a0239562208b62750ace2262e6140f0b9d28b90345a6d081f12690a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e747261637412340a154100000000000000000000000000000000000000001215417f5bd5235a22ebe67ff9c619082601273a0d3b70220495d89b417095fcce8b9034",
+   "txID": "cdd691aa5fdff5a8ca4ce6cd6a350db12fa5449a0fb94ee410a23bf1f24037fd",
+   "visible": true
+  },
+  "constant_result": [
+   "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000045065506500000000000000000000000000000000000000000000000000000000"
+  ],
+  "result": {
+   "result": true
+  },
+  "energy_used": 1166
+ },
+ "wallet/triggerconstantcontract {\"owner_address\":\"T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb\",\"contract_address\":\"TMacq4TDUw5q8NFBwmbY4RLXvzvG5JTkvi\",\"function_selector\":\"decimals()\",\"parameter\":\"\",\"visible\":true}": {
+  "transaction": {
+   "raw_data": {
+    "ref_block_bytes": "3958",
+    "ref_block_hash": "800857cbb9ac3537",
+    "expiration": 1791025788000,
+    "contract": [
+     {
+      "parameter": {
+       "value": {
+        "owner_address": "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb",
+        "contract_address": "TMacq4TDUw5q8NFBwmbY4RLXvzvG5JTkvi",
+        "data": "313ce567"
+       },
+       "type_url": "type.googleapis.com/protocol.TriggerSmartContract"
+      },
+      "type": "TriggerSmartContract"
+     }
+    ],
+    "timestamp": 1791025728555
+   },
+   "ret": [
+    {}
+   ],
+   "raw_data_hex": "0a0239582208800857cbb9ac353740e0e8d28b90345a6d081f12690a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e747261637412340a154100000000000000000000000000000000000000001215417f5bd5235a22ebe67ff9c619082601273a0d3b702204313ce56770ab98cf8b9034",
+   "txID": "4550fae03ce54fe35a43b185757cfa7e208cafc08297515f96045a00d6a9d20b",
+   "visible": true
+  },
+  "constant_result": [
+   "0000000000000000000000000000000000000000000000000000000000000012"
+  ],
+  "result": {
+   "result": true
+  },
+  "energy_used": 262
+ },
+ "wallet/getcontract {\"value\":\"TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR\",\"visible\":true}": {
+  "origin_address": "TG6jUMfwpwR9QNFsSwCGtLaV2TR2gV8yru",
+  "contract_address": "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR",
+  "abi": {
+   "entrys": [
+    {
+     "constant": true,
+     "name": "name",
+     "outputs": [
+      {
+       "type": "string"
+      }
+     ],
+     "type": "Function",
+     "stateMutability": "View"
+    },
+    {
+     "name": "approve",
+     "inputs": [
+      {
+       "name": "guy",
+       "type": "address"
+      },
+      {
+       "name": "sad",
+       "type": "uint256"
+      }
+     ],
+     "outputs": [
+      {
+       "type": "bool"
+      }
+     ],
+     "type": "Function",
+     "stateMutability": "Nonpayable"
+    },
+    {
+     "constant": true,
+     "name": "totalSupply",
+     "outputs": [
+      {
+       "type": "uint256"
+      }
+     ],
+     "type": "Function",
+     "stateMutability": "View"
+    },
+    {
+     "name": "transferFrom",
+     "inputs": [
+      {
+       "name": "src",
+       "type": "address"
+      },
+      {
+       "name": "dst",
+       "type": "address"
+      },
+      {
+       "name": "sad",
+       "type": "uint256"
+      }
+     ],
+     "outputs": [
+      {
+       "type": "bool"
+      }
+     ],
+     "type": "Function",
+     "stateMutability": "Nonpayable"
+    },
+    {
+     "name": "withdraw",
+     "inputs": [
+      {
+       "name": "sad",
+       "type": "uint256"
+      }
+     ],
+     "type": "Function",
+     "stateMutability": "Nonpayable"
+    },
+    {
+     "constant": true,
+     "name": "decimals",
+     "outputs": [
+      {
+       "type": "uint8"
+      }
+     ],
+     "type": "Function",
+     "stateMutability": "View"
+    },
+    {
+     "constant": true,
+     "name": "balanceOf",
+     "inputs": [
+      {
+       "name": "guy",
+       "type": "address"
+      }
+     ],
+     "outputs": [
+      {
+       "type": "uint256"
+      }
+     ],
+     "type": "Function",
+     "stateMutability": "View"
+    },
+    {
+     "constant": true,
+     "name": "symbol",
+     "outputs": [
+      {
+       "type": "string"
+      }
+     ],
+     "type": "Function",
+     "stateMutability": "View"
+    },
+    {
+     "name": "transfer",
+     "inputs": [
+      {
+       "name": "dst",
+       "type": "address"
+      },
+      {
+       "name": "sad",
+       "type": "uint256"
+      }
+     ],
+     "outputs": [
+      {
+       "type": "bool"
+      }
+     ],
+     "type": "Function",
+     "stateMutability": "Nonpayable"
+    },
+    {
+     "name": "deposit",
+     "type": "Function",
+     "payable": true,
+     "stateMutability": "Payable"
+    },
+    {
+     "name": "approve",
+     "inputs": [
+      {
+       "name": "guy",
+       "type": "address"
+      }
+     ],
+     "outputs": [
+      {
+       "type": "bool"
+      }
+     ],
+     "type": "Function",
+     "stateMutability": "Nonpayable"
+    },
+    {
+     "constant": true,
+     "name": "allowance",
+     "inputs": [
+      {
+       "name": "src",
+       "type": "address"
+      },
+      {
+       "name": "guy",
+       "type": "address"
+      }
+     ],
+     "outputs": [
+      {
+       "type": "uint256"
+      }
+     ],
+     "type": "Function",
+     "stateMutability": "View"
+    },
+    {
+     "type": "Fallback",
+     "payable": true,
+     "stateMutability": "Payable"
+    },
+    {
+     "name": "Approval",
+     "inputs": [
+      {
+       "indexed": true,
+       "name": "src",
+       "type": "address"
+      },
+      {
+       "indexed": true,
+       "name": "guy",
+       "type": "address"
+      },
+      {
+       "name": "sad",
+       "type": "uint256"
+      }
+     ],
+     "type": "Event"
+    },
+    {
+     "name": "Transfer",
+     "inputs": [
+      {
+       "indexed": true,
+       "name": "src",
+       "type": "address"
+      },
+      {
+       "indexed": true,
+       "name": "dst",
+       "type": "address"
+      },
+      {
+       "name": "sad",
+       "type": "uint256"
+      }
+     ],
+     "type": "Event"
+    },
+    {
+     "name": "Deposit",
+     "inputs": [
+      {
+       "indexed": true,
+       "name": "dst",
+       "type": "address"
+      },
+      {
+       "name": "sad",
+       "type": "uint256"
+      }
+     ],
+     "type": "Event"
+    },
+    {
+     "name": "Withdrawal",
+     "inputs": [
+      {
+       "indexed": true,
+       "name": "src",
+       "type": "address"
+      },
+      {
+       "name": "sad",
+       "type": "uint256"
+      }
+     ],
+     "type": "Event"
+    }
+   ]
+  },
+  "bytecode": "60c0604052600b60808190527f577261707065642054525800000000000000000000000000000000000000000060a090815261003e91600091906100bd565b506040805180820190915260048082527f57545258000000000000000000000000000000000000000000000000000000006020909201918252610083916001916100bd565b506002805460ff1916600617905534801561009d57600080fd5b50d380156100aa57600080fd5b50d280156100b757600080fd5b50610158565b828054600181600116156101000203166002900490600052602060002090601f016020900481019282601f106100fe57805160ff191683800117855561012b565b8280016001018555821561012b579182015b8281111561012b578251825591602001919060010190610110565b5061013792915061013b565b5090565b61015591905b808211156101375760008155600101610141565b90565b610934806101676000396000f3006080604052600436106100b95763ffffffff7c010000000000000000000000000000000000000000000000000000000060003504166306fdde0381146100c3578063095ea7b31461016757806318160ddd146101b957806323b872dd146101fa5780632e1a7d4d1461023e578063313ce5671461027057806370a08231146102b557806395d89b41146102f0578063a9059cbb1461031f578063d0e30db0146100b9578063daea85c51461035d578063dd62ed3e14610398575b6100c16103d9565b005b3480156100cf57600080fd5b50d380156100dc57600080fd5b50d280156100e957600080fd5b506100f2610430565b6040805160208082528351818301528351919283929083019185019080838360005b8381101561012c578181015183820152602001610114565b50505050905090810190601f1680156101595780820380516001836020036101000a031916815260200191505b509250505060405180910390f35b34801561017357600080fd5b50d3801561018057600080fd5b50d2801561018d57600080fd5b506101a5600160a060020a03600435166024356104be565b604080519115158252519081900360200190f35b3480156101c557600080fd5b50d380156101d257600080fd5b50d280156101df57600080fd5b506101e8610524565b60408051918252519081900360200190f35b34801561020657600080fd5b50d3801561021357600080fd5b50d2801561022057600080fd5b506101a5600160a060020a036004358116906024351660443561052a565b34801561024a57600080fd5b50d3801561025757600080fd5b50d2801561026457600080fd5b506100c16004356106f4565b34801561027c57600080fd5b50d3801561028957600080fd5b50d2801561029657600080fd5b5061029f610837565b6040805160ff9092168252519081900360200190f35b3480156102c157600080fd5b50d380156102ce57600080fd5b50d280156102db57600080fd5b506101e8600160a060020a0360043516610840565b3480156102fc57600080fd5b50d3801561030957600080fd5b50d2801561031657600080fd5b506100f261085b565b34801561032b57600080fd5b50d3801561033857600080fd5b50d2801561034557600080fd5b506101a5600160a060020a03600435166024356108b5565b34801561036957600080fd5b50d3801561037657600080fd5b50d2801561038357600080fd5b506101a5600160a060020a03600435166108c9565b3480156103a457600080fd5b50d380156103b157600080fd5b50d280156103be57600080fd5b506101e8600160a060020a03600435811690602435166108dd565b336000818152600460209081526040918290208054349081019091556003805482019055825190815291517fe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c9281900390910190a2565b6000805460408051602060026001851615610100026000190190941693909304601f810184900484028201840190925281815292918301828280156104b65780601f1061048b576101008083540402835291602001916104b6565b820191906000526020600020905b81548152906001019060200180831161049957829003601f168201915b505050505081565b336000818152600560209081526040808320600160a060020a038716808552908352818420869055815186815291519394909390927f8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925928290030190a350600192915050565b60035490565b600160a060020a03831660009081526004602052604081205482111561059a576040805160e560020a62461bcd02815260206004820152601660248201527f7372632062616c616e6365206e6f7420656e6f75676800000000000000000000604482015290519081900360640190fd5b600160a060020a03841633148015906105d85750600160a060020a038416600090815260056020908152604080832033845290915290205460001914155b1561068357600160a060020a0384166000908152600560209081526040808320338452909152902054821115610658576040805160e560020a62461bcd02815260206004820152601b60248201527f73726320616c6c6f77616e6365206973206e6f7420656e6f7567680000000000604482015290519081900360640190fd5b600160a060020a03841660009081526005602090815260408083203384529091529020805483900390555b600160a060020a03808516600081815260046020908152604080832080548890039055938716808352918490208054870190558351868152935191937fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef929081900390910190a35060019392505050565b3360009081526004602052604090205481111561075b576040805160e560020a62461bcd02815260206004820152601260248201527f6e6f7420656e6f7567682062616c616e63650000000000000000000000000000604482015290519081900360640190fd5b6003548111156107b5576040805160e560020a62461bcd02815260206004820152601660248201527f6e6f7420656e6f75676820746f74616c537570706c7900000000000000000000604482015290519081900360640190fd5b33600081815260046020526040808220805485900390555183156108fc0291849190818181858888f193505050501580156107f4573d6000803e3d6000fd5b5060038054829003905560408051828152905133917f7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65919081900360200190a250565b60025460ff1681565b600160a060020a031660009081526004602052604090205490565b60018054604080516020600284861615610100026000190190941693909304601f810184900484028201840190925281815292918301828280156104b65780601f1061048b576101008083540402835291602001916104b6565b60006108c233848461052a565b9392505050565b60006108d7826000196104be565b92915050565b600160a060020a039182166000908152600560209081526040808320939094168252919091522054905600a165627a7a72305820de01668e1b85e0e80149ee7f00a1d361b8c8409a6cac071c21b51b04c357c8520029",
+  "consume_user_resource_percent": 100,
+  "name": "WTRX",
+  "origin_energy_limit": 100000,
+  "code_hash": "12573415957a15017dd28752d528e7de25262abd102afd3f5d0529909c3dc03e"
+ },
+ "wallet/triggerconstantcontract {\"owner_address\":\"T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb\",\"contract_address\":\"TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR\",\"function_selector\":\"symbol()\",\"parameter\":\"\",\"visible\":true}": {
+  "transaction": {
+   "raw_data": {
+    "ref_block_bytes": "395a",
+    "ref_block_hash": "5ddfcb2710bcbd67",
+    "expiration": 1791025794000,
+    "contract": [
+     {
+      "parameter": {
+       "value": {
+        "owner_address": "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb",
+        "contract_address": "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR",
+        "data": "95d89b41"
+       },
+       "type_url": "type.googleapis.com/protocol.TriggerSmartContract"
+      },
+      "type": "TriggerSmartContract"
+     }
+    ],
+    "timestamp": 1791025735689
+   },
+   "ret": [
+    {}
+   ],
+   "raw_data_hex": "0a02395a22085ddfcb2710bcbd6740d097d38b90345a6d081f12690a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e747261637412340a15410000000000000000000000000000000000000000121541891cdb91d149f23b1a45d9c5ca78a88d0cb44c18220495d89b417089d0cf8b9034",
+   "txID": "e6518822717de24a4bcb635bae19c5427e12068c5693e7b7af44396457122b05",
+   "visible": true
+  },
+  "constant_result": [
+   "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000045754525800000000000000000000000000000000000000000000000000000000"
+  ],
+  "result": {
+   "result": true
+  },
+  "energy_used": 1012
+ },
+ "wallet/triggerconstantcontract {\"owner_address\":\"T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb\",\"contract_address\":\"TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR\",\"function_selector\":\"decimals()\",\"parameter\":\"\",\"visible\":true}": {
+  "transaction": {
+   "raw_data": {
+    "ref_block_bytes": "395b",
+    "ref_block_hash": "ad3a8d708d789bdd",
+    "expiration": 1791025797000,
+    "contract": [
+     {
+      "parameter": {
+       "value": {
+        "owner_address": "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb",
+        "contract_address": "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR",
+        "data": "313ce567"
+       },
+       "type_url": "type.googleapis.com/protocol.TriggerSmartContract"
+      },
+      "type": "TriggerSmartContract"
+     }
+    ],
+    "timestamp": 1791025739257
+   },
+   "ret": [
+    {}
+   ],
+   "raw_data_hex": "0a02395b2208ad3a8d708d789bdd4088afd38b90345a6d081f12690a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e747261637412340a15410000000000000000000000000000000000000000121541891cdb91d149f23b1a45d9c5ca78a88d0cb44c182204313ce56770f9ebcf8b9034",
+   "txID": "2ac20b44c92fe9e732e695903590e31d2f67ed650fc0af918ab74a80608d9599",
+   "visible": true
+  },
+  "constant_result": [
+   "0000000000000000000000000000000000000000000000000000000000000006"
+  ],
+  "result": {
+   "result": true
+  },
+  "energy_used": 399
+ },
+ "wallet/gettransactioninfobyid {\"value\":\"3c3ec32161ccb4ba417d33729ab218796f9a1a8f5af1a12266736ef39dc2d24a\",\"visible\":true}": {
+  "id": "3c3ec32161ccb4ba417d33729ab218796f9a1a8f5af1a12266736ef39dc2d24a",
+  "fee": 2248500,
+  "blockNumber": 83295537,
+  "blockTimeStamp": 1780555683000,
+  "contractResult": [
+   "08c379a0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000245472616e7366657248656c7065723a205452414e534645525f46524f4d5f4641494c454400000000000000000000000000000000000000000000000000000000"
+  ],
+  "contract_address": "TPwezUWpEGmFBENNWJHwXHRG1D2NCEEt5s",
+  "receipt": {
+   "energy_fee": 1645500,
+   "energy_usage_total": 16455,
+   "net_fee": 603000,
+   "result": "REVERT",
+   "energy_penalty_total": 6859
+  },
+  "result": "FAILED",
+  "resMessage": "REVERT opcode executed",
+  "internal_transactions": [
+   {
+    "hash": "094d0426adaec791189eb0261547ed2eae78c6774090df7fed4257729ee93c00",
+    "caller_address": "TPwezUWpEGmFBENNWJHwXHRG1D2NCEEt5s",
+    "transferTo_address": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+    "callValueInfo": [
+     {}
+    ],
+    "note": "63616c6c",
+    "rejected": true
+   },
+   {
+    "hash": "68b98bd302a3b7f4c944d7045653fd0b5f60d19ee459d04b065471fc6b62c62c",
+    "caller_address": "TPwezUWpEGmFBENNWJHwXHRG1D2NCEEt5s",
+    "transferTo_address": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+    "callValueInfo": [
+     {}
+    ],
+    "note": "63616c6c",
+    "rejected": true
+   }
+  ]
+ },
+ "wallet/gettransactionbyid {\"value\":\"3c3ec32161ccb4ba417d33729ab218796f9a1a8f5af1a12266736ef39dc2d24a\",\"visible\":true}": {
+  "raw_data": {
+   "ref_block_bytes": "fd2d",
+   "ref_block_hash": "7a8a88d73b72bf33",
+   "expiration": 1780555731000,
+   "contract": [
+    {
+     "parameter": {
+      "value": {
+       "owner_address": "TBeSjFtNPLqhou3ooxmcmFuTbBnaFHh5da",
+       "contract_address": "TPwezUWpEGmFBENNWJHwXHRG1D2NCEEt5s",
+       "data": "9ddf93bb000000000000000000000000a614f803b6fd780986a42c78ec9c7f77e6ded13c00000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000002cb4178000000000000000000000000000000000000000000000000000000002713028db8000000000000000000000000000000000000000000000000000000000000001a534f4c7c74643867756a7c302e30327c62726964676572737c30000000000000000000000000000000000000000000000000000000000000000000000000002c47533464385552514261416d6e666f7174364d7967656f616a7850746e55556b41466d504357476d667551570000000000000000000000000000000000000000"
+      },
+      "type_url": "type.googleapis.com/protocol.TriggerSmartContract"
+     },
+     "type": "TriggerSmartContract"
+    }
+   ],
+   "timestamp": 1780555671000,
+   "fee_limit": 100000000
+  },
+  "signature": [
+   "56e0f10aef78fb1005a49268239af5d4486a38eae8fb521244ae2dbc38cf05fd505398a655e332c2429b1c349fd7569cd60d9ecdf9e7c0cd5ca324c8edd3ffc61c"
+  ],
+  "ret": [
+   {
+    "contractRet": "REVERT"
+   }
+  ],
+  "raw_data_hex": "0a02fd2d22087a8a88d73b72bf3340b8a0918be9335ab003081f12ab030a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e747261637412f5020a15411263ceb73aff6fcbcd0b552b228605d7b93b1f4412154199469fd5aa08cfe836395ce993c0ebd567e2c14f22c4029ddf93bb000000000000000000000000a614f803b6fd780986a42c78ec9c7f77e6ded13c00000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000002cb4178000000000000000000000000000000000000000000000000000000002713028db8000000000000000000000000000000000000000000000000000000000000001a534f4c7c74643867756a7c302e30327c62726964676572737c30000000000000000000000000000000000000000000000000000000000000000000000000002c47533464385552514261416d6e666f7174364d7967656f616a7850746e55556b41466d504357476d66755157000000000000000000000000000000000000000070d8cb8d8be933900180c2d72f",
+  "txID": "3c3ec32161ccb4ba417d33729ab218796f9a1a8f5af1a12266736ef39dc2d24a"
+ }
+}

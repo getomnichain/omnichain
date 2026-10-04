@@ -1,0 +1,59 @@
+{
+ "tx": "AAAAAgAAAAA7mRE4Dv6Yi6CokA6xz+RPNm99vpRr7QdyQPf2JN8VxQAAAGQAAAAAAAAAKgAAAAEAAAAAAAAAAAAAAABlU/EAAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABre/OWa7lKWj3YGHUlMJSW3Vln6QpamX0me8p5WR35JYAAAAIdHJhbnNmZXIAAAADAAAAEgAAAAAAAAAAO5kROA7+mIugqJAOsc/kTzZvfb6Ua+0HckD39iTfFcUAAAASAAAAAAAAAAA7mRE4Dv6Yi6CokA6xz+RPNm99vpRr7QdyQPf2JN8VxQAAAAoAAAAAAAAAAAAAAAAAAAAFAAAAAAAAAAAAAAAA",
+ "cases": {
+  "min_above_resource": {
+   "simulation": {
+    "id": "1",
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABNI=",
+    "minResourceFee": "5000",
+    "results": [
+     {
+      "auth": [
+       "AAAAAAAAAAAAAAABre/OWa7lKWj3YGHUlMJSW3Vln6QpamX0me8p5WR35JYAAAAIdHJhbnNmZXIAAAAAAAAAAA=="
+      ],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "expected": "AAAAAgAAAAA7mRE4Dv6Yi6CokA6xz+RPNm99vpRr7QdyQPf2JN8VxQAAE+wAAAAAAAAAKgAAAAEAAAAAAAAAAAAAAABlU/EAAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABre/OWa7lKWj3YGHUlMJSW3Vln6QpamX0me8p5WR35JYAAAAIdHJhbnNmZXIAAAADAAAAEgAAAAAAAAAAO5kROA7+mIugqJAOsc/kTzZvfb6Ua+0HckD39iTfFcUAAAASAAAAAAAAAAA7mRE4Dv6Yi6CokA6xz+RPNm99vpRr7QdyQPf2JN8VxQAAAAoAAAAAAAAAAAAAAAAAAAAFAAAAAQAAAAAAAAAAAAAAAa3vzlmu5Slo92Bh1JTCUlt1ZZ+kKWpl9JnvKeVkd+SWAAAACHRyYW5zZmVyAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABNIAAAAA",
+   "fee": 5100
+  },
+  "min_below_resource": {
+   "simulation": {
+    "id": "1",
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE4g=",
+    "minResourceFee": "1234",
+    "results": [
+     {
+      "auth": [],
+      "xdr": "AAAAAQ=="
+     }
+    ]
+   },
+   "expected": "AAAAAgAAAAA7mRE4Dv6Yi6CokA6xz+RPNm99vpRr7QdyQPf2JN8VxQAABTYAAAAAAAAAKgAAAAEAAAAAAAAAAAAAAABlU/EAAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABre/OWa7lKWj3YGHUlMJSW3Vln6QpamX0me8p5WR35JYAAAAIdHJhbnNmZXIAAAADAAAAEgAAAAAAAAAAO5kROA7+mIugqJAOsc/kTzZvfb6Ua+0HckD39iTfFcUAAAASAAAAAAAAAAA7mRE4Dv6Yi6CokA6xz+RPNm99vpRr7QdyQPf2JN8VxQAAAAoAAAAAAAAAAAAAAAAAAAAFAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATiAAAAAA=",
+   "fee": 1334
+  },
+  "invalid_[]": {
+   "simulation": {
+    "id": "1",
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE4g=",
+    "minResourceFee": "1234",
+    "results": []
+   },
+   "error": "ValueError: Simulation results invalid: []"
+  },
+  "invalid_None": {
+   "simulation": {
+    "id": "1",
+    "latestLedger": 1,
+    "transactionData": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE4g=",
+    "minResourceFee": "1234",
+    "results": null
+   },
+   "error": "ValueError: Simulation results invalid: None"
+  }
+ }
+}

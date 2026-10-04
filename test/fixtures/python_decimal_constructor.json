@@ -1,0 +1,106 @@
+{
+ "1": {
+  "valid": true,
+  "str": "1"
+ },
+ "1.5": {
+  "valid": true,
+  "str": "1.5"
+ },
+ "-2.25": {
+  "valid": true,
+  "str": "-2.25"
+ },
+ "0.0000001": {
+  "valid": true,
+  "str": "1E-7"
+ },
+ "100.0000000": {
+  "valid": true,
+  "str": "100.0000000"
+ },
+ "1e3": {
+  "valid": true,
+  "str": "1E+3"
+ },
+ "1E-7": {
+  "valid": true,
+  "str": "1E-7"
+ },
+ ".5": {
+  "valid": true,
+  "str": "0.5"
+ },
+ "5.": {
+  "valid": true,
+  "str": "5"
+ },
+ "1_000": {
+  "valid": true,
+  "str": "1000"
+ },
+ "1_000.5": {
+  "valid": true,
+  "str": "1000.5"
+ },
+ "0x10": {
+  "valid": false
+ },
+ "0b101": {
+  "valid": false
+ },
+ "0o7": {
+  "valid": false
+ },
+ "abc": {
+  "valid": false
+ },
+ "": {
+  "valid": false
+ },
+ "  7 ": {
+  "valid": true,
+  "str": "7"
+ },
+ "1__0": {
+  "valid": true,
+  "str": "10"
+ },
+ "_1": {
+  "valid": true,
+  "str": "1"
+ },
+ "1_": {
+  "valid": true,
+  "str": "1"
+ },
+ "1.2.3": {
+  "valid": false
+ },
+ "+3": {
+  "valid": true,
+  "str": "3"
+ },
+ "1e": {
+  "valid": false
+ },
+ "e3": {
+  "valid": false
+ },
+ "1\u001c": {
+  "valid": true,
+  "str": "1"
+ },
+ "922337203685.4775807": {
+  "valid": true,
+  "str": "922337203685.4775807"
+ },
+ "-0": {
+  "valid": true,
+  "str": "-0"
+ },
+ "00012.3400": {
+  "valid": true,
+  "str": "12.3400"
+ }
+}

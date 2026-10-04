@@ -1,0 +1,923 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { IncomingMessage, Server, ServerResponse, createServer } from 'node:http';
+import { AddressInfo } from 'node:net';
+import { inspect } from 'node:util';
+
+import {
+  Account,
+  AccountRequiresMemoError,
+  Asset as StellarSdkAsset,
+  Keypair,
+  Memo,
+  MuxedAccount,
+  Networks,
+  Operation,
+  Transaction,
+  TransactionBuilder,
+  nativeToScVal,
+  xdr,
+} from '@stellar/stellar-sdk';
+import { Decimal } from 'decimal.js';
+
+import { AssetMap } from '../../asset_map.ts';
+import { NetworkType, networkTypeRegistrations, tryNetworkTypeOf } from '../../network_type.ts';
+import { FiatCurrency } from '../../chain_type.ts';
+import { CHAIN_ID_STELLAR_MAINNET } from '../../chain_ids.ts';
+import { ChainError, ChainErrorKinds } from '../../errors.ts';
+import { AssetBalanceChange } from '../../transaction_status.ts';
+import { EvmToken } from '../../evm/evm_token.ts';
+import { StellarAsset } from '../stellar_asset.ts';
+import { STELLAR_MAINNET_STABLECOINS_PEG, STELLAR_USDC } from '../stellar_assets.ts';
+import { StellarChain, StellarSignedMessage, scvalToUtf8String } from '../stellar_chain.ts';
+import { StellarMainnet } from '../stellar_chains.ts';
+import { StellarGasPricing } from '../stellar_gas_pricing.ts';
+import {
+  StellarChangeTrustLineTransactionPrerequisite,
+  StellarChangeTrustPrerequisiteResponse,
+  StellarSignedTransaction,
+  StellarTransactionSimulationResult,
+  StellarUnsignedTransaction,
+  SorobanRpcErrorResponse,
+  assembleSorobanTransaction,
+  validateSimulateTransactionResponse,
+  stellarOperationAmount,
+} from '../stellar_transactions.ts';
+import { StellarTransactionStatus } from '../stellar_transaction_status.ts';
+import { StellarWallet } from '../stellar_wallet.ts';
+
+const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+const SENDER = StellarWallet.fromMnemonic(MNEMONIC, { derivationPath: "m/44'/148'/0'" });
+const RECEIVER = StellarWallet.fromMnemonic(MNEMONIC, { derivationPath: "m/44'/148'/1'" });
+const USDC_ISSUER = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
+
+interface HorizonReply {
+  status: number;
+  body: unknown;
+}
+
+interface HorizonStub {
+  url: string;
+  requests: string[];
+  ledgers: HorizonReply;
+  submit: HorizonReply;
+  accounts: Record<string, HorizonReply>;
+  close: () => Promise<void>;
+}
+
+async function startHorizon(): Promise<HorizonStub> {
+  const stub = {
+    requests: [] as string[],
+    ledgers: { status: 200, body: {} } as HorizonReply,
+    submit: { status: 200, body: {} } as HorizonReply,
+    accounts: {} as Record<string, HorizonReply>,
+  };
+  const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    req.resume();
+    req.on('end', () => {
+      stub.requests.push(`${req.method} ${req.url}`);
+      const reply =
+        req.url?.startsWith('/ledgers') === true
+          ? stub.ledgers
+          : req.url === '/transactions' && req.method === 'POST'
+            ? stub.submit
+            : stub.accounts[(req.url ?? '').replace('/accounts/', '')] ?? { status: 404, body: { type: 'https://stellar.org/horizon-errors/not_found', title: 'Resource Missing', status: 404 } };
+      res.writeHead(reply.status, { 'Content-Type': 'application/hal+json; charset=utf-8' });
+      res.end(JSON.stringify(reply.body));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  return Object.assign(stub, {
+    url: `http://127.0.0.1:${port}`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  });
+}
+
+function chainOn(horizonUrl: string): StellarChain {
+  return new StellarChain({
+    name: 'Stellar Local Horizon',
+    defaultHorizonUrl: horizonUrl,
+    defaultSorobanRpcUrl: 'http://127.0.0.1:9',
+    explorerUrl: 'https://stellar.expert/explorer/public',
+    stellarExpertApiUrl: 'https://api.stellar.expert/explorer/public',
+    networkPassphrase: Networks.PUBLIC,
+    chainId: CHAIN_ID_STELLAR_MAINNET,
+    chainAgnosticStellarIdentifier: 'pubnet',
+  });
+}
+
+function ledgersPage(records: unknown[]): unknown {
+  const href = 'http://127.0.0.1/ledgers?order=desc&limit=1';
+  return { _links: { self: { href }, next: { href }, prev: { href } }, _embedded: { records } };
+}
+
+function signedPaymentXdr(): string {
+  const tx = new TransactionBuilder(new Account(SENDER.address, '100'), { fee: '100', networkPassphrase: Networks.PUBLIC })
+    .addOperation(Operation.payment({ destination: RECEIVER.address, asset: StellarSdkAsset.native(), amount: '1' }))
+    .setTimeout(300)
+    .build();
+  tx.sign(Keypair.fromSecret(SENDER.secretSeed));
+  return tx.toXDR();
+}
+
+function feeBumpXdr(): string {
+  const inner = TransactionBuilder.fromXDR(signedPaymentXdr(), Networks.PUBLIC);
+  const feeBump = TransactionBuilder.buildFeeBumpTransaction(Keypair.fromSecret(SENDER.secretSeed), '200', inner as never, Networks.PUBLIC);
+  feeBump.sign(Keypair.fromSecret(SENDER.secretSeed));
+  return feeBump.toXDR();
+}
+
+describe('Horizon over real HTTP (stellar-sdk http client, not hand-built errors)', () => {
+  let horizon: HorizonStub;
+
+  beforeAll(async () => {
+    horizon = await startHorizon();
+  });
+
+  afterAll(async () => {
+    await horizon.close();
+  });
+
+  beforeEach(() => {
+    horizon.requests.length = 0;
+  });
+
+  it('Horizon and Soroban use stellar-sdk Python AiohttpClient limits: GET 11 s, POST 33 s, at most 9 redirects (aiohttp max_redirects=10 raises on the 10th), no environment proxy', async () => {
+    const chain = chainOn(horizon.url);
+    const applied = async (client: StellarChain['asyncHorizonServer']['httpClient'], method: string) => {
+      let config = { method, headers: {} } as Record<string, unknown>;
+      for (const handler of client.interceptors.request.handlers) {
+        if (handler !== null) config = (await handler.fulfilled(config as never)) as Record<string, unknown>;
+      }
+      return config;
+    };
+    expect(await applied(chain.asyncHorizonServer.httpClient, 'get')).toMatchObject({ timeout: 11_000, proxy: false, maxRedirects: 9 });
+    expect(await applied(chain.asyncHorizonServer.httpClient, 'post')).toMatchObject({ timeout: 33_000, proxy: false, maxRedirects: 9 });
+    expect(await applied(chain.asyncSorobanServer.httpClient, 'post')).toMatchObject({ timeout: 33_000, proxy: false, maxRedirects: 9 });
+
+    const saved = { ...process.env };
+    process.env.HTTP_PROXY = 'http://127.0.0.1:9';
+    process.env.http_proxy = 'http://127.0.0.1:9';
+    delete process.env.NO_PROXY;
+    delete process.env.no_proxy;
+    try {
+      horizon.ledgers = { status: 200, body: ledgersPage([{ sequence: 1, base_fee_in_stroops: 250 }]) };
+      await expect(chainOn(horizon.url).getBaseFee()).resolves.toBe(250);
+    } finally {
+      process.env = saved;
+    }
+  });
+
+  it('a stalled Horizon GET gives up after 11 s, as Python does', async () => {
+    const stalled = createServer(() => undefined);
+    await new Promise<void>((resolve) => stalled.listen(0, '127.0.0.1', resolve));
+    const started = Date.now();
+    try {
+      await expect(chainOn(`http://127.0.0.1:${(stalled.address() as AddressInfo).port}`).getBaseFee()).rejects.toBeDefined();
+      expect(Date.now() - started).toBeGreaterThanOrEqual(10_900);
+      expect(Date.now() - started).toBeLessThan(14_000);
+    } finally {
+      stalled.closeAllConnections();
+      await new Promise<void>((resolve) => stalled.close(() => resolve()));
+    }
+  }, 20_000);
+
+  it.each(
+    (
+      JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'python_handle_base_fee.json'), 'utf8')) as {
+        name: string;
+        body: unknown;
+        value?: number;
+        error?: string;
+      }[]
+    ).map((c) => [c.name, c] as const),
+  )('getBaseFee follows stellar-sdk Python _handle_base_fee: %s', async (_name, c) => {
+    horizon.ledgers = { status: 200, body: c.body };
+    const result = chainOn(horizon.url).getBaseFee();
+    if (c.error === undefined) {
+      await expect(result).resolves.toBe(c.value);
+    } else {
+      await expect(result).rejects.toMatchObject({ message: c.error });
+    }
+    expect(horizon.requests).toEqual(['GET /ledgers?order=desc&limit=1']);
+  });
+
+
+  it('SEP-29 is checked on the base G account of a muxed destination, as stellar-sdk Python does', async () => {
+    const chain = chainOn(horizon.url);
+    horizon.accounts = {
+      [RECEIVER.address]: {
+        status: 200,
+        body: { id: RECEIVER.address, account_id: RECEIVER.address, data: { 'config.memo_required': 'MQ==' }, _links: {} },
+      },
+    };
+    const muxed = new MuxedAccount(new Account(RECEIVER.address, '0'), '9').accountId();
+    const build = (memo: Memo) => {
+      const tx = new TransactionBuilder(new Account(SENDER.address, '100'), { fee: '100', networkPassphrase: Networks.PUBLIC, memo })
+        .addOperation(Operation.payment({ destination: muxed, asset: StellarSdkAsset.native(), amount: '1' }))
+        .setTimeout(300)
+        .build();
+      tx.sign(Keypair.fromSecret(SENDER.secretSeed));
+      return tx.toXDR();
+    };
+    try {
+      const signed = new StellarSignedTransaction({ chainId: chain.chainId, signedXdr: build(Memo.none()), networkPassphrase: Networks.PUBLIC });
+      const refused = await chain.broadcastSignedTransaction(signed);
+      expect(refused.broadcastError).toBeInstanceOf(AccountRequiresMemoError);
+      expect(refused.broadcastError).toMatchObject({ message: 'Destination account requires a memo in the transaction.', accountId: RECEIVER.address, operationIndex: 0 });
+      expect(horizon.requests).toEqual([`GET /accounts/${RECEIVER.address}`]);
+      await expect(chain.broadcast(signed.signedXdr)).rejects.toMatchObject({ kind: ChainErrorKinds.BroadcastRejected });
+
+      horizon.requests.length = 0;
+      const withMemo = build(Memo.text('invoice'));
+      horizon.submit = { status: 200, body: { hash: new StellarSignedTransaction({ chainId: chain.chainId, signedXdr: withMemo, networkPassphrase: Networks.PUBLIC }).txHash } };
+      await expect(chain.broadcast(withMemo)).resolves.toMatch(/^[0-9a-f]{64}$/);
+      expect(horizon.requests).toEqual(['POST /transactions']);
+    } finally {
+      horizon.accounts = {};
+    }
+  });
+
+  it('a strict-send path query sends source_amount as Python str(Decimal), so a dust amount uses exponent notation', async () => {
+    const chain = chainOn(horizon.url);
+    const request = {
+      sendAsset: chain.nativeAsset,
+      receiveAsset: chain.createSacToken('USDC', USDC_ISSUER),
+      senderAddress: SENDER.address,
+      receiverAddress: RECEIVER.address,
+      slippageTolerancePercent: new Decimal(1),
+    };
+    for (const [amount, expected] of [
+      ['0.0000001', '1E-7'],
+      ['0.5', '0.5'],
+    ]) {
+      horizon.requests.length = 0;
+      await chain.createExactInSwapTransaction({ ...request, sendAmount: new Decimal(amount) }).catch(() => undefined);
+      const query = horizon.requests.find((r) => r.startsWith('GET /paths/strict-send'));
+      expect(new URL(`http://h${query?.slice(4)}`).searchParams.get('source_amount')).toBe(expected);
+    }
+  });
+
+  it('the wallet signs for the requested account with int(sequence), like stellar-sdk Python load_account', async () => {
+    const chain = chainOn(horizon.url);
+    horizon.ledgers = { status: 200, body: ledgersPage([{ sequence: 1, base_fee_in_stroops: 100 }]) };
+    const unsigned = chain.buildUnsignedTransaction({
+      sourceAddress: SENDER.address,
+      operations: [Operation.payment({ destination: RECEIVER.address, asset: StellarSdkAsset.native(), amount: '1' })],
+    });
+    try {
+      horizon.accounts = { [SENDER.address]: { status: 200, body: { account_id: RECEIVER.address, sequence: ' 41 ', _links: {} } } };
+      const signed = await SENDER.signTransaction(unsigned, chain);
+      const tx = TransactionBuilder.fromXDR(signed.signedXdr, Networks.PUBLIC) as Transaction;
+      expect(tx.source).toBe(SENDER.address);
+      expect(tx.sequence).toBe('42');
+      for (const sequence of ['1e3', '0x10', '1.0']) {
+        horizon.accounts = { [SENDER.address]: { status: 200, body: { account_id: SENDER.address, sequence, _links: {} } } };
+        await expect(SENDER.signTransaction(unsigned, chain)).rejects.toThrow(`invalid literal for int() with base 10: '${sequence}'`);
+      }
+    } finally {
+      horizon.accounts = {};
+    }
+  });
+
+  it('SEP-29 reads account data like Python: a malformed data field stops the broadcast before the POST', async () => {
+    const chain = chainOn(horizon.url);
+    const tx = new TransactionBuilder(new Account(SENDER.address, '100'), { fee: '100', networkPassphrase: Networks.PUBLIC })
+      .addOperation(Operation.payment({ destination: RECEIVER.address, asset: StellarSdkAsset.native(), amount: '1' }))
+      .setTimeout(300)
+      .build();
+    tx.sign(Keypair.fromSecret(SENDER.secretSeed));
+    const signed = new StellarSignedTransaction({ chainId: chain.chainId, signedXdr: tx.toXDR(), networkPassphrase: Networks.PUBLIC });
+    try {
+      for (const body of [
+        { data: [] },
+        { data: 'x' },
+        { data: 5 },
+        { data: true },
+        { _links: { data: { href: 'http://127.0.0.1/data' } } },
+      ]) {
+        horizon.requests.length = 0;
+        horizon.accounts = { [RECEIVER.address]: { status: 200, body: { account_id: RECEIVER.address, ...body } } };
+        const response = await chain.broadcastSignedTransaction(signed);
+        expect(response.broadcastError).not.toBeNull();
+        expect(horizon.requests).not.toContain('POST /transactions');
+      }
+      horizon.requests.length = 0;
+      horizon.submit = { status: 200, body: { hash: signed.txHash } };
+      horizon.accounts = {
+        [RECEIVER.address]: { status: 200, body: { account_id: RECEIVER.address, data: {}, data_attr: { 'config.memo_required': 'MQ==' }, _links: {} } },
+      };
+      await expect(chain.broadcast(signed.signedXdr)).resolves.toBe(signed.txHash);
+      expect(horizon.requests).toContain('POST /transactions');
+    } finally {
+      horizon.accounts = {};
+    }
+  });
+
+  it('Horizon amounts follow Python Decimal(): a radix-prefixed trustline limit stops the ChangeTrust before signing', async () => {
+    const chain = chainOn(horizon.url);
+    horizon.ledgers = { status: 200, body: ledgersPage([{ sequence: 1, base_fee_in_stroops: 100 }]) };
+    try {
+      horizon.requests.length = 0;
+      horizon.accounts = {
+        [RECEIVER.address]: {
+          status: 200,
+          body: {
+            account_id: RECEIVER.address,
+            sequence: '1',
+            balances: [{ asset_type: 'credit_alphanum4', asset_code: 'USDC', asset_issuer: USDC_ISSUER, limit: '0x10', balance: '0' }],
+            _links: {},
+          },
+        },
+      };
+      await expect(RECEIVER.ensureMinimumTrustLine(chain, 'USDC', USDC_ISSUER, new Decimal(StellarAsset.TRUST_LINE_MAX_LIMIT))).rejects.toThrow(
+        "[<class 'decimal.ConversionSyntax'>]",
+      );
+      expect(horizon.requests).not.toContain('POST /transactions');
+    } finally {
+      horizon.accounts = {};
+    }
+  });
+
+  it('a Horizon 400 on submit is BroadcastRejected with the result codes; 5xx stays RpcError', async () => {
+    const chain = chainOn(horizon.url);
+    const xdr = signedPaymentXdr();
+    horizon.submit = {
+      status: 400,
+      body: {
+        type: 'https://stellar.org/horizon-errors/transaction_failed',
+        title: 'Transaction Failed',
+        status: 400,
+        extras: { result_codes: { transaction: 'tx_bad_seq' } },
+      },
+    };
+    const rejected = await chain.broadcast(xdr).catch((err: unknown) => err);
+    expect(rejected).toBeInstanceOf(ChainError);
+    expect(rejected).toMatchObject({ kind: ChainErrorKinds.BroadcastRejected });
+    expect((rejected as ChainError).message).toContain('{"transaction":"tx_bad_seq"}');
+    expect(horizon.requests).toContain('POST /transactions');
+
+    horizon.submit = { status: 504, body: { type: 'https://stellar.org/horizon-errors/timeout', title: 'Timeout', status: 504 } };
+    await expect(chain.broadcast(xdr)).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError });
+
+    const hash = new StellarSignedTransaction({ chainId: chain.chainId, signedXdr: xdr, networkPassphrase: Networks.PUBLIC }).txHash;
+    horizon.submit = { status: 200, body: { hash } };
+    await expect(chain.broadcast(xdr)).resolves.toBe(hash);
+
+    horizon.submit = { status: 200, body: { hash, result_xdr: 'zzzz' } };
+    const signed = new StellarSignedTransaction({ chainId: chain.chainId, signedXdr: xdr, networkPassphrase: Networks.PUBLIC });
+    const accepted = await chain.broadcastSignedTransaction(signed);
+    expect(accepted.broadcastError).toBeNull();
+    expect(accepted.txHash).toBe(hash);
+    await expect(chain.broadcast(xdr)).resolves.toBe(hash);
+  });
+
+  it('fee-bump XDR is rejected with Python\'s "Unexpected EnvelopeType: 5." before any request', async () => {
+    const chain = chainOn(horizon.url);
+    const feeBump = feeBumpXdr();
+    const signed = new StellarSignedTransaction({ chainId: chain.chainId, signedXdr: feeBump, networkPassphrase: Networks.PUBLIC });
+    expect(() => signed.txHash).toThrow('Unexpected EnvelopeType: 5.');
+    await expect(chain.broadcastSignedTransaction(signed)).rejects.toThrow('Unexpected EnvelopeType: 5.');
+    await expect(chain.broadcast(feeBump)).rejects.toMatchObject({ kind: ChainErrorKinds.InvalidArgument });
+    expect(horizon.requests).toEqual([]);
+  });
+});
+
+describe('operation amounts follow stellar-sdk raise_if_not_valid_amount and raise ChainError, never a raw TypeError', () => {
+  it.each([
+    ['-1', 'amount', 'Value of argument "amount" must represent a positive number and the max valid value is 922337203685.4775807: -1'],
+    ['922337203685.4775808', 'amount', 'Value of argument "amount" must represent a positive number and the max valid value is 922337203685.4775807: 922337203685.4775808'],
+    ['1.00000001', 'send_amount', 'Value of argument "send_amount" must have at most 7 digits after the decimal: 1.00000001'],
+    ['0', 'dest_min', 'Value of argument "dest_min" must be greater than zero: the Stellar network rejects a zero dest_min'],
+  ])('%s as %s', (value, argument, message) => {
+    expect(() => stellarOperationAmount(new Decimal(value), argument)).toThrow(new ChainError(ChainErrorKinds.InvalidArgument, message));
+  });
+
+  it('a ChangeTrust limit of 0 is allowed (closes the trustline), like Python', () => {
+    expect(stellarOperationAmount(new Decimal(0), 'limit', { allowZero: true })).toBe('0');
+    expect(stellarOperationAmount(new Decimal('922337203685.4775807'), 'limit', { allowZero: true })).toBe('922337203685.4775807');
+  });
+
+  it('a zero classic transfer is a ChainError(InvalidArgument)', async () => {
+    const chain = chainOn('http://127.0.0.1:9');
+    const attempt = chain.createTransferTransaction({
+      asset: chain.nativeAsset,
+      amountHr: new Decimal(0),
+      senderAddress: SENDER.address,
+      receiverAddress: RECEIVER.address,
+    });
+    await expect(attempt).rejects.toMatchObject({ kind: ChainErrorKinds.InvalidArgument });
+    await expect(attempt).rejects.toBeInstanceOf(ChainError);
+  });
+});
+
+describe('Python value semantics for assets', () => {
+  it('peg and wallet-balance maps look assets up by value (Python dict), not by object identity', () => {
+    const freshUsdc = StellarMainnet.createSacToken('USDC', USDC_ISSUER);
+    expect(freshUsdc).not.toBe(STELLAR_USDC);
+    expect(STELLAR_MAINNET_STABLECOINS_PEG.get(freshUsdc)).toBe(FiatCurrency.USD);
+    expect(STELLAR_MAINNET_STABLECOINS_PEG.has(StellarMainnet.nativeAsset)).toBe(false);
+
+    const balances = new AssetMap<StellarAsset, Decimal>();
+    balances.set(STELLAR_USDC, new Decimal(1));
+    balances.set(freshUsdc, new Decimal(2));
+    expect(balances.size).toBe(1);
+    expect([...balances.keys()][0]).toBe(STELLAR_USDC);
+    expect(balances.get(StellarMainnet.createSacToken('USDC', USDC_ISSUER))?.toString()).toBe('2');
+    expect(balances.delete(freshUsdc)).toBe(true);
+    expect(balances.size).toBe(0);
+  });
+
+  it('a non-SAC token whose symbol() is empty is a valid asset; other families keep rejecting empty symbols', () => {
+    const token = new StellarAsset({
+      chainId: CHAIN_ID_STELLAR_MAINNET,
+      networkPassphrase: Networks.PUBLIC,
+      code: '',
+      issuer: null,
+      contractId: 'CCT4ZYIYZ3TUO2AWQFEOFGBZ6HQP3GW5TA37CK7CRZVFRDXYTHTYX7KP',
+      decimals: 18,
+    });
+    expect(token.symbol).toBe('');
+    expect(() => new EvmToken(1, '', '0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed', 18)).toThrow('Token symbol is required');
+  });
+
+  it('an invalid SAC code raises Python\'s AssetCodeInvalidError text as a ChainError', () => {
+    expect(() => StellarMainnet.createSacToken('US-D', USDC_ISSUER)).toThrow(
+      new ChainError(ChainErrorKinds.InvalidArgument, 'Asset code is invalid (maximum alphanumeric, 12 characters at max).'),
+    );
+  });
+
+  it('__str__ texts print None / True like Python', () => {
+    const response = new StellarChangeTrustPrerequisiteResponse({ skipped: true, txHash: null });
+    expect(String(response)).toBe('StellarChangeTrustPrerequisiteResponse[skipped=True, tx_hash=None]');
+    expect(String(StellarMainnet.nativeAsset)).toContain('issuer:None,');
+    const unsigned = new StellarUnsignedTransaction({ chainId: CHAIN_ID_STELLAR_MAINNET, sourceAccountId: SENDER.address, operations: [] });
+    expect(String(unsigned)).toBe(`StellarUnsignedTransaction[source_account_id:${SENDER.address}, operations:0, base_fee:None, memo:None]`);
+  });
+});
+
+describe('wallet secrets and Python hex parsing', () => {
+  it('the secret seed is readable through the accessor but never serialized or inspected', () => {
+    expect(SENDER.secretSeed.startsWith('S')).toBe(true);
+    expect(JSON.stringify(SENDER)).not.toContain(SENDER.secretSeed);
+    expect(inspect(SENDER, { depth: 10, showHidden: true, getters: true })).not.toContain(SENDER.secretSeed);
+    expect(Object.keys(SENDER)).not.toContain('secretSeed');
+  });
+
+  it('verifySignature parses the hex like bytes.fromhex: whitespace is skipped, 0x is not hex', () => {
+    const signature = SENDER.signMessage('hello').signature;
+    const spaced = signature.replace(/(.{8})/g, '$1 ');
+    expect(StellarChain.verifySignature(SENDER.address, 'hello', new StellarSignedMessage(` ${spaced}\n`))).toBe(true);
+    expect(StellarChain.verifySignature(SENDER.address, 'hello', new StellarSignedMessage(`0x${signature}`))).toBe(false);
+  });
+
+  it('prerequisite errors use Python\'s message text, including type() rendering', async () => {
+    const chain = chainOn('http://127.0.0.1:9');
+    const foreign = new StellarChangeTrustLineTransactionPrerequisite({
+      chainId: CHAIN_ID_STELLAR_MAINNET,
+      code: 'USDC',
+      issuer: USDC_ISSUER,
+      limit: new Decimal(10),
+      walletAddress: RECEIVER.address,
+    });
+    Object.defineProperty(chain, 'getTrustLineLimit', { value: async () => ({ balance: new Decimal(0), limit: new Decimal(0) }) });
+    await expect(SENDER.handleTransactionPrerequisite(foreign, chain)).rejects.toThrow(
+      `Prerequisite not handled and does not belong to Stellar wallet ${SENDER.address}, so it cannot behandled. Prerequisite ${String(foreign)} of type <class 'StellarChangeTrustLineTransactionPrerequisite'>`,
+    );
+  });
+});
+
+describe('round-2 parity: Python-typed failures instead of raw SDK errors', () => {
+  it('a text memo over 28 bytes raises stellar-sdk MemoInvalidException text', async () => {
+    const chain = chainOn('http://127.0.0.1:9');
+    const attempt = chain.createTransferTransaction({
+      asset: chain.nativeAsset,
+      amountHr: new Decimal(1),
+      senderAddress: SENDER.address,
+      receiverAddress: RECEIVER.address,
+      memoText: '\u00e9'.repeat(15),
+      gasPricing: new StellarGasPricing({ baseFeeStroops: 100 }),
+    });
+    await expect(attempt).rejects.toThrow(new Error('Text should be <= 28 bytes (ascii encoded), got 30 bytes.'));
+  });
+
+  it('an invalid contract id fails like append_invoke_contract_function_op, before any RPC', async () => {
+    const chain = chainOn('http://127.0.0.1:9');
+    await expect(chain.resolveAsset(SENDER.address)).rejects.toMatchObject({
+      kind: ChainErrorKinds.InvalidTokenIdentifier,
+      message: '`contract_id` is invalid.',
+    });
+    await expect(chain.getBalance(SENDER.address, 'not-a-contract')).rejects.toThrow('`contract_id` is invalid.');
+  });
+
+  it('a transfer event with fewer than 3 topics raises IndexError text; strings decode strictly and keep a BOM', () => {
+    const contractId = Buffer.alloc(32, 7);
+    const event = (topics: xdr.ScVal[]) =>
+      new xdr.DiagnosticEvent({
+        inSuccessfulContractCall: true,
+        event: new xdr.ContractEvent({
+          ext: new xdr.ExtensionPoint(0),
+          contractId: contractId as unknown as xdr.ContractId,
+          type: xdr.ContractEventType.contract(),
+          body: new xdr.ContractEventBody(0, new xdr.ContractEventV0({ topics, data: nativeToScVal(5n, { type: 'i128' }) })),
+        }),
+      });
+    expect(() => StellarChain.getTransfersFromDiagnosisEvents([event([xdr.ScVal.scvSymbol('transfer')])])).toThrow(new Error('list index out of range'));
+    expect(scvalToUtf8String(xdr.ScVal.scvString(Buffer.from([0xef, 0xbb, 0xbf, 0x68])))).toBe('\ufeffh');
+    expect(() => scvalToUtf8String(xdr.ScVal.scvString(Buffer.from([0xff])))).toThrow(
+      new Error("'utf-8' codec can't decode byte 0xff in position 0: invalid start byte"),
+    );
+  });
+
+  it('StellarUnsignedTransaction.fromXdr rejects a fee-bump envelope with Python\'s text', () => {
+    expect(() => StellarUnsignedTransaction.fromXdr(chainOn('http://127.0.0.1:9'), feeBumpXdr())).toThrow(new Error('Unexpected EnvelopeType: 5.'));
+  });
+
+  it('a failed Soroban simulation inside prepare raises PrepareTransactionException text; transport stays RpcError', async () => {
+    const chain = chainOn('http://127.0.0.1:9');
+    const invoke = chain.buildTokenTransferOperation({
+      asset: STELLAR_USDC,
+      senderAddress: SENDER.address,
+      receiverAddress: 'CCLWL5NYSV2WJQ3VBU44AMDHEVKEPA45N2QP2LL62O3JVKPGWWAQUVAG',
+      amountHr: new Decimal(1),
+    });
+    const unsigned = new StellarUnsignedTransaction({ chainId: chain.chainId, sourceAccountId: SENDER.address, operations: [invoke], baseFee: 100 });
+    const horizon = { accounts: () => ({ accountId: () => ({ call: async () => ({ sequence: '1' }) }) }) };
+    let simulate: () => Promise<unknown> = async () => ({ latestLedger: 1, error: 'host invocation failed' });
+    Object.defineProperty(chain, 'asyncHorizonServer', { get: () => horizon });
+    chain._sorobanRpc = () => simulate();
+    await expect(unsigned.buildTransactionEnvelope(chain)).rejects.toMatchObject({
+      kind: ChainErrorKinds.SimulationFailed,
+      message: 'Simulation transaction failed, the response contains error information.',
+    });
+    simulate = async () => Promise.reject(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
+    await expect(unsigned.buildTransactionEnvelope(chain)).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError, message: 'socket hang up' });
+  });
+
+  it('signing a message with a lone surrogate raises UnicodeEncodeError text; verification returns false', () => {
+    expect(() => SENDER.signMessage('a\ud800')).toThrow(new Error("'utf-8' codec can't encode character '\\ud800' in position 1: surrogates not allowed"));
+    const signature = SENDER.signMessage('a\ufffd').signature;
+    expect(StellarChain.verifySignature(SENDER.address, 'a\ud800', new StellarSignedMessage(signature))).toBe(false);
+  });
+});
+
+describe('round-2 parity: registry, __str__ texts', () => {
+  it('StellarAsset.searchRegisteredAsset / getRegisteredAsset use the shared Python-style registry', () => {
+    expect(StellarAsset.searchRegisteredAsset(CHAIN_ID_STELLAR_MAINNET, STELLAR_USDC.contractId)?.equals(STELLAR_USDC)).toBe(true);
+    expect(StellarAsset.getRegisteredAsset(CHAIN_ID_STELLAR_MAINNET, 'USDC', STELLAR_USDC.contractId)?.equals(STELLAR_USDC)).toBe(true);
+    expect(StellarAsset.searchRegisteredAsset(CHAIN_ID_STELLAR_MAINNET, 'CDOESNOTEXIST')).toBeNull();
+  });
+
+  it('status and simulation results print like Python __str__', () => {
+    const changes = new Map([[SENDER.address, new Map([['xlm', { token: StellarMainnet.nativeAsset, change: AssetBalanceChange.fromMr(-15_000_000n, 7) }]])]]);
+    const status = StellarTransactionStatus.successful({
+      chainId: CHAIN_ID_STELLAR_MAINNET,
+      inclusionAt: new Date(Date.UTC(2026, 0, 2, 3, 4, 5)),
+      balanceChanges: changes,
+      horizonPagingToken: '123',
+    });
+    expect(String(status)).toBe(
+      `StellarTransactionStatus[chainId:${CHAIN_ID_STELLAR_MAINNET}, status_type:Success, fee:None, paging_token:123, balance_changes:{'${SENDER.address}': {${String(StellarMainnet.nativeAsset)}: [change:-1.5]}}, error:None, memo:None)]`,
+    );
+    const simulation = new StellarTransactionSimulationResult({
+      chainId: CHAIN_ID_STELLAR_MAINNET,
+      statusType: 'Failed',
+      balanceChanges: new Map(),
+      error: new Error('nope'),
+      transactionType: 'payment',
+    });
+    expect(String(simulation)).toBe(
+      `StellarTransactionSimulationResult[chain_id:${CHAIN_ID_STELLAR_MAINNET},status:Failed,balance_changes:{},error:nope,fees:None,transaction_type:payment,memo:None,]`,
+    );
+  });
+
+  it('an invalid account uses MuxedAccount.from_account text', () => {
+    expect(() => StellarChain.toClassicAccountId('bad')).toThrow(/^This is not a valid account: bad$/);
+  });
+});
+
+describe('round-3 parity: SAC codes are kept exactly as given, as stellar-sdk Python does', () => {
+  const cases: [string, string, string][] = [
+    ['xlm', 'CDXMHF6IJGAGWW5RBYP63E4Z6WPVLO5NU5P6K4XAOPAHIJBFQEDLTMWU', 'AAAAAXhsbQAAAAAAO5kROA7+mIugqJAOsc/kTzZvfb6Ua+0HckD39iTfFcU='],
+    ['Xlm', 'CCGFJGFJJBZT25G5MU4QR4IGZNJGW6ZLD373OH47ZT7AJDKU72SOZCG5', 'AAAAAVhsbQAAAAAAO5kROA7+mIugqJAOsc/kTzZvfb6Ua+0HckD39iTfFcU='],
+  ];
+
+  it.each(cases)('%s: contract id and asset XDR match Python', (code, contractId, assetXdr) => {
+    const asset = StellarMainnet.createSacToken(code, USDC_ISSUER);
+    expect(asset.code).toBe(code);
+    expect(asset.contractId).toBe(contractId);
+    expect(asset.toSdkAsset().toXDRObject().toXDR('base64')).toBe(assetXdr);
+  });
+
+  it('ensureMinimumTrustLine signs a ChangeTrust for the exact code', async () => {
+    const chain = chainOn('http://127.0.0.1:9');
+    let submitted: Transaction | null = null;
+    Object.defineProperty(chain, 'asyncHorizonServer', {
+      get: () => ({
+        accounts: () => ({ accountId: () => ({ call: async () => ({ sequence: '100', balances: [] }) }) }),
+        ledgers: () => ({ order: () => ({ limit: () => ({ call: async () => ({ records: [{ base_fee_in_stroops: 100 }] }) }) }) }),
+      }),
+    });
+    chain._submitTransaction = async (tx: Transaction) => {
+      submitted = tx;
+      return { hash: tx.hash().toString('hex') };
+    };
+    await RECEIVER.ensureMinimumTrustLine(chain, 'xlm', USDC_ISSUER, new Decimal(StellarAsset.TRUST_LINE_MAX_LIMIT));
+    const line = (submitted as unknown as Transaction).toEnvelope().v1().tx().operations()[0].body().changeTrustOp().line();
+    expect(Buffer.from(line.alphaNum4().assetCode()).toString('hex')).toBe('786c6d00');
+  });
+
+  it('predicted balance changes read operation assets from the XDR, so the code stays exact', () => {
+    const tx = new TransactionBuilder(new Account(SENDER.address, '1'), { fee: '100', networkPassphrase: Networks.PUBLIC })
+      .addOperation(Operation.payment({ destination: RECEIVER.address, asset: StellarMainnet.createSacToken('xlm', USDC_ISSUER).toSdkAsset(), amount: '1' }))
+      .setTimeout(0)
+      .build();
+    const [entry] = [...(StellarMainnet._balanceChangesFromOperations(tx).get(RECEIVER.address)?.values() ?? [])];
+    expect((entry.token as StellarAsset).code).toBe('xlm');
+    expect((entry.token as StellarAsset).contractId).toBe('CDXMHF6IJGAGWW5RBYP63E4Z6WPVLO5NU5P6K4XAOPAHIJBFQEDLTMWU');
+  });
+});
+
+describe('round-4 parity: StellarChain construction', () => {
+  it.each([1, 56, 999999, 3448148188, 0, -1, -9999])('constructs for chain id %i like Python and leaves the network-type registry untouched', (chainId) => {
+    const before = [networkTypeRegistrations().get(chainId), tryNetworkTypeOf(chainId)];
+    const chain = new StellarChain({
+      name: `Stellar ${chainId}`,
+      defaultHorizonUrl: 'https://horizon.invalid',
+      defaultSorobanRpcUrl: 'https://soroban.invalid',
+      explorerUrl: 'https://stellar.expert/explorer/public',
+      stellarExpertApiUrl: 'https://api.stellar.expert/explorer/public',
+      networkPassphrase: Networks.PUBLIC,
+      chainId,
+      chainAgnosticStellarIdentifier: 'pubnet',
+    });
+    expect(chain.chainId).toBe(chainId);
+    expect([networkTypeRegistrations().get(chainId), tryNetworkTypeOf(chainId)]).toEqual(before);
+  });
+});
+
+describe('round-4 parity: a passphrase with a lone surrogate is refused, as Python str.encode refuses it', () => {
+  it.each(['\\ud800', '\\udfff'])('%s', (escaped) => {
+    const passphrase = JSON.parse(`"${escaped}"`) as string;
+    expect(() => StellarWallet.fromMnemonic(MNEMONIC, { derivationPath: "m/44'/148'/0'", passphrase })).toThrow(
+      new ChainError(ChainErrorKinds.InvalidArgument, `'utf-8' codec can't encode character '${escaped}' in position 8: surrogates not allowed`),
+    );
+  });
+});
+
+describe('round-5 parity: every Soroban failure surfaces as ChainError(RpcError) with the original message', () => {
+  async function sorobanStub(reply: (res: ServerResponse) => void): Promise<{ url: string; close: () => Promise<void> }> {
+    const server = createServer((req, res) => {
+      req.resume();
+      req.on('end', () => reply(res));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return {
+      url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    };
+  }
+
+  function chainWithSoroban(sorobanRpcUrl: string): StellarChain {
+    return new StellarChain({
+      name: 'Stellar Local Soroban',
+      defaultHorizonUrl: 'http://127.0.0.1:9',
+      defaultSorobanRpcUrl: sorobanRpcUrl,
+      explorerUrl: 'https://stellar.expert/explorer/public',
+      stellarExpertApiUrl: 'https://api.stellar.expert/explorer/public',
+      networkPassphrase: Networks.PUBLIC,
+      chainId: CHAIN_ID_STELLAR_MAINNET,
+      chainAgnosticStellarIdentifier: 'pubnet',
+    });
+  }
+
+  const replies: [string, (res: ServerResponse) => void, string][] = [
+    ['HTTP 500 with a body that is not JSON', (res) => res.writeHead(500).end('boom'), ''],
+    ['an HTML 200', (res) => res.writeHead(200, { 'Content-Type': 'text/html' }).end('<html>maintenance</html>'), ''],
+    [
+      'a JSON-RPC error without code',
+      (res) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { message: 'no code' } })),
+      '',
+    ],
+    [
+      'a JSON-RPC error',
+      (res) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32602, message: 'invalid parameters' } })),
+      'invalid parameters',
+    ],
+  ];
+
+  it.each(replies)('%s', async (_label, reply, message) => {
+    const stub = await sorobanStub(reply);
+    try {
+      const failure = await chainWithSoroban(stub.url)
+        .resolveAsset(STELLAR_USDC.contractId)
+        .then(
+          () => null,
+          (err: unknown) => err,
+        );
+      expect(failure).toBeInstanceOf(ChainError);
+      expect(failure).toMatchObject({ kind: ChainErrorKinds.RpcError });
+      if (message !== '') expect((failure as Error).message).toBe(message);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('a JSON-RPC error keeps the server message unchanged and exposes code and data, like SorobanRpcErrorResponse', async () => {
+    const message = `invalid tx ${'A'.repeat(240)} ${'ab'.repeat(70)} https://rpc.example/?token=abc`;
+    const stub = await sorobanStub((res) =>
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32602, message, data: 'detail' } })),
+    );
+    try {
+      const failure = await chainWithSoroban(stub.url).resolveAsset(STELLAR_USDC.contractId).then(
+        () => null,
+        (err: unknown) => err,
+      );
+      expect(failure).toBeInstanceOf(SorobanRpcErrorResponse);
+      expect(failure).toMatchObject({ kind: ChainErrorKinds.RpcError, message, code: -32602, data: 'detail' });
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('an HTTP 500 carrying a JSON-RPC error body is SorobanRpcErrorResponse, as Python reads the body regardless of status', async () => {
+    const stub = await sorobanStub((res) =>
+      res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'internal' } })),
+    );
+    try {
+      const failure = await chainWithSoroban(stub.url).resolveAsset(STELLAR_USDC.contractId).then(
+        () => null,
+        (err: unknown) => err,
+      );
+      expect(failure).toBeInstanceOf(SorobanRpcErrorResponse);
+      expect(failure).toMatchObject({ message: 'internal', code: -32603 });
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('a simulation error or empty results fail at results[0] with Python\'s TypeError / IndexError text', async () => {
+    const replies: [unknown, string][] = [
+      [{ jsonrpc: '2.0', id: 1, result: { latestLedger: 1, error: 'HostError: trapped' } }, "'NoneType' object is not subscriptable"],
+      [{ jsonrpc: '2.0', id: 1, result: { latestLedger: 1, results: [] } }, 'list index out of range'],
+    ];
+    for (const [body, message] of replies) {
+      const stub = await sorobanStub((res) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body)));
+      try {
+        await expect(chainWithSoroban(stub.url).resolveAsset(STELLAR_USDC.contractId)).rejects.toMatchObject({ kind: ChainErrorKinds.SimulationFailed, message });
+      } finally {
+        await stub.close();
+      }
+    }
+  });
+
+  it('a refused connection', async () => {
+    const failure = await chainWithSoroban('http://127.0.0.1:9')
+      .resolveAsset(STELLAR_USDC.contractId)
+      .then(
+        () => null,
+        (err: unknown) => err,
+      );
+    expect(failure).toBeInstanceOf(ChainError);
+    expect(failure).toMatchObject({ kind: ChainErrorKinds.RpcError, message: expect.stringContaining('ECONNREFUSED') });
+  });
+});
+
+describe('round-6 parity: Soroban prepare assembles the transaction like stellar-sdk Python _assemble_transaction', () => {
+  const fixture = JSON.parse(
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'python_assemble_transaction.json'), 'utf8'),
+  ) as { tx: string; cases: Record<string, { simulation: never; expected?: string; fee?: number; error?: string }> };
+  const tx = () => TransactionBuilder.fromXDR(fixture.tx, Networks.PUBLIC) as Transaction;
+
+  it.each(['min_above_resource', 'min_below_resource'])('%s: fee = classic fee + minResourceFee, byte-identical envelope', (name) => {
+    const assembled = assembleSorobanTransaction(
+      tx(),
+      validateSimulateTransactionResponse(fixture.cases[name].simulation, CHAIN_ID_STELLAR_MAINNET),
+      CHAIN_ID_STELLAR_MAINNET,
+    );
+    expect(assembled.fee).toBe(String(fixture.cases[name].fee));
+    expect(assembled.toXDR()).toBe(fixture.cases[name].expected);
+  });
+
+  it.each(['invalid_[]', 'invalid_None'])('%s: raises Python\'s ValueError text', (name) => {
+    expect(() =>
+      assembleSorobanTransaction(tx(), validateSimulateTransactionResponse(fixture.cases[name].simulation, CHAIN_ID_STELLAR_MAINNET), CHAIN_ID_STELLAR_MAINNET),
+    ).toThrow(
+      new ChainError(ChainErrorKinds.InvalidArgument, (fixture.cases[name].error as string).replace('ValueError: ', '')),
+    );
+  });
+});
+
+describe('round-7 parity: Soroban JSON-RPC replies are read like stellar-sdk Python _post and its pydantic models', () => {
+  const models = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'python_soroban_rpc_models.json'), 'utf8')) as {
+    simulate: { name: string; result: unknown; valid: boolean; minResourceFee?: number | null }[];
+    envelope: { name: string; reply: Record<string, unknown>; valid: boolean; raises?: boolean; message?: string | null; code?: number | null }[];
+  };
+
+  it.each(models.simulate.map((c) => [c.name, c] as const))('simulate result %s: accepted and minResourceFee as in SimulateTransactionResponse', (_name, c) => {
+    if (c.valid) {
+      const sim = validateSimulateTransactionResponse(c.result, CHAIN_ID_STELLAR_MAINNET);
+      expect(sim.minResourceFee).toBe(c.minResourceFee === null || c.minResourceFee === undefined ? null : BigInt(c.minResourceFee));
+    } else {
+      expect(() => validateSimulateTransactionResponse(c.result, CHAIN_ID_STELLAR_MAINNET)).toThrow(
+        expect.objectContaining({ kind: ChainErrorKinds.RpcError }),
+      );
+    }
+  });
+
+  async function rpcStub(status: number, reply: unknown): Promise<{ url: string; close: () => Promise<void> }> {
+    const server = createServer((req, res) => {
+      req.resume();
+      req.on('end', () => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(reply)));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return {
+      url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    };
+  }
+
+  function sorobanChain(url: string): StellarChain {
+    return new StellarChain({
+      name: 'Stellar Local Soroban',
+      defaultHorizonUrl: 'http://127.0.0.1:9',
+      defaultSorobanRpcUrl: url,
+      explorerUrl: 'https://stellar.expert/explorer/public',
+      stellarExpertApiUrl: 'https://api.stellar.expert/explorer/public',
+      networkPassphrase: Networks.PUBLIC,
+      chainId: CHAIN_ID_STELLAR_MAINNET,
+      chainAgnosticStellarIdentifier: 'pubnet',
+    });
+  }
+
+  it.each(models.envelope.map((c) => [c.name, c] as const))('JSON-RPC envelope %s: handled as Response[Any] + error check', async (_name, c) => {
+    const stub = await rpcStub(200, c.reply);
+    try {
+      const outcome = await sorobanChain(stub.url)
+        ._sorobanRpc('getTransaction', { hash: 'ab'.repeat(32) })
+        .then(
+          (result) => ({ result }),
+          (error: unknown) => ({ error }),
+        );
+      if (c.valid && !c.raises) {
+        expect(outcome).toEqual({ result: c.reply.result });
+      } else if (c.valid && c.raises) {
+        expect((outcome as { error: unknown }).error).toBeInstanceOf(SorobanRpcErrorResponse);
+        expect((outcome as { error: unknown }).error).toMatchObject({ message: c.message ?? 'None', code: c.code });
+      } else {
+        expect((outcome as { error: unknown }).error).toBeInstanceOf(ChainError);
+        expect((outcome as { error: unknown }).error).not.toBeInstanceOf(SorobanRpcErrorResponse);
+        expect((outcome as { error: unknown }).error).toMatchObject({ kind: ChainErrorKinds.RpcError });
+      }
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('an HTTP error status with a valid result is used, as Python ignores the status', async () => {
+    const stub = await rpcStub(500, { jsonrpc: '2.0', id: 'x', result: { ok: 1 } });
+    try {
+      await expect(sorobanChain(stub.url)._sorobanRpc('getTransaction', { hash: 'ab'.repeat(32) })).resolves.toEqual({ ok: 1 });
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('host-call results are decoded lazily from results[0]; a void decimals() falls back to 7 like Python', async () => {
+    const u32 = nativeToScVal(18, { type: 'u32' }).toXDR('base64');
+    let results: unknown[] = [{ xdr: u32 }, { xdr: 'zzzz' }];
+    const server = createServer((req, res) => {
+      req.resume();
+      req.on('end', () => res.writeHead(200).end(JSON.stringify({ jsonrpc: '2.0', id: 'x', result: { latestLedger: 1, results } })));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const chain = sorobanChain(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+    try {
+      await expect(chain._getAssetDecimalsInternal('X', STELLAR_USDC.contractId)).resolves.toBe(18);
+      results = [{ xdr: xdr.ScVal.scvVoid().toXDR('base64') }];
+      await expect(chain._getAssetDecimalsInternal('X', STELLAR_USDC.contractId)).resolves.toBe(7);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});
+
+describe('round-8 parity: gasPricing None is rejected like Python', () => {
+  it('createTransferTransaction with gasPricing null raises "Unsupported gas_pricing None"', async () => {
+    const chain = chainOn('http://127.0.0.1:9');
+    Object.defineProperty(chain, 'asyncHorizonServer', {
+      get: () => ({ ledgers: () => ({ order: () => ({ limit: () => ({ call: async () => ({ records: [{ base_fee_in_stroops: 100 }] }) }) }) }) }),
+    });
+    await expect(
+      chain.createTransferTransaction({
+        asset: chain.nativeAsset,
+        amountHr: new Decimal(1),
+        senderAddress: SENDER.address,
+        receiverAddress: RECEIVER.address,
+        gasPricing: null as never,
+      }),
+    ).rejects.toThrow('Unsupported gas_pricing None');
+  });
+});

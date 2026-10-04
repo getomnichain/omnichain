@@ -1,0 +1,137 @@
+[
+ {
+  "name": "records 250",
+  "body": {
+   "_links": {},
+   "_embedded": {
+    "records": [
+     {
+      "base_fee_in_stroops": 250
+     }
+    ]
+   }
+  },
+  "value": 250
+ },
+ {
+  "name": "records string \"300\"",
+  "body": {
+   "_links": {},
+   "_embedded": {
+    "records": [
+     {
+      "base_fee_in_stroops": "300"
+     }
+    ]
+   }
+  },
+  "value": 300
+ },
+ {
+  "name": "records float 100.7",
+  "body": {
+   "_links": {},
+   "_embedded": {
+    "records": [
+     {
+      "base_fee_in_stroops": 100.7
+     }
+    ]
+   }
+  },
+  "value": 100
+ },
+ {
+  "name": "empty records",
+  "body": {
+   "_links": {},
+   "_embedded": {
+    "records": []
+   }
+  },
+  "value": 100
+ },
+ {
+  "name": "records null",
+  "body": {
+   "_links": {},
+   "_embedded": {
+    "records": null
+   }
+  },
+  "value": 100
+ },
+ {
+  "name": "first record {}",
+  "body": {
+   "_links": {},
+   "_embedded": {
+    "records": [
+     {}
+    ]
+   }
+  },
+  "value": 100
+ },
+ {
+  "name": "embedded {}",
+  "body": {
+   "_links": {},
+   "_embedded": {}
+  },
+  "value": 100
+ },
+ {
+  "name": "no _embedded",
+  "body": {
+   "_links": {}
+  },
+  "error": "'_embedded'",
+  "type": "KeyError"
+ },
+ {
+  "name": "fee null",
+  "body": {
+   "_links": {},
+   "_embedded": {
+    "records": [
+     {
+      "base_fee_in_stroops": null
+     }
+    ]
+   }
+  },
+  "error": "int() argument must be a string, a bytes-like object or a real number, not 'NoneType'",
+  "type": "TypeError"
+ },
+ {
+  "name": "fee \"100.7\"",
+  "body": {
+   "_links": {},
+   "_embedded": {
+    "records": [
+     {
+      "base_fee_in_stroops": "100.7"
+     }
+    ]
+   }
+  },
+  "error": "invalid literal for int() with base 10: '100.7'",
+  "type": "ValueError"
+ },
+ {
+  "name": "fee missing",
+  "body": {
+   "_links": {},
+   "_embedded": {
+    "records": [
+     {
+      "sequence": 1
+     }
+    ]
+   }
+  },
+  "error": "'base_fee_in_stroops'",
+  "type": "KeyError"
+ }
+]

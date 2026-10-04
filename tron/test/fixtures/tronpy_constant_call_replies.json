@@ -1,0 +1,160 @@
+[
+ {
+  "name": "ok",
+  "reply": {
+   "result": {
+    "result": true
+   },
+   "constant_result": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+   ]
+  },
+  "value": "0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ {
+  "name": "result missing",
+  "reply": {
+   "constant_result": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+   ]
+  },
+  "value": "0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ {
+  "name": "result \"message\"",
+  "reply": {
+   "result": "message",
+   "constant_result": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+   ]
+  },
+  "error": "string indices must be integers, not 'str'",
+  "type": "TypeError"
+ },
+ {
+  "name": "result \"x\"",
+  "reply": {
+   "result": "x",
+   "constant_result": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+   ]
+  },
+  "value": "0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ {
+  "name": "result null",
+  "reply": {
+   "result": null,
+   "constant_result": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+   ]
+  },
+  "error": "argument of type 'NoneType' is not iterable",
+  "type": "TypeError"
+ },
+ {
+  "name": "result true",
+  "reply": {
+   "result": true,
+   "constant_result": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+   ]
+  },
+  "error": "argument of type 'bool' is not iterable",
+  "type": "TypeError"
+ },
+ {
+  "name": "result 5",
+  "reply": {
+   "result": 5,
+   "constant_result": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+   ]
+  },
+  "error": "argument of type 'int' is not iterable",
+  "type": "TypeError"
+ },
+ {
+  "name": "result [\"message\"]",
+  "reply": {
+   "result": [
+    "message"
+   ],
+   "constant_result": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+   ]
+  },
+  "error": "list indices must be integers or slices, not str",
+  "type": "TypeError"
+ },
+ {
+  "name": "result [\"x\"]",
+  "reply": {
+   "result": [
+    "x"
+   ],
+   "constant_result": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+   ]
+  },
+  "value": "0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ {
+  "name": "constant_result dict",
+  "reply": {
+   "result": {},
+   "constant_result": {
+    "0": "0000000000000000000000000000000000000000000000000000000000000000"
+   }
+  },
+  "error": "0",
+  "type": "KeyError"
+ },
+ {
+  "name": "constant_result []",
+  "reply": {
+   "result": {},
+   "constant_result": []
+  },
+  "error": "list index out of range",
+  "type": "IndexError"
+ },
+ {
+  "name": "constant_result missing",
+  "reply": {
+   "result": {}
+  },
+  "error": "'constant_result'",
+  "type": "KeyError"
+ },
+ {
+  "name": "constant_result \"abc\"",
+  "reply": {
+   "result": {},
+   "constant_result": "abc"
+  },
+  "value": "a"
+ },
+ {
+  "name": "constant_result 5",
+  "reply": {
+   "result": {},
+   "constant_result": 5
+  },
+  "error": "'int' object is not subscriptable",
+  "type": "TypeError"
+ },
+ {
+  "name": "tvm message",
+  "reply": {
+   "result": {
+    "message": "5452433230"
+   },
+   "constant_result": [
+    "0000000000000000000000000000000000000000000000000000000000000000"
+   ]
+  },
+  "error": "5452433230",
+  "type": "TvmError"
+ }
+]

@@ -1,0 +1,323 @@
+[
+ {
+  "name": "base",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   }
+  },
+  "valid": true
+ },
+ {
+  "name": "applicationOrder x",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   },
+   "applicationOrder": "x"
+  },
+  "valid": false
+ },
+ {
+  "name": "createdAt 1.5",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   },
+   "createdAt": 1.5
+  },
+  "valid": false
+ },
+ {
+  "name": "createdAt 1_000",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   },
+   "createdAt": "1_000"
+  },
+  "valid": true
+ },
+ {
+  "name": "latestLedgerCloseTime 1.0",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1.0",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   }
+  },
+  "valid": true
+ },
+ {
+  "name": "latestLedgerCloseTime true",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": true,
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   }
+  },
+  "valid": true
+ },
+ {
+  "name": "latestLedger 0x10",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": "0x10",
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   }
+  },
+  "valid": false
+ },
+ {
+  "name": "feeBump 2",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   },
+   "feeBump": 2
+  },
+  "valid": false
+ },
+ {
+  "name": "feeBump yes",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   },
+   "feeBump": "yes"
+  },
+  "valid": true
+ },
+ {
+  "name": "envelopeXdr 5",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   },
+   "envelopeXdr": 5
+  },
+  "valid": false
+ },
+ {
+  "name": "ledger null",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   },
+   "ledger": null
+  },
+  "valid": true
+ },
+ {
+  "name": "diagnostic abc",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": "abc"
+   }
+  },
+  "valid": false
+ },
+ {
+  "name": "diagnostic [1]",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": [
+     1
+    ]
+   }
+  },
+  "valid": false
+ },
+ {
+  "name": "diagnostic [null]",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": [
+     null
+    ]
+   }
+  },
+  "valid": false
+ },
+ {
+  "name": "contract [[a]]",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": [],
+    "contractEventsXdr": [
+     [
+      "a"
+     ]
+    ]
+   }
+  },
+  "valid": true
+ },
+ {
+  "name": "contract [[a,1]]",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": [],
+    "contractEventsXdr": [
+     [
+      "a",
+      1
+     ]
+    ]
+   }
+  },
+  "valid": false
+ },
+ {
+  "name": "events list",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": []
+  },
+  "valid": false
+ },
+ {
+  "name": "txHash 5",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": 5,
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   }
+  },
+  "valid": false
+ },
+ {
+  "name": "status PENDING",
+  "reply": {
+   "status": "PENDING",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   }
+  },
+  "valid": false
+ },
+ {
+  "name": "extra field",
+  "reply": {
+   "status": "SUCCESS",
+   "txHash": "0a513b3ea9f0919019e1e2211089477e111f3d5b279440f520f723e79b042338",
+   "latestLedger": 1,
+   "latestLedgerCloseTime": "1",
+   "oldestLedger": 1,
+   "oldestLedgerCloseTime": "1",
+   "events": {
+    "diagnosticEventsXdr": []
+   },
+   "foo": "bar"
+  },
+  "valid": true
+ }
+]

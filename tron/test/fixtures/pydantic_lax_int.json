@@ -1,0 +1,190 @@
+[
+{
+"value": "1.0",
+"int": 1
+},
+{
+"value": "1_000",
+"int": 1000
+},
+{
+"value": "\ufeff12",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": 1.5,
+"error": "Input should be a valid integer, got a number with a fractional part"
+},
+{
+"value": true,
+"int": 1
+},
+{
+"value": false,
+"int": 0
+},
+{
+"value": " 12 ",
+"int": 12
+},
+{
+"value": "+12",
+"int": 12
+},
+{
+"value": "-0",
+"int": 0
+},
+{
+"value": "0x10",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "1e3",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": 12.0,
+"int": 12
+},
+{
+"value": "12.0",
+"int": 12
+},
+{
+"value": "1.5",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": null,
+"error": "Input should be a valid integer"
+},
+{
+"value": "\u0663",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "12a",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "1_",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "_1",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "1__0",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "1_0.0",
+"int": 10
+},
+{
+"value": "1.00",
+"int": 1
+},
+{
+"value": "1.",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": ".0",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": " +1_0 ",
+"int": 10
+},
+{
+"value": "\t12\n",
+"int": 12
+},
+{
+"value": "1.0_0",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "0_0",
+"int": 0
+},
+{
+"value": "00012",
+"int": 12
+},
+{
+"value": "-",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "+",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "1 2",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "\u300012",
+"int": 12
+},
+{
+"value": "\u00a012",
+"int": 12
+},
+{
+"value": "12\u3000",
+"int": 12
+},
+{
+"value": "1.0e0",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "+-1",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "0.0",
+"int": 0
+},
+{
+"value": "-0.00",
+"int": 0
+},
+{
+"value": "1_000.0_0",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "\u000b12",
+"int": 12
+},
+{
+"value": "\u001c12",
+"error": "Input should be a valid integer, unable to parse string as an integer"
+},
+{
+"value": "\u008512",
+"int": 12
+},
+{
+"value": 9000000000000000.0,
+"int": 9000000000000000
+},
+{
+"value": 42,
+"int": 42
+},
+{
+"value": "42",
+"int": 42
+}
+]

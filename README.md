@@ -1,6 +1,6 @@
 # @getomnichain/omnichain
 
-Multi-chain TypeScript SDK. One `Chain` / `Token` / `Address` / `UnsignedTransaction` shape for EVM, UTXO (BTC/LTC/DOGE/DASH/ZEC/BCH), Solana, TON, and Tron. Line-for-line parity port of Python's [`omnichain-py`](https://github.com/getomnichain/omnichain-py).
+Multi-chain TypeScript SDK. One `Chain` / `Token` / `Address` / `UnsignedTransaction` shape for EVM, UTXO (BTC/LTC/DOGE/DASH/ZEC/BCH), Solana, Stellar, Tron, and TON. Line-for-line parity port of Python's [`omnichain-py`](https://github.com/getomnichain/omnichain-py).
 
 ```bash
 npm install @getomnichain/omnichain decimal.js
@@ -39,8 +39,8 @@ Consumer TypeScript setup: `module: "NodeNext"` + `moduleResolution: "NodeNext"`
 
 ## What this SDK does NOT do
 
-- **Hold keys** — signing happens in the consumer service. The SDK only emits `UnsignedTransaction` objects.
-- **Read environment variables** — every constructor takes an explicit config object. The one exception is RPC URL fallback resolution (`<NAME>_RPC_URL` / `EVM_<chainId>_RPC_URL` / `SOLANA_<chainId>_RPC_URL`), documented per chain.
+- **Hold keys in chain classes** — chains only emit unsigned transactions and broadcast signed ones. The opt-in `StellarWallet` / `TronWallet` classes (ported from omnichain-py) are the only key-holding code, and only when a consumer constructs them.
+- **Read environment variables** — every constructor takes an explicit config object. The exceptions are RPC URL fallback resolution (`<NAME>_RPC_URL` / `EVM_<chainId>_RPC_URL` / `SOLANA_<chainId>_RPC_URL` / `TRON_<chainId>_RPC_URL`, and Stellar's `*_HORIZON_URL` / `*_SOROBAN_RPC_URL`) and `TRONGRID_API_KEY`, all mirroring omnichain-py and documented per chain.
 - **Decide chain IDs** — non-EVM chains have no universal numeric ID; consumers can seed a synthetic scheme via `registerNonEvmChain(id, family)`.
 - **Ship infrastructure** — RPC URLs, indexer keys, Bitcoin Core / Esplora endpoints are consumer-owned.
 
@@ -59,6 +59,8 @@ Consumer TypeScript setup: `module: "NodeNext"` + `moduleResolution: "NodeNext"`
 - [docs/evm.md](./docs/evm.md) — EVM chains and ERC-20
 - [docs/utxo.md](./docs/utxo.md) — Bitcoin / Litecoin / Dogecoin, fee estimation, BTC asset filtering
 - [docs/solana.md](./docs/solana.md) — Solana, SPL Token, Token-2022, priority-fee model
+- [docs/stellar.md](./docs/stellar.md) — Stellar classic + Soroban, SAC / non-SAC assets, trustlines, SEP-5/SEP-53 wallet
+- [docs/tron.md](./docs/tron.md) — Tron TRX + TRC-20, energy fees, approve prerequisites, canonical transaction schema
 - [docs/PUBLISHING.md](./docs/PUBLISHING.md) — release + npm publish workflow
 
 ## License
