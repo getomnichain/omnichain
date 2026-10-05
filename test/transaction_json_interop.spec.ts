@@ -50,9 +50,17 @@ describe('JSON wire format is interchangeable with omnichain-py', () => {
 
   it('TronUnsignedTransaction round-trips the Python payload without a network call', () => {
     const restored = TronUnsignedTransaction.fromJson(JSON.stringify(fixtures.tron_unsigned));
-    expect(restored.txId).toBe('e1f2a4b1c9d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f');
     expect(restored.transaction.client).toBeNull();
     expect(restored.toJson()).toEqual(fixtures.tron_unsigned);
+  });
+
+  it('txId is the hash of raw_data: the placeholder txID in the Python sample is refused, the real one is accepted', () => {
+    expect(() => TronUnsignedTransaction.fromJson(fixtures.tron_unsigned).txId).toThrow(
+      /carries txID e1f2a4b1c9d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f, but its raw_data hashes to d7c546238043aaa467f078e3697141ccdf1ae4d480cd2651c885729482c4233c; refusing to sign/,
+    );
+    const payload = JSON.parse(JSON.stringify(fixtures.tron_unsigned)) as { transaction: { txID: string } };
+    payload.transaction.txID = 'd7c546238043aaa467f078e3697141ccdf1ae4d480cd2651c885729482c4233c';
+    expect(TronUnsignedTransaction.fromJson(payload).txId).toBe('d7c546238043aaa467f078e3697141ccdf1ae4d480cd2651c885729482c4233c');
   });
 
   it('TronSignedTransaction keeps the tx hash across the round trip', () => {
