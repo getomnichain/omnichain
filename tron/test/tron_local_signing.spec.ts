@@ -143,6 +143,25 @@ describe('Tron transactions are built and signed locally', () => {
     }
   });
 
+  it('txId handed to an external signer is the checked local txID, and a tampered payload has none', async () => {
+    const wallet = TronWallet.fromMnemonic('abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about');
+    const { chain } = stubChain();
+    const { transaction } = await chain.createTransferTransaction({
+      asset: chain.nativeAsset,
+      amountHr: new Decimal('1'),
+      senderAddress: wallet.address,
+      receiverAddress: OTHER,
+    });
+    const json = transaction.toJson() as { transaction: TronJson };
+
+    expect(TronUnsignedTransaction.fromJson(json).txId).toBe(tronTransactionId(transaction.transaction.rawData));
+    const otherTxid = { ...json, transaction: { ...json.transaction, txID: 'ee'.repeat(32) } };
+    expect(() => TronUnsignedTransaction.fromJson(otherTxid).txId).toThrow(/carries txID e{64}, but its raw_data hashes to [0-9a-f]{64}; refusing to sign/);
+    const otherRawData = JSON.parse(JSON.stringify(json)) as { transaction: TronJson };
+    ((((otherRawData.transaction.raw_data as TronJson).contract as TronJson[])[0].parameter as TronJson).value as TronJson).amount = 999_000_000;
+    expect(() => TronUnsignedTransaction.fromJson(otherRawData).txId).toThrow(/refusing to sign/);
+  });
+
   it('an unsigned transaction survives a JSON round trip and still signs', async () => {
     const wallet = TronWallet.fromMnemonic('abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about');
     const { chain } = stubChain();

@@ -56,7 +56,7 @@ const response = await TronMainnet.broadcastSignedTransaction(signed);
 - `broadcastSignedTransaction` and the `broadcast` adapter return the signed txID (lowercase). A node reply naming a different txID, compared case-insensitively, is an `RpcError`.
 - Loading a TRC-20 contract checks the `getcontract` reply like tronpy's `AsyncContract`: a `bytecode` that is not hex and an `abi` that is not an object raise tronpy's texts before any other call.
 - A TronGrid reply that is valid JSON but not an object fails like Python's `payload.get` (`'str' object has no attribute 'get'`) as `RpcError`, without echoing the reply.
-- External signers sign `transaction.txId` and attach the signature with `transaction.transaction.setSignature([...])`.
+- External signers sign `transaction.txId` and attach the signature with `transaction.transaction.setSignature([...])`. `txId` is computed from `raw_data` and checked against any txID or `raw_data_hex` the payload carries, so a payload loaded from JSON cannot hand a signer someone else's txID: a mismatch throws `InvalidArgument`.
 - `TronWallet.handleTransactionPrerequisite` handles `TronApproveTransactionPrerequisite`. It reads the current allowance, skips if it is enough, and otherwise approves (25 TRX fee limit). For USDT-style tokens it first resets the allowance to 0 and waits three blocks; these are tokens in `ZERO_RESET_APPROVAL_TRC20_ADDRESSES` or prerequisites with `requiresZeroResetFirst`.
 
 ## Reading state
