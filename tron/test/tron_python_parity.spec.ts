@@ -467,13 +467,6 @@ describe('TronTransaction.sign signs only a txID it computes from raw_data, keep
     expect(() => sign(merged)).toThrow(new Error(message));
   });
 
-  it('a key that does not own the transaction is refused', () => {
-    const other = new TronPrivateKey(new Uint8Array(32).fill(2));
-    expect(() => tronTransactionFromJson(payload()).sign(other)).toThrow(
-      `the private key's address ${other.publicKey.toBase58CheckAddress()} does not own this transaction`,
-    );
-  });
-
   it('a key outside the permission list gives tronpy\'s BadKey text', () => {
     const permission = { keys: [{ address: `41${'00'.repeat(20)}`, weight: 1 }] };
     expect(() => sign(payload({ permission }))).toThrow(

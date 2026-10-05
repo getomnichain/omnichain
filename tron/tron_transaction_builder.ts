@@ -109,9 +109,7 @@ export class TronTransaction {
     if (this.isExpired) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, 'expired');
     }
-    if (this.permission === null) {
-      this.assertSignerOwnsTransaction(privateKey);
-    } else {
+    if (this.permission !== null) {
       const addressOfKey = privateKey.publicKey.toHexAddress();
       const keys = pyItem(this.permission, 'keys') as unknown[];
       if (!keys.some((key) => pyItem(key as TronJson, 'address') === addressOfKey)) {
@@ -163,19 +161,6 @@ export class TronTransaction {
 
   toString(): string {
     return JSON.stringify(this.toJson(), null, 2);
-  }
-
-  private assertSignerOwnsTransaction(privateKey: TronPrivateKey): void {
-    const owner = (((this.rawData.contract as TronJson[])[0].parameter as TronJson).value as TronJson).owner_address;
-    if (typeof owner !== 'string' || owner.length === 0) {
-      throw new ChainError(ChainErrorKinds.InvalidArgument, 'the transaction has no owner_address; refusing to sign');
-    }
-    if (toHexAddress(owner) !== privateKey.publicKey.toHexAddress()) {
-      throw new ChainError(
-        ChainErrorKinds.InvalidArgument,
-        `the private key's address ${privateKey.publicKey.toBase58CheckAddress()} does not own this transaction`,
-      );
-    }
   }
 
   private requireClient(): TronClient {

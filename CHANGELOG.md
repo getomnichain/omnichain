@@ -31,7 +31,7 @@ Tron: a transaction status rango-intents can trust, and local signing for deposi
   Before, rejected entries, staking and delegation entries, and TRC-10 amounts were counted as TRX.
 - **The txID is computed locally.**
   - `build()` hashes the protobuf-encoded `raw_data` (`TransferContract`, `TriggerSmartContract`, `FreezeBalanceV2Contract`, `DelegateResourceContract`) instead of asking `wallet/getsignweight`, which is now called only when a permission id is set, and must agree.
-  - `sign()` / `TronWallet.signTransaction()` recompute the txID and refuse a carried `txID` or `raw_data_hex` that does not match, an unsupported contract type, or a non-owner key without a permission, all before the key is used.
+  - `sign()` / `TronWallet.signTransaction()` recompute the txID and refuse a carried `txID` or `raw_data_hex` that does not match, or an unsupported contract type, before the key is used.
   - `broadcast()` / `broadcastSignedTransaction()` re-check the txID before sending (so an altered stored transaction never reaches the node, and is reported as `InvalidArgument`) and require the node's reply to name the same txID (`RpcError` otherwise).
 
 ### Note
