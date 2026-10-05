@@ -3,6 +3,7 @@ import { pyEncodeUtf8, pyItem } from '../python_builtins.ts';
 import { pyRepr, pyTypeName } from '../python_repr.ts';
 import { TronClient, TronJson } from './tron_client.ts';
 import { TronPrivateKey, bytesToHex, hexToBytes, toHexAddress } from './tron_keys.ts';
+import { encodeTronRawData, tronTransactionId } from './tron_raw_data.ts';
 
 export interface TronTransactionJson {
   txID: string;
@@ -30,6 +31,7 @@ export class TronTransaction {
   txid: string;
   permission: TronJson | null;
   client: TronClient | null;
+  private readonly declaredRawDataHex: unknown;
 
   constructor(init: TronTransactionInit) {
     const source = init.rawData;
@@ -38,12 +40,23 @@ export class TronTransaction {
     this.client = init.client ?? null;
     this.txid = 'txID' in source ? (source.txID as string) : (init.txid ?? '');
     this.permission = 'permission' in source ? (source.permission as TronJson | null) : (init.permission ?? null);
+    this.declaredRawDataHex = 'raw_data_hex' in source ? source.raw_data_hex : null;
   }
 
   static async create(init: TronTransactionInit): Promise<TronTransaction> {
     const transaction = new TronTransaction(init);
-    if (!transaction.txid) await transaction.checkSignWeight();
+    transaction.txid = transaction.verifiedTxid('build');
+    if (transaction.requestsPermission) await transaction.checkSignWeight();
     return transaction;
+  }
+
+  get rawDataHex(): string {
+    return bytesToHex(encodeTronRawData(this.rawData));
+  }
+
+  get requestsPermission(): boolean {
+    const contract = (this.rawData.contract as TronJson[] | undefined)?.[0];
+    return contract?.Permission_id !== undefined && contract.Permission_id !== null;
   }
 
   async checkSignWeight(): Promise<void> {
@@ -54,8 +67,32 @@ export class TronTransaction {
       throw new ChainError(ChainErrorKinds.RpcError, 'transaction not in sign_weight');
     }
     const wrapped = signWeight.transaction as { transaction: { txID: string } };
-    this.txid = wrapped.transaction.txID;
+    const localTxid = this.verifiedTxid('build');
+    if (wrapped.transaction.txID !== localTxid) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `wallet/getsignweight returned txID ${String(wrapped.transaction.txID)}, but the transaction's raw_data hashes to ${localTxid}`,
+      );
+    }
+    this.txid = localTxid;
     this.permission = (signWeight.permission as TronJson | undefined) ?? null;
+  }
+
+  verifiedTxid(action: 'build' | 'sign' | 'broadcast'): string {
+    const localTxid = tronTransactionId(this.rawData);
+    if (this.txid && String(this.txid).toLowerCase() !== localTxid) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `the transaction carries txID ${String(this.txid)}, but its raw_data hashes to ${localTxid}; refusing to ${action}`,
+      );
+    }
+    if (this.declaredRawDataHex !== null && this.declaredRawDataHex !== undefined && this.declaredRawDataHex !== this.rawDataHex) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `the transaction's raw_data_hex does not match its raw_data; refusing to ${action}`,
+      );
+    }
+    return localTxid;
   }
 
   toJson(): TronTransactionJson {
@@ -68,13 +105,13 @@ export class TronTransaction {
   }
 
   sign(privateKey: TronPrivateKey): this {
-    if (!this.txid) {
-      throw new ChainError(ChainErrorKinds.InvalidArgument, 'txID not calculated');
-    }
+    const txid = this.verifiedTxid('sign');
     if (this.isExpired) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, 'expired');
     }
-    if (this.permission !== null) {
+    if (this.permission === null) {
+      this.assertSignerOwnsTransaction(privateKey);
+    } else {
       const addressOfKey = privateKey.publicKey.toHexAddress();
       const keys = pyItem(this.permission, 'keys') as unknown[];
       if (!keys.some((key) => pyItem(key as TronJson, 'address') === addressOfKey)) {
@@ -86,17 +123,11 @@ export class TronTransaction {
         throw new ChainError(ChainErrorKinds.InvalidArgument, `(${reasons.map(pyRepr).join(', ')})`);
       }
     }
-    if (typeof this.txid !== 'string') {
-      throw new ChainError(ChainErrorKinds.InvalidArgument, `fromhex() argument must be str, not ${pyTypeName(this.txid)}`);
-    }
-    const messageHash = hexToBytes(this.txid);
-    if (messageHash.length !== 32) {
-      throw new ChainError(ChainErrorKinds.InvalidArgument, 'Message hash must be 32 bytes long.');
-    }
     if (!Array.isArray(this.signature)) {
       throw new ChainError(ChainErrorKinds.InvalidArgument, `'${pyTypeName(this.signature)}' object has no attribute 'append'`);
     }
-    this.signature.push(privateKey.signMsgHash(messageHash).hex());
+    this.txid = txid;
+    this.signature.push(privateKey.signMsgHash(hexToBytes(txid)).hex());
     return this;
   }
 
@@ -115,15 +146,36 @@ export class TronTransaction {
   }
 
   async broadcast(): Promise<TronJson & { txid: string }> {
+    const localTxid = this.verifiedTxid('broadcast');
     const payload = await this.requireClient().broadcast(this.toJson());
     if (!('txid' in payload)) {
       throw new ChainError(ChainErrorKinds.RpcError, pyRepr('txid'));
+    }
+    if (typeof payload.txid !== 'string' || payload.txid.toLowerCase() !== localTxid) {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        `the node answered txid ${pyRepr(payload.txid)}, but the signed transaction is ${localTxid}`,
+        { txHash: localTxid },
+      );
     }
     return payload as TronJson & { txid: string };
   }
 
   toString(): string {
     return JSON.stringify(this.toJson(), null, 2);
+  }
+
+  private assertSignerOwnsTransaction(privateKey: TronPrivateKey): void {
+    const owner = (((this.rawData.contract as TronJson[])[0].parameter as TronJson).value as TronJson).owner_address;
+    if (typeof owner !== 'string' || owner.length === 0) {
+      throw new ChainError(ChainErrorKinds.InvalidArgument, 'the transaction has no owner_address; refusing to sign');
+    }
+    if (toHexAddress(owner) !== privateKey.publicKey.toHexAddress()) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `the private key's address ${privateKey.publicKey.toBase58CheckAddress()} does not own this transaction`,
+      );
+    }
   }
 
   private requireClient(): TronClient {

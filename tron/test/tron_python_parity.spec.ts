@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { IncomingHttpHeaders, IncomingMessage, Server, ServerResponse, createServer } from 'node:http';
 import { AddressInfo } from 'node:net';
@@ -18,7 +19,8 @@ import { TronAddressUtils, TronChain, TronSignedMessage } from '../tron_chain.ts
 import { TRONPY_USER_AGENT, TronClient, TronJson, TronTvmError } from '../tron_client.ts';
 import { TronContract } from '../tron_contract.ts';
 import { tronAbiDecodeSingle, tronAbiEncodeSingle } from '../tron_abi.ts';
-import { TronPrivateKey, TronPublicKey, TronSignature } from '../tron_keys.ts';
+import { TronPrivateKey, TronPublicKey, TronSignature, hexToBytes } from '../tron_keys.ts';
+import { tronTransactionId } from '../tron_raw_data.ts';
 import { TronApproveTransactionPrerequisite, TronHandledApprovePrerequisiteResponse, TronSignedTransaction, TronUnsignedTransaction, TronTransactionSimulationResult, tronTransactionFromJson } from '../tron_transactions.ts';
 import { TronTransactionStatus } from '../tron_transaction_status.ts';
 import { TronWallet } from '../tron_wallet.ts';
@@ -111,11 +113,27 @@ describe('TronClient over real HTTP mirrors tronpy AsyncHTTPProvider / AsyncTron
       setTimeout(() => res.socket?.destroy(), 20);
     };
     const chain = new TronChain({ name: 'Tron Local Node', chainId: CHAIN_ID_TRON_MAINNET, defaultRpcUrl: node.url, explorerUrl: 'https://tronscan.org' });
-    const transaction = tronTransactionFromJson({ txID: 'aa'.repeat(32), raw_data: { expiration: Date.now() + 60_000 }, signature: ['00'], permission: null });
+    const rawData = {
+      contract: [
+        {
+          parameter: {
+            value: { owner_address: `41${'11'.repeat(20)}`, to_address: `41${'22'.repeat(20)}`, amount: 1 },
+            type_url: 'type.googleapis.com/protocol.TransferContract',
+          },
+          type: 'TransferContract',
+        },
+      ],
+      ref_block_bytes: 'a1b2',
+      ref_block_hash: '0011223344556677',
+      expiration: Date.now() + 60_000,
+      timestamp: Date.now(),
+    };
+    const txid = tronTransactionId(rawData);
+    const transaction = tronTransactionFromJson({ txID: txid, raw_data: rawData, signature: ['00'], permission: null });
     const signed = new TronSignedTransaction({ chainId: CHAIN_ID_TRON_MAINNET, signedTransaction: transaction });
     const response = await chain.broadcastSignedTransaction(signed);
     expect(response.broadcastError).toMatchObject({ kind: ChainErrorKinds.RpcError });
-    await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError, meta: { txHash: 'aa'.repeat(32) } });
+    await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError, meta: { txHash: txid } });
   });
 
   it('the read timeout applies per chunk like httpx: a slow but live body succeeds, a stalled one is RpcError', async () => {
@@ -397,38 +415,82 @@ describe('Python value semantics for Tron assets and __str__ texts', () => {
   });
 });
 
-describe('TronTransaction.sign refuses exactly what tronpy AsyncTransaction.sign refuses', () => {
+describe('TronTransaction.sign signs only a txID it computes from raw_data, keeping tronpy\'s refusal texts where they still apply', () => {
   const key = new TronPrivateKey(new Uint8Array(32).fill(1));
   const future = Date.now() + 60_000;
-  const tronpySignature = '2b3bc1430342aac2bcce687aaf5db4b8e0440421616fa3af77c3cba12832f4ea7f3d773f75cfc3733877a842ff0781696f477629c58817b9c61af9687647338300';
-  const sign = (payload: TronJson): string[] | null => tronTransactionFromJson(payload).sign(key).signature;
+  const rawData = (overrides: TronJson = {}): TronJson => ({
+    contract: [
+      {
+        parameter: {
+          value: { owner_address: key.publicKey.toHexAddress(), to_address: `41${'11'.repeat(20)}`, amount: 1_000_000 },
+          type_url: 'type.googleapis.com/protocol.TransferContract',
+        },
+        type: 'TransferContract',
+      },
+    ],
+    ref_block_bytes: 'a1b2',
+    ref_block_hash: '0011223344556677',
+    expiration: future,
+    timestamp: future - 60_000,
+    ...overrides,
+  });
+  const payload = (overrides: TronJson = {}): TronJson => {
+    const raw = rawData();
+    return { txID: tronTransactionId(raw), raw_data: raw, signature: [], permission: null, ...overrides };
+  };
+  const sign = (json: TronJson): string[] | null => tronTransactionFromJson(json).sign(key).signature;
 
   it.each([
-    ['missing expiration', { txID: 'aa'.repeat(32), raw_data: {}, signature: [], permission: null }, "'expiration'"],
-    ['string expiration', { txID: 'aa'.repeat(32), raw_data: { expiration: '99999999999999' }, signature: [], permission: null }, "'>=' not supported between instances of 'int' and 'str'"],
-    ['null expiration', { txID: 'aa'.repeat(32), raw_data: { expiration: null }, signature: [], permission: null }, "'>=' not supported between instances of 'int' and 'NoneType'"],
-    ['null txID', { txID: null, raw_data: { expiration: future }, signature: [], permission: null }, 'txID not calculated'],
-    ['integer txID', { txID: 123, raw_data: { expiration: future }, signature: [], permission: null }, 'fromhex() argument must be str, not int'],
-    ['31-byte txID', { txID: 'aa'.repeat(31), raw_data: { expiration: future }, signature: [], permission: null }, 'Message hash must be 32 bytes long.'],
-    ['null signature', { txID: 'aa'.repeat(32), raw_data: { expiration: future }, signature: null, permission: null }, "'NoneType' object has no attribute 'append'"],
-    ['string signature', { txID: 'aa'.repeat(32), raw_data: { expiration: future }, signature: 'abc', permission: null }, "'str' object has no attribute 'append'"],
-    ['permission without keys', { txID: 'aa'.repeat(32), raw_data: { expiration: future }, signature: [], permission: { x: 1 } }, "'keys'"],
-  ])('%s', (_label, payload, message) => {
-    expect(() => sign(payload as TronJson)).toThrow(new Error(message));
+    ['a carried txID that is not the hash of raw_data', payload({ txID: 'aa'.repeat(32) }), /carries txID a{64}, but its raw_data hashes to [0-9a-f]{64}; refusing to sign/],
+    ['a raw_data_hex that does not match raw_data', payload({ raw_data_hex: '0a02a1b2' }), /raw_data_hex does not match its raw_data; refusing to sign/],
+    ['raw_data without a contract', { txID: 'aa'.repeat(32), raw_data: { expiration: future }, signature: [], permission: null }, /cannot be serialized locally: raw_data.contract must hold exactly one contract/],
+    ['a contract type the encoder does not support', { raw_data: rawData({ contract: [{ type: 'TransferAssetContract', parameter: { value: {}, type_url: 'type.googleapis.com/protocol.TransferAssetContract' } }] }), signature: [], permission: null }, /contract type TransferAssetContract is not supported/],
+  ])('refuses %s before the key is used', (_label, json, message) => {
+    const spy = jest.spyOn(TronPrivateKey.prototype, 'signMsgHash');
+    try {
+      expect(() => sign(json)).toThrow(message);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it.each([
+    ['an expired transaction', { raw_data: rawData({ expiration: future - 120_000 }) }, 'expired'],
+    ['a string expiration', { raw_data: rawData({ expiration: '99999999999999' }) }, 'Tron raw_data cannot be serialized locally: raw_data.expiration must be a non-negative integer'],
+    ['a null signature list', { signature: null }, "'NoneType' object has no attribute 'append'"],
+    ['a string signature list', { signature: 'abc' }, "'str' object has no attribute 'append'"],
+    ['a permission without keys', { permission: { x: 1 } }, "'keys'"],
+  ])('refuses %s with the expected text', (_label, overrides, message) => {
+    const merged: TronJson = { ...payload(), ...(overrides as TronJson) };
+    if ('raw_data' in overrides) merged.txID = '';
+    expect(() => sign(merged)).toThrow(new Error(message));
+  });
+
+  it('a key that does not own the transaction is refused', () => {
+    const other = new TronPrivateKey(new Uint8Array(32).fill(2));
+    expect(() => tronTransactionFromJson(payload()).sign(other)).toThrow(
+      `the private key's address ${other.publicKey.toBase58CheckAddress()} does not own this transaction`,
+    );
   });
 
   it('a key outside the permission list gives tronpy\'s BadKey text', () => {
     const permission = { keys: [{ address: `41${'00'.repeat(20)}`, weight: 1 }] };
-    expect(() => sign({ txID: 'aa'.repeat(32), raw_data: { expiration: future }, signature: [], permission })).toThrow(
+    expect(() => sign(payload({ permission }))).toThrow(
       new Error(
         `('provided private key is not in the permission list', 'provided ${key.publicKey.toBase58CheckAddress()}', "required {'keys': [{'address': '41${'00'.repeat(20)}', 'weight': 1}]}")`,
       ),
     );
   });
 
-  it('payloads tronpy signs produce tronpy\'s exact signature', () => {
-    expect(sign({ txID: 'aa'.repeat(32), raw_data: { expiration: future + 0.5 }, signature: [], permission: null })).toEqual([tronpySignature]);
-    expect(sign({ txID: 'aa'.repeat(32), expiration: future, signature: [], permission: null })).toEqual([tronpySignature]);
+  it('signs the locally computed txID, whether the payload carries it (any case) or not', () => {
+    const txid = payload().txID as string;
+    const expected = key.signMsgHash(hexToBytes(txid)).hex();
+    expect(sign(payload())).toEqual([expected]);
+    expect(sign(payload({ txID: txid.toUpperCase() }))).toEqual([expected]);
+    const withoutTxid = tronTransactionFromJson({ raw_data: payload().raw_data, signature: [], permission: null });
+    expect(withoutTxid.sign(key).signature).toEqual([expected]);
+    expect(withoutTxid.txid).toBe(txid);
   });
 
   it('fromJson reads the keys Python reads and fails like a KeyError when they are missing', () => {

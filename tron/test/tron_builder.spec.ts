@@ -11,6 +11,7 @@ import { TronChain } from '../tron_chain.ts';
 import { TronClient, TronJson } from '../tron_client.ts';
 import { TronGasPricing } from '../tron_gas_pricing.ts';
 import { TronPrivateKey, TronSignature, hexToBytes, toHexAddress } from '../tron_keys.ts';
+import { tronTransactionId } from '../tron_raw_data.ts';
 import { TronApproveTransactionPrerequisite, TronSignedTransaction, TronUnsignedTransaction } from '../tron_transactions.ts';
 import { TronWallet } from '../tron_wallet.ts';
 
@@ -19,7 +20,6 @@ const SENDER = TronWallet.fromMnemonic(MNEMONIC);
 const RECEIVER = 'TSeJkUh4Qv67VNFwY8LaAxERygNdy6NQZK';
 const SPENDER = 'TLrpNTBuCpGMrB9TyVwgEhNVRhtWEQPHh4';
 const BLOCK_ID = '0000000004a3b2c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5';
-const TXID = 'aa'.repeat(32);
 const WRONG_PREFIX_T_ADDRESS = 'TmhM7heCdKGPVk6xNWkeM2SKwE7N78cAjP';
 
 interface Call {
@@ -41,7 +41,7 @@ function stubChain(handler: (method: string, params: TronJson) => TronJson | und
     const custom = handler(method, params);
     if (custom !== undefined) return custom;
     if (method === 'wallet/getnodeinfo') return { solidityBlock: `Num:77775553,ID:${BLOCK_ID}`, block: `Num:77775570,ID:${BLOCK_ID}` };
-    if (method === 'wallet/getsignweight') return { transaction: { transaction: { txID: TXID } } };
+    if (method === 'wallet/getsignweight') return { transaction: { transaction: { txID: tronTransactionId(params.raw_data as TronJson) } } };
     if (method === 'wallet/getcontract') return { contract_address: params.value };
     throw new Error(`unexpected call ${method}`);
   };
@@ -53,7 +53,7 @@ const pad = (hex: string) => hex.padStart(64, '0');
 const tvm = (address: string) => toHexAddress(address).slice(2);
 
 describe('TronChain.createTransferTransaction builds tronpy-identical raw_data', () => {
-  it('native TRX: TransferContract, hex addresses, 60s expiration, solid-block TAPoS, txID from getsignweight', async () => {
+  it('native TRX: TransferContract, hex addresses, 60s expiration, solid-block TAPoS, txID computed locally', async () => {
     const { chain, calls } = stubChain();
     const bundle = await chain.createTransferTransaction({
       asset: chain.nativeAsset,
@@ -64,8 +64,9 @@ describe('TronChain.createTransferTransaction builds tronpy-identical raw_data',
     expect(bundle.prerequisites).toEqual([]);
     const tx = bundle.transaction;
     expect(tx).toBeInstanceOf(TronUnsignedTransaction);
-    expect(tx.txId).toBe(TXID);
     const raw = tx.transaction.rawData;
+    expect(tx.txId).toBe(tronTransactionId(raw));
+    expect(tx.transaction.rawDataHex).toMatch(/^0a02/);
     expect(raw.contract).toEqual([
       {
         parameter: {
@@ -79,8 +80,7 @@ describe('TronChain.createTransferTransaction builds tronpy-identical raw_data',
     expect(raw.ref_block_hash).toBe(BLOCK_ID.slice(16, 32));
     expect(Math.abs((raw.expiration as number) - (raw.timestamp as number) - 60_000)).toBeLessThanOrEqual(5);
     expect('fee_limit' in raw).toBe(false);
-    expect(calls.map((c) => c.method)).toEqual(['wallet/getnodeinfo', 'wallet/getsignweight']);
-    expect(calls[1].params).toEqual({ txID: '', raw_data: raw, signature: [], permission: null });
+    expect(calls.map((c) => c.method)).toEqual(['wallet/getnodeinfo']);
   });
 
   it('native TRX full balance keeps the 0.3 TRX reserve; memo becomes hex raw_data.data', async () => {
@@ -224,35 +224,35 @@ describe('TronWallet signing and TronChain broadcast', () => {
       receiverAddress: RECEIVER,
     });
     const signed = await SENDER.signTransaction(transaction, chain);
+    const txid = transaction.txId;
     expect(signed).toBeInstanceOf(TronSignedTransaction);
-    expect(signed.txHash).toBe(TXID);
+    expect(signed.txHash).toBe(txid);
     expect(transaction.transaction.signature).toHaveLength(1);
-    const expected = TronPrivateKey.fromHex(SENDER.privateKeyHex).signMsgHash(hexToBytes(TXID)).hex();
+    const expected = TronPrivateKey.fromHex(SENDER.privateKeyHex).signMsgHash(hexToBytes(txid)).hex();
     expect(signed.signedTransaction.signature).toEqual([expected]);
-    const recovered = TronSignature.fromHex(expected).recoverPublicKeyFromMsgHash(hexToBytes(TXID));
+    const recovered = TronSignature.fromHex(expected).recoverPublicKeyFromMsgHash(hexToBytes(txid));
     expect(recovered.toBase58CheckAddress()).toBe(SENDER.address);
   });
 
-  it('refuses to sign an expired transaction or one whose permission excludes the key', async () => {
-    const { chain } = stubChain((method) =>
+  it('a permission id goes through getsignweight, whose permission list is enforced; an expired transaction is refused', async () => {
+    const { chain, calls } = stubChain((method, params) =>
       method === 'wallet/getsignweight'
-        ? { transaction: { transaction: { txID: TXID } }, permission: { keys: [{ address: toHexAddress(RECEIVER), weight: 1 }] } }
+        ? {
+            transaction: { transaction: { txID: tronTransactionId(params.raw_data as TronJson) } },
+            permission: { keys: [{ address: toHexAddress(RECEIVER), weight: 1 }] },
+          }
         : undefined,
     );
-    const { transaction } = await chain.createTransferTransaction({
-      asset: chain.nativeAsset,
-      amountHr: new Decimal('1'),
-      senderAddress: SENDER.address,
-      receiverAddress: RECEIVER,
-    });
-    await expect(SENDER.signTransaction(transaction, chain)).rejects.toThrow(/not in the permission list/);
-    transaction.transaction.permission = null;
-    transaction.transaction.rawData.expiration = Date.now() - 1;
-    await expect(SENDER.signTransaction(transaction, chain)).rejects.toThrow('expired');
+    const withPermission = await chain.trx.transfer(SENDER.address, RECEIVER, 1_000_000).permissionId(2).build();
+    expect(calls.map((c) => c.method)).toEqual(['wallet/getnodeinfo', 'wallet/getsignweight']);
+    expect(() => withPermission.sign(TronPrivateKey.fromHex(SENDER.privateKeyHex))).toThrow(/not in the permission list/);
+
+    const expired = await chain.trx.transfer(SENDER.address, RECEIVER, 1_000_000).expiration(-1_000).build();
+    expect(() => expired.sign(TronPrivateKey.fromHex(SENDER.privateKeyHex))).toThrow('expired');
   });
 
   it('broadcastSignedTransaction keeps the tx hash and surfaces node rejections as broadcastError', async () => {
-    let reply: TronJson = { result: true, txid: TXID };
+    let reply: TronJson = {};
     const { chain } = stubChain((method) => (method === 'wallet/broadcasttransaction' ? reply : undefined));
     const { transaction } = await chain.createTransferTransaction({
       asset: chain.nativeAsset,
@@ -261,6 +261,8 @@ describe('TronWallet signing and TronChain broadcast', () => {
       receiverAddress: RECEIVER,
     });
     const signed = await SENDER.signTransaction(transaction, chain);
+    const TXID = signed.txHash;
+    reply = { result: true, txid: TXID };
     const ok = await chain.broadcastSignedTransaction(signed);
     expect(ok.txHash).toBe(TXID);
     expect(ok.isBroadcastConfirmed).toBe(true);
@@ -279,7 +281,7 @@ describe('TronWallet signing and TronChain broadcast', () => {
   });
 
   it('the broadcast adapter calls a reply "rejected" only when the node did not accept the transaction; everything else may have landed', async () => {
-    let reply: TronJson = { result: true, txid: TXID };
+    let reply: TronJson = {};
     const { chain } = stubChain((method) => (method === 'wallet/broadcasttransaction' ? reply : undefined));
     const { transaction } = await chain.createTransferTransaction({
       asset: chain.nativeAsset,
@@ -288,6 +290,7 @@ describe('TronWallet signing and TronChain broadcast', () => {
       receiverAddress: RECEIVER,
     });
     const signed = await SENDER.signTransaction(transaction, chain);
+    const TXID = signed.txHash;
     const expectKind = async (next: TronJson, kind: string) => {
       reply = next;
       await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind, meta: { txHash: TXID } });
@@ -318,22 +321,15 @@ describe('TronWallet signing and TronChain broadcast', () => {
     reply = { result: true, txid: TXID };
     expect(await chain.broadcast(upperCaseJson)).toBe(TXID);
 
-    for (const [txid, parityHash] of [
-      [{}, TXID],
-      [[], TXID],
-      ['', TXID],
-      [5, 5],
-      [true, true],
-      ['ff'.repeat(32), 'ff'.repeat(32)],
-    ] as [unknown, unknown][]) {
+    for (const txid of [{}, [], '', 5, true, 'ff'.repeat(32)]) {
       reply = { result: true, txid };
-      expect((await chain.broadcastSignedTransaction(signed)).txHash).toEqual(parityHash);
-      if (parityHash === TXID) {
-        expect(await chain.broadcast(signed.toJsonStr())).toBe(TXID);
-      } else {
-        await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError, meta: { txHash: TXID } });
-      }
+      const response = await chain.broadcastSignedTransaction(signed);
+      expect(response.txHash).toBe(TXID);
+      expect(response.broadcastError).toMatchObject({ kind: ChainErrorKinds.RpcError });
+      await expect(chain.broadcast(signed.toJsonStr())).rejects.toMatchObject({ kind: ChainErrorKinds.RpcError, meta: { txHash: TXID } });
     }
+    reply = { result: true, txid: TXID.toUpperCase() };
+    expect(await chain.broadcast(signed.toJsonStr())).toBe(TXID);
 
     reply = { result: true };
     const noTxid = await chain.broadcastSignedTransaction(signed);
@@ -357,7 +353,7 @@ describe('TronWallet.handleTransactionPrerequisite (TRC-20 approve)', () => {
       if (method === 'wallet/triggerconstantcontract') return allowanceReply(allowance);
       if (method === 'wallet/broadcasttransaction') {
         broadcasts.push(params);
-        return { result: true, txid: `${broadcasts.length}`.repeat(64) };
+        return { result: true, txid: params.txID };
       }
       return undefined;
     });
@@ -438,8 +434,9 @@ describe('TronWallet.handleTransactionPrerequisite (TRC-20 approve)', () => {
       expect(approveData(broadcasts[0])).toBe(`095ea7b3${pad(tvm(SPENDER))}${pad('0')}`);
       expect(approveData(broadcasts[1])).toBe(`095ea7b3${pad(tvm(SPENDER))}${pad((1000).toString(16))}`);
       expect(((broadcasts[1].raw_data as TronJson).fee_limit)).toBe(25_000_000);
-      expect(response.zeroResetTxHash).toBe('1'.repeat(64));
-      expect(response.txHash).toBe('2'.repeat(64));
+      expect(response.zeroResetTxHash).toBe(tronTransactionId(broadcasts[0].raw_data as TronJson));
+      expect(response.txHash).toBe(tronTransactionId(broadcasts[1].raw_data as TronJson));
+      expect(response.zeroResetTxHash).not.toBe(response.txHash);
     } finally {
       jest.useRealTimers();
     }
@@ -542,7 +539,7 @@ describe('TronChain reads and TS Chain adapters', () => {
     expect(chain.getAssetExplorerUrl(TRON_USDT)).toBe('https://tronscan.org/#/token20/TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t');
     expect(chain.getAssetExplorerUrl(chain.nativeAsset)).toBeNull();
     expect(chain.getWalletAddressExplorerUrl(RECEIVER)).toBe(`https://tronscan.org/#/address/${RECEIVER}`);
-    expect(chain.getTransactionExplorerUrl(TXID)).toBe(`https://tronscan.org/#/transaction/${TXID}`);
+    expect(chain.getTransactionExplorerUrl('aa'.repeat(32))).toBe(`https://tronscan.org/#/transaction/${'aa'.repeat(32)}`);
     expect(String(chain)).toBe(`TronChain[chain_id:${CHAIN_ID_TRON_MAINNET}]`);
   });
 

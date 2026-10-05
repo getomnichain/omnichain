@@ -12,7 +12,7 @@ import {
 import { CHAIN_ID_TRON_MAINNET } from '../chain_ids.ts';
 import { ChainType } from '../chain_type.ts';
 import { ChainError, ChainErrorKind, ChainErrorKinds, isChainError } from '../errors.ts';
-import { isPyInt, pyDecodeUtf8, pyEncodeUtf8, pyInt, pyItem, pyTruthy } from '../python_builtins.ts';
+import { isPyInt, pyDecodeUtf8, pyEncodeUtf8, pyItem, pyTruthy } from '../python_builtins.ts';
 import { pyRepr, pyTypeRepr } from '../python_repr.ts';
 import { NetworkType } from '../network_type.ts';
 import { FeePriority } from '../priority.ts';
@@ -45,7 +45,8 @@ import {
   toBase58CheckAddress,
 } from './tron_keys.ts';
 import { TronTransactionBuilder, TronTrx } from './tron_transaction_builder.ts';
-import { TronTransactionFees, TronTransactionStatus } from './tron_transaction_status.ts';
+import { decodeTronMemo } from './tron_memo.ts';
+import { TronIncludedTransactionDetails, TronTransactionFees, TronTransactionStatus } from './tron_transaction_status.ts';
 import {
   TronBroadcastTransactionResponse,
   TronSignedTransaction,
@@ -116,6 +117,8 @@ export const TRC20_ABI: TronAbiEntry[] = [
 ];
 
 export const TRC20_TRANSFER_TOPIC = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+const TRX_PAYING_INTERNAL_NOTES: ReadonlySet<string> = new Set(['call', 'suicide']);
+const ABI_WORD_HEX = /^[0-9a-fA-F]{64}$/;
 
 export const DEFAULT_TRX_FEE_LIMIT_SUN = 300_000;
 
@@ -605,27 +608,74 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
   }
 
   static _parseTrc20TransferLog(log: TronJson): TronParsedTransferLog | null {
-    const topics = (log.topics as string[] | undefined | null) || [];
-    if (topics.length === 0 || topics[0].toLowerCase() !== TRC20_TRANSFER_TOPIC) return null;
-    if (topics.length < 3) return null;
-    let from: string;
-    let to: string;
+    const { address, topics, data } = log as { address?: unknown; topics?: unknown; data?: unknown };
+    const contract = TronChain._tronAddressOrNull(address);
+    if (
+      contract === null ||
+      !Array.isArray(topics) ||
+      topics.length !== 3 ||
+      topics[0] !== TRC20_TRANSFER_TOPIC ||
+      !ABI_WORD_HEX.test(String(topics[1])) ||
+      !ABI_WORD_HEX.test(String(topics[2])) ||
+      typeof data !== 'string' ||
+      !ABI_WORD_HEX.test(data)
+    ) {
+      return null;
+    }
+    const value = BigInt(`0x${data}`);
+    if (value === 0n) return null;
+    return {
+      contract,
+      from: TronChain._toBase58CheckAny(`41${String(topics[1]).slice(-40)}`),
+      to: TronChain._toBase58CheckAny(`41${String(topics[2]).slice(-40)}`),
+      value,
+    };
+  }
+
+  static _nativeTransferOfContract(contract: TronJson): { from: string; to: string; amountSun: bigint } | null {
+    const value = (((contract.parameter as TronJson | undefined) || {}).value as TronJson | undefined) || {};
+    const recipientField =
+      contract.type === 'TransferContract' ? 'to_address' : contract.type === 'TriggerSmartContract' ? 'contract_address' : null;
+    if (recipientField === null) return null;
+    const amountSun = BigInt(String((contract.type === 'TransferContract' ? value.amount : value.call_value) ?? 0));
+    if (contract.type === 'TriggerSmartContract' && amountSun === 0n) return null;
     try {
-      from = TronChain._toBase58CheckAny(topics[1].slice(-40));
-      to = TronChain._toBase58CheckAny(topics[2].slice(-40));
+      return {
+        from: TronChain._toBase58CheckAny(String(value.owner_address ?? '')),
+        to: TronChain._toBase58CheckAny(String(value[recipientField] ?? '')),
+        amountSun,
+      };
     } catch {
       return null;
     }
-    const dataHex = String(log.data || '').replace(/^[0x]+/, '');
-    if (!dataHex) return null;
-    const value = pyInt(dataHex, 16);
-    let contract: string | null;
+  }
+
+  static _trxPaidByInternalTransaction(internal: TronJson): { from: string; to: string; amountSun: bigint } | null {
+    const { caller_address: from, transferTo_address: to, callValueInfo, note, rejected } = internal as {
+      caller_address?: unknown;
+      transferTo_address?: unknown;
+      callValueInfo?: Array<{ callValue?: unknown; tokenId?: unknown }> | null;
+      note?: unknown;
+      rejected?: unknown;
+    };
+    if (rejected || typeof note !== 'string' || !note) return null;
+    if (!TRX_PAYING_INTERNAL_NOTES.has(Buffer.from(note, 'hex').toString('utf8'))) return null;
+    const amountSun = (callValueInfo ?? [])
+      .filter((entry) => entry.tokenId === undefined)
+      .reduce((sum, entry) => sum + BigInt(String(entry.callValue ?? 0)), 0n);
+    const sender = TronChain._tronAddressOrNull(from);
+    const receiver = TronChain._tronAddressOrNull(to);
+    if (amountSun <= 0n || sender === null || receiver === null) return null;
+    return { from: sender, to: receiver, amountSun };
+  }
+
+  static _tronAddressOrNull(address: unknown): string | null {
+    if (typeof address !== 'string' || address.length === 0) return null;
     try {
-      contract = TronChain._toBase58CheckAny(String(log.address || ''));
+      return TronChain._toBase58CheckAny(address);
     } catch {
-      contract = null;
+      return null;
     }
-    return { contract, from, to, value };
   }
 
   async _balanceChangesFromInfo(args: {
@@ -645,38 +695,16 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
     };
 
     const rawContracts = (((args.txData.raw_data as TronJson | undefined) || {}).contract as TronJson[] | undefined) || [];
-    for (const c of rawContracts) {
-      if (c.type !== 'TransferContract') continue;
-      const value = (((c.parameter as TronJson | undefined) || {}).value as TronJson | undefined) || {};
-      let owner: string;
-      let to: string;
-      try {
-        owner = TronChain._toBase58CheckAny(String(value.owner_address ?? ''));
-        to = TronChain._toBase58CheckAny(String(value.to_address ?? ''));
-      } catch {
-        continue;
-      }
-      const amountMr = BigInt(String(value.amount ?? 0));
-      add(owner, native, AssetBalanceChange.fromMr(-amountMr, native.decimals));
-      add(to, native, AssetBalanceChange.fromMr(amountMr, native.decimals));
-    }
-
-    for (const internalTransaction of (args.info.internal_transactions as TronJson[] | undefined) || []) {
-      const callValueInfo = internalTransaction.callValueInfo as TronJson[] | undefined | null;
-      if (callValueInfo === undefined || callValueInfo === null) continue;
-      if (callValueInfo.length === 0) {
-        throw new ChainError(
-          ChainErrorKinds.TransactionDecodeFailed,
-          'Tron internal transaction has an empty callValueInfo list',
-          { chainId: this.chainId },
-        );
-      }
-      if (callValueInfo[0].callValue === undefined || callValueInfo[0].callValue === null) continue;
-      const callValue = BigInt(String(callValueInfo[0].callValue));
-      const senderAddress = TronChain._toBase58CheckAny(String(internalTransaction.caller_address));
-      const receiverAddress = TronChain._toBase58CheckAny(String(internalTransaction.transferTo_address));
-      add(senderAddress, native, AssetBalanceChange.fromMr(-callValue, native.decimals));
-      add(receiverAddress, native, AssetBalanceChange.fromMr(callValue, native.decimals));
+    const nativeTransfers = [
+      ...rawContracts.map((contract) => TronChain._nativeTransferOfContract(contract)),
+      ...((args.info.internal_transactions as TronJson[] | undefined) || []).map((internal) =>
+        TronChain._trxPaidByInternalTransaction(internal),
+      ),
+    ];
+    for (const transfer of nativeTransfers) {
+      if (transfer === null) continue;
+      add(transfer.from, native, AssetBalanceChange.fromMr(-transfer.amountSun, native.decimals));
+      add(transfer.to, native, AssetBalanceChange.fromMr(transfer.amountSun, native.decimals));
     }
 
     for (const log of (args.info.log as TronJson[] | undefined) || []) {
@@ -781,9 +809,10 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
       filteredWallets,
       filteredAssets,
     });
+    const details = TronChain._includedTransactionDetails(info, txData);
 
     if (!hasFailure) {
-      return TronTransactionStatus.successful({ chainId: this.chainId, inclusionAt, balanceChanges, fees });
+      return TronTransactionStatus.successful({ chainId: this.chainId, inclusionAt, balanceChanges, fees, ...details });
     }
     return TronTransactionStatus.failed({
       chainId: this.chainId,
@@ -793,7 +822,29 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
         reason: `Tron transaction failed: result=${pyRepr(info.result ?? null)}, contractRet=${pyRepr(contractRet)}`,
       },
       fees,
+      ...details,
     });
+  }
+
+  static _includedTransactionDetails(info: TronJson, txData: TronJson): TronIncludedTransactionDetails {
+    const rawData = (txData.raw_data as TronJson | undefined) || {};
+    const firstContract = ((rawData.contract as TronJson[] | undefined) || [])[0];
+    const ownerAddress = (((firstContract?.parameter as TronJson | undefined) || {}).value as TronJson | undefined)?.owner_address;
+    let signers: string[] = [];
+    if (typeof ownerAddress === 'string' && ownerAddress.length > 0) {
+      try {
+        signers = [TronChain._toBase58CheckAny(ownerAddress)];
+      } catch {
+        signers = [];
+      }
+    }
+    const memoHex = typeof rawData.data === 'string' && rawData.data.length > 0 ? rawData.data.toLowerCase() : null;
+    return {
+      blockNumber: typeof info.blockNumber === 'number' && Number.isSafeInteger(info.blockNumber) ? info.blockNumber : null,
+      signers,
+      memo: decodeTronMemo(memoHex),
+      memoHex,
+    };
   }
 
   async broadcastSignedTransaction(signedTransaction: AbstractSignedTransaction): Promise<TronBroadcastTransactionResponse> {
@@ -952,6 +1003,7 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
 const TRON_NOT_ACCEPTED_BROADCAST_CODES = new Set(['SIGERROR', 'CONTRACT_VALIDATE_ERROR', 'CONTRACT_EXE_ERROR', 'BANDWITH_ERROR']);
 
 export function tronBroadcastErrorKind(error: Error): ChainErrorKind {
+  if (isChainError(error, ChainErrorKinds.InvalidArgument)) return ChainErrorKinds.InvalidArgument;
   if (!(error instanceof TronApiError) || error.code === null) return ChainErrorKinds.RpcError;
   if (error.code === 'TOO_BIG_TRANSACTION_ERROR') return ChainErrorKinds.TransactionTooLarge;
   return TRON_NOT_ACCEPTED_BROADCAST_CODES.has(error.code) ? ChainErrorKinds.BroadcastRejected : ChainErrorKinds.RpcError;
