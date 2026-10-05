@@ -23,6 +23,7 @@ describe('decodeTronMemo matches Clydner memoOf', () => {
     ['invalid UTF-8', 'c328', null],
     ['a truncated multi-byte character', 'e682', null],
     ['odd-length hex', 'abc', null],
+    ['odd-length hex that would decode if the last digit were dropped', `${utf8Hex('abc')}0`, null],
     ['non-hex text', 'zz', null],
     ['an empty memo', '', null],
     ['a missing memo', undefined, null],

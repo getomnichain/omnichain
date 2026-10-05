@@ -88,6 +88,8 @@ function successfulInfo(overrides: TronJson = {}): TronJson {
       { address: TRON_USDT.contractAddress, topics: [TRC20_TRANSFER_TOPIC, word(tvmHex(OWNER).slice(2)), word(tvmHex(USER).slice(2))], data: word((748_000_000).toString(16)) },
       { address: NFT, topics: [TRC20_TRANSFER_TOPIC, word(tvmHex(OWNER).slice(2)), word(tvmHex(USER).slice(2)), word('1')], data: '' },
       { address: NFT, topics: [TRC20_TRANSFER_TOPIC, word(tvmHex(OWNER).slice(2)), word(tvmHex(USER).slice(2)), word('1')], data: word('5') },
+      { address: NFT, topics: [TRC20_TRANSFER_TOPIC, word(tvmHex(OWNER).slice(2)), word(tvmHex(USER).slice(2))], data: `${word('5')}${word('6')}` },
+      { address: NFT, topics: [TRC20_TRANSFER_TOPIC, word(tvmHex(OWNER).slice(2)), word(tvmHex(USER).slice(2))], data: 'zz'.repeat(32) },
     ],
     ...overrides,
   };
@@ -197,6 +199,7 @@ describe('TronChain balance changes count only real money moves', () => {
     expect(change(status, OWNER, TRON_USDT.contractAddress)).toBe('-748');
     expect(change(status, USER, TRON_USDT.contractAddress)).toBe('748');
     expect(change(status, USER, NFT)).toBeNull();
+    expect(change(status, OWNER, NFT)).toBeNull();
   });
 
   it('a contract call without call_value moves no TRX from its owner', async () => {

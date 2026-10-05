@@ -638,7 +638,6 @@ export class TronChain extends Chain implements SignedTransactionBroadcaster {
       contract.type === 'TransferContract' ? 'to_address' : contract.type === 'TriggerSmartContract' ? 'contract_address' : null;
     if (recipientField === null) return null;
     const amountSun = BigInt(String((contract.type === 'TransferContract' ? value.amount : value.call_value) ?? 0));
-    if (contract.type === 'TriggerSmartContract' && amountSun === 0n) return null;
     try {
       return {
         from: TronChain._toBase58CheckAny(String(value.owner_address ?? '')),
