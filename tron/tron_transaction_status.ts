@@ -88,10 +88,25 @@ export interface TronTransactionStatusInit {
   balanceChanges?: NestedBalanceChanges | null;
   error?: TransactionErrorInfo | null;
   fees?: TronTransactionFees | null;
+  blockNumber?: number | null;
+  signers?: readonly string[];
+  memo?: string | null;
+  memoHex?: string | null;
+}
+
+export interface TronIncludedTransactionDetails {
+  blockNumber?: number | null;
+  signers?: readonly string[];
+  memo?: string | null;
+  memoHex?: string | null;
 }
 
 export class TronTransactionStatus extends TransactionStatus {
   readonly fees: TronTransactionFees | null;
+  readonly blockNumber: number | null;
+  readonly signers: readonly string[];
+  readonly memo: string | null;
+  readonly memoHex: string | null;
 
   constructor(init: TronTransactionStatusInit) {
     super({
@@ -102,6 +117,10 @@ export class TronTransactionStatus extends TransactionStatus {
       error: init.error,
     });
     this.fees = init.fees ?? null;
+    this.blockNumber = init.blockNumber ?? null;
+    this.signers = init.signers ?? [];
+    this.memo = init.memo ?? null;
+    this.memoHex = init.memoHex ?? null;
   }
 
   toString(): string {
@@ -112,34 +131,33 @@ export class TronTransactionStatus extends TransactionStatus {
     );
   }
 
-  static successful(args: {
-    chainId: number;
-    inclusionAt: Date;
-    balanceChanges: NestedBalanceChanges;
-    fees: TronTransactionFees;
-  }): TronTransactionStatus {
+  static successful(
+    args: {
+      chainId: number;
+      inclusionAt: Date;
+      balanceChanges: NestedBalanceChanges;
+      fees: TronTransactionFees;
+    } & TronIncludedTransactionDetails,
+  ): TronTransactionStatus {
     return new TronTransactionStatus({
-      chainId: args.chainId,
+      ...args,
       status: TransactionStatusTypes.Success,
-      inclusionAt: args.inclusionAt,
-      balanceChanges: args.balanceChanges,
       error: null,
-      fees: args.fees,
     });
   }
 
-  static failed(args: {
-    chainId: number;
-    inclusionAt: Date | null;
-    error: TransactionErrorInfo;
-    fees?: TronTransactionFees | null;
-  }): TronTransactionStatus {
+  static failed(
+    args: {
+      chainId: number;
+      inclusionAt: Date | null;
+      error: TransactionErrorInfo;
+      fees?: TronTransactionFees | null;
+    } & TronIncludedTransactionDetails,
+  ): TronTransactionStatus {
     return new TronTransactionStatus({
-      chainId: args.chainId,
+      ...args,
       status: TransactionStatusTypes.Failed,
-      inclusionAt: args.inclusionAt,
       balanceChanges: null,
-      error: args.error,
       fees: args.fees ?? null,
     });
   }

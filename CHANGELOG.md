@@ -8,6 +8,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.3] — 2026-10-05
+
+Tron: a transaction status rango-intents can trust, and local signing for depositron (RIN-317). No new node calls; building a transaction makes one fewer.
+
+### Added
+
+- **`TronTransactionStatus.blockNumber`, `.signers`, `.memo`, `.memoHex`**, filled on successful and failed statuses from the two replies the status already reads:
+  - `blockNumber` is the including block;
+  - `signers` is the contract's owner account as a `T…` address (`[]` without the raw transaction);
+  - `memoHex` is `raw_data.data` in lowercase, and `memo` is its strict-UTF-8 decoding.
+  Pending and not-found statuses carry `null`, `[]`, `null`, `null`. All four are optional in the init, so existing constructors compile unchanged.
+- **`decodeTronMemo(memoHex)`**: the memo decoder, identical to Clydner's `memoOf` (strict UTF-8, a leading byte-order mark dropped, `null` for empty, odd-length, non-hex or invalid UTF-8 input).
+- **`TronTransaction.rawDataHex`**: the locally serialized `raw_data`.
+
+### Changed
+
+- **Balance changes count only real money moves.**
+  - Internal transactions count as TRX only when not `rejected`, with a `call` or `suicide` note, summing every `callValueInfo` entry without a `tokenId`.
+  - `TriggerSmartContract` `call_value` is debited from the owner and credited to the contract.
+  - A `Transfer` log counts as TRC-20 only with exactly three topics and one 32-byte data word.
+  Before, rejected entries, staking and delegation entries, and TRC-10 amounts were counted as TRX.
+- **The txID is computed locally.**
+  - `build()` hashes the protobuf-encoded `raw_data` (`TransferContract`, `TriggerSmartContract`, `FreezeBalanceV2Contract`, `DelegateResourceContract`) instead of asking `wallet/getsignweight`, which is now called only when a permission id is set, and must agree.
+  - `sign()` / `TronWallet.signTransaction()` recompute the txID and refuse a carried `txID` or `raw_data_hex` that does not match, or an unsupported contract type, before the key is used.
+  - `broadcast()` / `broadcastSignedTransaction()` re-check the txID before sending (so an altered stored transaction never reaches the node, and is reported as `InvalidArgument`) and require the node's reply to name the same txID (`RpcError` otherwise).
+
+### Note
+
+- TypeScript-only. omnichain-py's side of both fixes is on RIN-328; `docs/tron.md` lists them under "Differences from omnichain-py".
+
 ## [0.6.2] — 2026-10-04
 
 Adds multi-signer UTXO transactions (RIN-267). A consumer that spends pre-selected inputs owned by several keys can now assemble, sign per key, finalize and broadcast without importing `bitcoinjs-lib`. Keys stay with the consumer; the SDK receives signer objects.
@@ -539,6 +569,7 @@ Initial npm release of `@getomnichain/omnichain`. Replaces prior vendored-submod
 
 ---
 
+[0.6.3]: https://github.com/getomnichain/omnichain/releases/tag/v0.6.3
 [0.6.2]: https://github.com/getomnichain/omnichain/releases/tag/v0.6.2
 [0.6.1]: https://github.com/getomnichain/omnichain/releases/tag/v0.6.1
 [0.5.1]: https://github.com/getomnichain/omnichain/releases/tag/v0.5.1

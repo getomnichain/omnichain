@@ -61,7 +61,7 @@ export class TronUnsignedTransaction extends UnsignedTransaction {
   }
 
   get txId(): string {
-    return this.transaction.txid;
+    return this.transaction.verifiedTxid('sign');
   }
 
   get canonicalTransaction(): TronCanonicalTransaction {

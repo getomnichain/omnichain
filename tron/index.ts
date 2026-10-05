@@ -9,6 +9,7 @@ export * from './tron_client.ts';
 export * from './tron_contract.ts';
 export * from './tron_gas_pricing.ts';
 export * from './tron_keys.ts';
+export * from './tron_memo.ts';
 export * from './tron_transaction_builder.ts';
 export * from './tron_transaction_status.ts';
 export * from './tron_transactions.ts';
