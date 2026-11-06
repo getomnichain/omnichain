@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.4] — 2026-11-06
+
+UTXO: signing with several keys is faster. Same API, same bytes, same refusals.
+
+### Changed
+
+- **`bitcoinjs-lib` is now `^7.0.5`.** 7.0.1 copied the whole parent transaction on every integer it read, so parents with many outputs took far longer to parse. 7.0.3 fixed that, and 7.0.4 resolves PSBT input UTXOs consistently for signing, validation and fee accounting.
+- **`UnsignedUtxoTransaction` checks its parents once per transaction.** The transaction `signWith` returns no longer repeats the check on the next `signWith` or `finalize`. A transaction built with the constructor from a PSBT still gets the full check on first use.
+
 ## [0.7.3] — 2026-11-04
 
 TON: a native receipt is what the account kept. Behaviour change for callers of `accountTransfersOf` and `getAccountTransfers`.

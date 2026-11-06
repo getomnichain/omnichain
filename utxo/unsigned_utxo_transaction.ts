@@ -40,6 +40,7 @@ export class UnsignedUtxoTransaction extends UnsignedTransaction {
   readonly totalOutputSats: number;
   readonly changeAddress: string | null;
   readonly inputsToSign: Readonly<Record<string, number[]>>;
+  #checkedPrevouts: Prevout[] | null = null;
 
   constructor(init: UnsignedUtxoTransactionInit) {
     super(init.chainId, NetworkType.BTC);
@@ -64,7 +65,7 @@ export class UnsignedUtxoTransaction extends UnsignedTransaction {
       throw this.invalid('signWith: signer.publicKey must be a 33-byte compressed secp256k1 public key');
     }
     const psbt = this.toPsbt();
-    const prevouts = this.verifiedPrevouts(psbt, 'signWith');
+    const prevouts = (this.#checkedPrevouts ??= this.verifiedPrevouts(psbt, 'signWith'));
     const owned = this.inputIndicesOwnedBy(prevouts, signer.publicKey);
     if (owned.length === 0) {
       throw this.invalid('signWith: the signer owns none of the inputs');
@@ -90,12 +91,12 @@ export class UnsignedUtxoTransaction extends UnsignedTransaction {
         throw this.invalid(`signWith: signing input ${index} failed: ${errorMessage(err)}`, err);
       }
     }
-    return this.withPsbt(psbt);
+    return this.withPsbt(psbt, prevouts);
   }
 
   finalize(): FinalizedUtxoTransaction {
     const psbt = this.toPsbt();
-    this.verifiedPrevouts(psbt, 'finalize');
+    this.#checkedPrevouts ??= this.verifiedPrevouts(psbt, 'finalize');
     psbt.data.inputs.forEach((input, index) => {
       if (!input.partialSig || input.partialSig.length === 0) {
         throw this.invalid(`finalize: input ${index} is not signed`);
@@ -161,8 +162,8 @@ export class UnsignedUtxoTransaction extends UnsignedTransaction {
     );
   }
 
-  private withPsbt(psbt: Psbt): UnsignedUtxoTransaction {
-    return new UnsignedUtxoTransaction({
+  private withPsbt(psbt: Psbt, checkedPrevouts: Prevout[]): UnsignedUtxoTransaction {
+    const next = new UnsignedUtxoTransaction({
       chainId: this.chainId,
       params: this.params,
       psbtBase64: psbt.toBase64(),
@@ -175,6 +176,8 @@ export class UnsignedUtxoTransaction extends UnsignedTransaction {
       changeAddress: this.changeAddress,
       inputsToSign: this.inputsToSign,
     });
+    next.#checkedPrevouts = checkedPrevouts;
+    return next;
   }
 
   private invalid(message: string, cause?: unknown): ChainError {
