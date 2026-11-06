@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+
+import { jest } from '@jest/globals';
 import { Transaction, payments } from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
 
@@ -422,5 +425,125 @@ describe('UnsignedUtxoTransaction parent checks', () => {
 
     expect(err.kind).toBe(ChainErrorKinds.InvalidArgument);
     expect(err.message).toContain('signWith: input 0 has a parent transaction that is not the one it spends');
+  });
+
+  describe('once per transaction', () => {
+    function parentChecks() {
+      return jest.spyOn(
+        UnsignedUtxoTransaction.prototype as unknown as { verifiedPrevouts(): unknown },
+        'verifiedPrevouts',
+      );
+    }
+
+    function withLoweredAmount(unsigned: UnsignedUtxoTransaction): UnsignedUtxoTransaction {
+      return rebuilt(unsigned, (psbt) => {
+        psbt.data.inputs[0].witnessUtxo = { ...psbt.data.inputs[0].witnessUtxo!, value: 1_000n };
+      });
+    }
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('checks once across a chain of signWith calls and finalize', () => {
+      const unsigned = threeOwnerTransaction();
+      const checks = parentChecks();
+
+      unsigned.signWith(owner1.signer).signWith(owner2.signer).signWith(ownerZ.signer).finalize();
+
+      expect(checks).toHaveBeenCalledTimes(1);
+    });
+
+    it('checks once when one transaction signs twice', () => {
+      const unsigned = threeOwnerTransaction();
+      const checks = parentChecks();
+
+      unsigned.signWith(owner1.signer);
+      unsigned.signWith(owner2.signer);
+
+      expect(checks).toHaveBeenCalledTimes(1);
+    });
+
+    it('checks a transaction rebuilt from a signed one again', () => {
+      const signed = threeOwnerTransaction().signWith(owner1.signer);
+      const copy = rebuilt(signed, () => {});
+      const checks = parentChecks();
+
+      copy.signWith(owner2.signer);
+
+      expect(checks).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses to sign a transaction rebuilt from a signed one with a changed amount', () => {
+      const tampered = withLoweredAmount(threeOwnerTransaction().signWith(owner1.signer));
+
+      const err = rejection(() => tampered.signWith(owner2.signer));
+
+      expect(err.kind).toBe(ChainErrorKinds.InvalidArgument);
+      expect(err.message).toContain('signWith: input 0 declares 1000 sats, but its parent output holds 30000 sats');
+    });
+
+    it('does not remember a failed check', () => {
+      const tampered = withLoweredAmount(threeOwnerTransaction());
+      const checks = parentChecks();
+
+      const first = rejection(() => tampered.signWith(owner1.signer));
+      const second = rejection(() => tampered.signWith(owner1.signer));
+
+      expect(second.message).toBe(first.message);
+      expect(checks).toHaveBeenCalledTimes(2);
+    });
+
+    it('still refuses a key that owns nothing and an unsigned input after the first signature', () => {
+      const signed = threeOwnerTransaction().signWith(owner1.signer);
+
+      expect(rejection(() => signed.signWith(TestKey.fromByte(0x55).signer)).message).toContain(
+        'signWith: the signer owns none of the inputs',
+      );
+      expect(rejection(() => signed.finalize()).message).toContain('finalize: input 1 is not signed');
+    });
+
+    it('keeps two signings of one transaction separate', () => {
+      const unsigned = threeOwnerTransaction();
+      const before = unsigned.psbtBase64;
+
+      const first = unsigned.signWith(owner1.signer);
+      const second = unsigned.signWith(owner2.signer);
+
+      expect(signedInputs(first)).toEqual([0]);
+      expect(signedInputs(second)).toEqual([1]);
+      expect(signedInputs(unsigned)).toEqual([]);
+      expect(unsigned.psbtBase64).toBe(before);
+      expect(first.signWith(owner2.signer).signWith(ownerZ.signer).finalize().hex).toBe(
+        second.signWith(owner1.signer).signWith(ownerZ.signer).finalize().hex,
+      );
+    });
+  });
+});
+
+describe('UnsignedUtxoTransaction output', () => {
+  it('signs a multi-key batch to the bytes 0.7.3 produced', () => {
+    const vector = JSON.parse(
+      readFileSync(new URL('./fixtures/multikey_signing_0_7_3.json', import.meta.url), 'utf8'),
+    ) as { parents: string[]; hex: string; txid: string; vsize: number };
+    const owners = [
+      [owner1, UtxoScriptTypes.P2WPKH],
+      [owner2, UtxoScriptTypes.P2WPKH],
+      [ownerZ, UtxoScriptTypes.P2WPKH],
+      [owner1, UtxoScriptTypes.P2PKH],
+    ] as const;
+    const inputs = vector.parents.map((parentTxHex, index) => {
+      const [key, scriptType] = owners[index];
+      const ownerAddress = chain.addressForPublicKey(key.publicKey, scriptType);
+      return { utxo: utxoFromRawTransaction(parentTxHex, 0, ownerAddress), parentTxHex };
+    });
+
+    const unsigned = chain.assembleTransaction({
+      inputs,
+      outputs: [payTo(recipient, 170_000), { kind: 'opReturn', data: Uint8Array.of(0xde, 0xad) }],
+    });
+    const finalized = [owner1, owner2, ownerZ].reduce((tx, key) => tx.signWith(key.signer), unsigned).finalize();
+
+    expect(finalized).toEqual({ hex: vector.hex, txid: vector.txid, vsize: vector.vsize });
   });
 });
