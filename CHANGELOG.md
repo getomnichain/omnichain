@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.5] — 2026-11-15
+
+Solana: simulate a Jito bundle. Additive.
+
+### Added
+
+- **`SolanaChain.simulateBundle(txs, { postAccounts, sigVerify, replaceRecentBlockhash, signal, timeoutMs })`**: runs 1 to 5 transactions in order on the chain's RPC URL, each seeing the state the earlier ones left, and returns `succeeded`, `failedIndex`, `error` and, per transaction, `err`, `logs`, `unitsConsumed`, `fee` and the requested accounts after it. A failed simulation is returned, not thrown. An RPC without the method (`-32601`, HTTP 410) throws `FeatureNotSupported`. See `docs/JITO.md`.
+- `JITO_BUNDLE_MAX_TRANSACTIONS`, and the `SimulateSolanaBundleOpts`, `SolanaBundleSimulation` and `SolanaBundleTransactionSimulation` types.
+- `npm run test:live:solana`: the method against mainnet, read-only.
+
 ## [0.7.4] — 2026-11-06
 
 UTXO: signing with several keys is faster. Same API, same bytes, same refusals.

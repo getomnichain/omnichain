@@ -62,6 +62,31 @@ export interface JitoBundleStatus {
   err?: string;
 }
 
+export const JITO_BUNDLE_MAX_TRANSACTIONS = 5;
+
+export interface SimulateSolanaBundleOpts {
+  sigVerify?: boolean;
+  replaceRecentBlockhash?: boolean;
+  postAccounts?: readonly (readonly string[] | null)[];
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+export interface SolanaBundleTransactionSimulation {
+  err: unknown | null;
+  logs: string[] | null;
+  unitsConsumed: number | null;
+  fee: number | null;
+  postAccounts: ({ lamports: number; data: Uint8Array } | null)[];
+}
+
+export interface SolanaBundleSimulation {
+  succeeded: boolean;
+  failedIndex: number | null;
+  error: string | null;
+  transactions: SolanaBundleTransactionSimulation[];
+}
+
 export interface SolanaChainInit {
   chainId: number;
   name: string;
@@ -1312,6 +1337,150 @@ export class SolanaChain extends Chain {
     return json.result;
   }
 
+  async simulateBundle(txs: readonly Uint8Array[], opts: SimulateSolanaBundleOpts = {}): Promise<SolanaBundleSimulation> {
+    const encodedTransactions = this.bundleTransactionsOrThrow(txs);
+    const postExecutionAccountsConfigs = this.bundlePostAccountsOrThrow(opts.postAccounts, txs.length);
+    const body = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'simulateBundle',
+      params: [
+        { encodedTransactions },
+        {
+          skipSigVerify: !(opts.sigVerify ?? false),
+          replaceRecentBlockhash: opts.replaceRecentBlockhash ?? false,
+          preExecutionAccountsConfigs: txs.map(() => null),
+          postExecutionAccountsConfigs,
+        },
+      ],
+    };
+    const rpcUrl = this.readRpcUrl();
+    const signal = combineJitoSignal(opts.signal, opts.timeoutMs ?? 15_000);
+    let json: SimulateBundleResponse;
+    try {
+      const resp = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal,
+      });
+      if (resp.status === 410) throw this.simulateBundleUnsupported('HTTP 410', rpcUrl);
+      if (!resp.ok) {
+        throw new ChainError(
+          ChainErrorKinds.RpcError,
+          sanitizeMessage(`Solana simulateBundle HTTP ${resp.status} on ${this.name}`, rpcUrl),
+          { chainId: this.chainId },
+        );
+      }
+      json = (await resp.json()) as SimulateBundleResponse;
+    } catch (err) {
+      if (err instanceof ChainError) throw err;
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana simulateBundle transport failed on ${this.name}`, rpcUrl),
+        { chainId: this.chainId },
+        sanitizeCause(err, rpcUrl),
+      );
+    }
+    if (json.error) {
+      if (json.error.code === -32601) throw this.simulateBundleUnsupported(`${json.error.code} ${json.error.message ?? ''}`.trim(), rpcUrl);
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana simulateBundle error on ${this.name}: ${json.error.code ?? ''} ${json.error.message ?? 'unknown'}`, rpcUrl),
+        { chainId: this.chainId },
+      );
+    }
+    const value = json.result?.value;
+    if (!value || !Array.isArray(value.transactionResults) || value.summary === undefined) {
+      throw new ChainError(
+        ChainErrorKinds.RpcError,
+        sanitizeMessage(`Solana simulateBundle returned no summary or transaction results on ${this.name}`, rpcUrl),
+        { chainId: this.chainId },
+      );
+    }
+    const transactions = value.transactionResults.map(bundleTransactionSimulationOf);
+    const succeeded = value.summary === 'succeeded';
+    const failed = transactions.findIndex((t) => t.err !== null);
+    return {
+      succeeded,
+      failedIndex: succeeded || failed === -1 ? null : failed,
+      error: succeeded ? null : bundleFailureMessage(value.summary),
+      transactions,
+    };
+  }
+
+  private bundleTransactionsOrThrow(txs: readonly Uint8Array[]): string[] {
+    if (!Array.isArray(txs) || txs.length < 1 || txs.length > JITO_BUNDLE_MAX_TRANSACTIONS) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana simulateBundle: a bundle holds 1 to ${JITO_BUNDLE_MAX_TRANSACTIONS} transactions, got ${Array.isArray(txs) ? txs.length : typeof txs}`,
+        { chainId: this.chainId },
+      );
+    }
+    return txs.map((bytes, index) => {
+      if (!(bytes instanceof Uint8Array) || bytes.length < 65 || bytes.length > 1232) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `Solana simulateBundle: transaction ${index} must be 65 to 1232 bytes, got ${bytes instanceof Uint8Array ? `${bytes.length} bytes` : typeof bytes}`,
+          { chainId: this.chainId },
+        );
+      }
+      try {
+        VersionedTransaction.deserialize(bytes);
+      } catch (err) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `Solana simulateBundle: transaction ${index} is not a serialized VersionedTransaction`,
+          { chainId: this.chainId },
+          err instanceof Error ? err : undefined,
+        );
+      }
+      return Buffer.from(bytes).toString('base64');
+    });
+  }
+
+  private bundlePostAccountsOrThrow(
+    postAccounts: SimulateSolanaBundleOpts['postAccounts'],
+    count: number,
+  ): ({ addresses: string[]; encoding: 'base64' } | null)[] {
+    if (postAccounts === undefined) return Array.from({ length: count }, () => null);
+    if (!Array.isArray(postAccounts) || postAccounts.length !== count) {
+      throw new ChainError(
+        ChainErrorKinds.InvalidArgument,
+        `Solana simulateBundle: postAccounts needs one entry per transaction (${count}), got ${Array.isArray(postAccounts) ? postAccounts.length : typeof postAccounts}`,
+        { chainId: this.chainId },
+      );
+    }
+    return postAccounts.map((addresses, index) => {
+      if (addresses === null) return null;
+      if (!Array.isArray(addresses) || addresses.length === 0) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidArgument,
+          `Solana simulateBundle: postAccounts[${index}] must be null or a non-empty array of addresses`,
+          { chainId: this.chainId },
+        );
+      }
+      try {
+        return { addresses: addresses.map((a) => new PublicKey(a).toBase58()), encoding: 'base64' as const };
+      } catch (err) {
+        throw new ChainError(
+          ChainErrorKinds.InvalidAddress,
+          `Solana simulateBundle: postAccounts[${index}] contains an invalid Solana public key`,
+          { chainId: this.chainId },
+          err instanceof Error ? err : undefined,
+        );
+      }
+    });
+  }
+
+  private simulateBundleUnsupported(reason: string, rpcUrl: string): ChainError {
+    return new ChainError(
+      ChainErrorKinds.FeatureNotSupported,
+      sanitizeMessage(`Solana simulateBundle is not available on this RPC for ${this.name} (${reason})`, rpcUrl),
+      { chainId: this.chainId },
+    );
+  }
+
   async getBundleStatus(bundleId: string, opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<JitoBundleStatus>;
   async getBundleStatus(bundleIds: string[], opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<JitoBundleStatus[]>;
   async getBundleStatus(
@@ -2047,6 +2216,42 @@ function anySignal(a: AbortSignal, b: AbortSignal): AbortSignal {
     b.addEventListener('abort', onAbort, { once: true });
   }
   return ac.signal;
+}
+
+type SimulateBundleAccount = { lamports?: number; data?: [string, string] | string } | null;
+
+type SimulateBundleTransactionResult = {
+  err?: unknown;
+  logs?: string[] | null;
+  unitsConsumed?: number | null;
+  fee?: number | null;
+  postExecutionAccounts?: SimulateBundleAccount[] | null;
+};
+
+type SimulateBundleResponse = {
+  result?: { value?: { summary?: unknown; transactionResults?: SimulateBundleTransactionResult[] } };
+  error?: { code?: number; message?: string };
+};
+
+function bundleTransactionSimulationOf(result: SimulateBundleTransactionResult): SolanaBundleTransactionSimulation {
+  return {
+    err: result.err ?? null,
+    logs: result.logs ?? null,
+    unitsConsumed: result.unitsConsumed ?? null,
+    fee: result.fee ?? null,
+    postAccounts: (result.postExecutionAccounts ?? []).map((account) => {
+      if (!account || typeof account.lamports !== 'number') return null;
+      const encoded = Array.isArray(account.data) ? account.data[0] : (account.data ?? '');
+      return { lamports: account.lamports, data: new Uint8Array(Buffer.from(encoded, 'base64')) };
+    }),
+  };
+}
+
+function bundleFailureMessage(summary: unknown): string {
+  const error = (summary as { failed?: { error?: unknown } } | null)?.failed?.error;
+  const failure = (error as { TransactionFailure?: unknown } | undefined)?.TransactionFailure;
+  if (Array.isArray(failure) && typeof failure[1] === 'string') return failure[1];
+  return JSON.stringify(error ?? summary);
 }
 
 function combineJitoSignal(consumerSignal: AbortSignal | undefined, timeoutMs: number): AbortSignal {

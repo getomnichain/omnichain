@@ -36,6 +36,31 @@ const status = await chain.getBundleStatus(bundleId);
 const [a, b, c] = await chain.getBundleStatus(['id1', 'id2', 'id3']);
 ```
 
+## Simulating a bundle
+
+`simulateBundle` runs 1 to 5 transactions in order on the chain's **RPC URL** (not the block engine, and no `jito` config needed). Each transaction sees the state the earlier ones left, so a transaction can be sized against funds an earlier one provides:
+
+```ts
+const result = await chain.simulateBundle([fundUserTx, siteTx], {
+  postAccounts: [null, [user]],   // accounts to read after each transaction, or null
+  sigVerify: false,               // default: signatures are not checked, so unsigned bytes work
+  replaceRecentBlockhash: false,  // default: keep each transaction's blockhash
+});
+
+if (result.succeeded) {
+  const userLamports = result.transactions[1].postAccounts[0]?.lamports;
+} else {
+  result.failedIndex;   // the transaction that failed
+  result.error;         // e.g. "Blockhash not found"
+}
+```
+
+- Each transaction must be 65 to 1232 bytes and a serialized `VersionedTransaction`; `postAccounts` has one entry per transaction. Anything else throws `InvalidArgument` (`InvalidAddress` for a bad address) before any request.
+- Every result has `err`, `logs`, `unitsConsumed`, `fee` and the requested `postAccounts` as `{ lamports, data }`, in the order asked. An account that does not exist reads as 0 lamports and no data.
+- A failed simulation is returned, not thrown. Results stop at the failing transaction, so later ones have none.
+- An RPC that does not serve the method throws `FeatureNotSupported`: JSON-RPC `-32601` (Ankr) or HTTP 410 (`api.mainnet-beta.solana.com`). publicnode, Helius and Alchemy serve it. `SolanaChain` holds one RPC URL, so trying another endpoint is the caller's choice. Any other failure throws `RpcError`, with keyed URLs redacted.
+- `npm run test:live:solana` checks all of this on mainnet, read-only (see `.env.solana.example`).
+
 ## Bundle composition + tip strategy
 
 Consumer-owned. The SDK exposes wire-level submit + status only. Tip instructions (e.g. `SystemProgram.transfer` to a Jito tip account) must be composed into the transactions before signing.
