@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.6] — 2026-11-17
+
+TON: read a W5 request another party signed, and verify it. Additive.
+
+### Added
+
+- **`tonSignedRequestOf(input)`**: a signed W5 request — the body, or an internal message carrying it such as TonConnect's `signMessage` `internalBoc` — read in full: `authType`, `walletId`, `validUntil`, `seqno`, every message as signed (`to`, `value`, `bounce`, `body`, `stateInit`, `mode`), the extended actions, the signature, the hash it covers and the body. Anything else throws `TransactionDecodeFailed`.
+- **`verifyTonW5Request(request, publicKey)`**: whether the request was signed by that key.
+- **`tonW5DefaultWalletId()`**: the wallet id `TonWallet`'s W5 signs with.
+- The `TonSignedRequest`, `TonSignedRequestMessage` and `TonExtendedAction` types. See `docs/ton.md`, "A request someone else signed".
+
 ## [0.7.5] — 2026-11-15
 
 Solana: simulate a Jito bundle. Additive.
