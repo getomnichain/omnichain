@@ -1,9 +1,9 @@
-import { Cell, type Slice, type StateInit, beginCell, loadMessage, loadMessageRelaxed } from '@ton/core';
+import { Cell, type Slice, type StateInit, beginCell, loadMessageRelaxed } from '@ton/core';
 import { signVerify } from '@ton/crypto';
 
 import { ChainError, ChainErrorKinds } from '../errors.ts';
 import { TON_MAX_MESSAGES_PER_REQUEST, TON_W5_SIGNED_EXTERNAL_OP, TON_W5_SIGNED_INTERNAL_OP, type TonW5RequestFields } from './ton_messages.ts';
-import { type TonWorkchain, tonPublicKeyOf } from './ton_wallet_contracts.ts';
+import { tonPublicKeyOf } from './ton_wallet_contracts.ts';
 
 const SIGNATURE_BITS = 512;
 const OUT_ACTION_SEND_MSG_TAG = 0x0ec3c86d;
@@ -45,8 +45,9 @@ export interface TonSignedRequest extends TonW5RequestFields {
 
 /**
  * Reads a signed W5 (v5r1) request: the body itself, or an internal message
- * carrying it. Every cell must be read to its end, so nothing the wallet would
- * execute is left unread. Throws `TransactionDecodeFailed` for anything else.
+ * carrying it. The body and its action cells must be read to their end, so no
+ * action the wallet would execute is left unread. Throws
+ * `TransactionDecodeFailed` for anything else.
  */
 export function tonSignedRequestOf(input: string | Cell): TonSignedRequest {
   try {
@@ -70,21 +71,20 @@ export function verifyTonW5Request(request: Pick<TonSignedRequest, 'signature' |
 }
 
 /**
- * The wallet id a W5 on `workchain` has by default on mainnet, as `TonWallet`
- * builds it (subwallet 0), in the signed form `tonW5RequestFields` reads.
+ * The wallet id `TonWallet`'s W5 signs on mainnet (subwallet 0), in the form
+ * `tonW5RequestFields` reads. Its context names workchain 0 on either
+ * workchain, as the Python SDK builds it.
  */
-export function tonW5DefaultWalletId(workchain: TonWorkchain = 0): number {
-  // Client context: flag bit, workchain (int8), wallet version (v5r1 = 0), subwallet (15 bits).
-  const context = (1 << 31) | ((workchain & 0xff) << 23);
-  return TON_MAINNET_GLOBAL_ID ^ context;
+export function tonW5DefaultWalletId(): number {
+  // Client context: flag bit, workchain 0 (int8), wallet version v5r1 (0), subwallet 0 (15 bits).
+  return TON_MAINNET_GLOBAL_ID ^ (1 << 31);
 }
 
 function requestBodyOf(root: Cell): { body: Cell; destination: string | null } {
   if (isRequestBody(root)) return { body: root, destination: null };
-  const slice = root.beginParse();
-  const message = loadMessage(slice);
-  slice.endParse();
-  if (message.info.type !== 'internal') throw decodeFailed(`a ${message.info.type} message does not carry a relayed request`);
+  // Relaxed: a wallet app may leave the source empty.
+  const message = loadMessageRelaxed(root.beginParse());
+  if (message.info.type !== 'internal') throw decodeFailed('only an internal message carries a relayed request');
   if (!isRequestBody(message.body)) throw decodeFailed('the message body is not a signed W5 request');
   return { body: message.body, destination: message.info.dest.toRawString() };
 }
@@ -134,9 +134,7 @@ function sendActionsOf(list: Cell): TonSignedRequestMessage[] {
 }
 
 function sentMessageOf(cell: Cell, mode: number): TonSignedRequestMessage {
-  const slice = cell.beginParse();
-  const message = loadMessageRelaxed(slice);
-  slice.endParse();
+  const message = loadMessageRelaxed(cell.beginParse());
   if (message.info.type !== 'internal') throw decodeFailed('a W5 request sends internal messages only');
   if (message.info.value.other && message.info.value.other.size > 0) throw decodeFailed('extra currencies are not supported');
   const empty = message.body.bits.length === 0 && message.body.refs.length === 0;
