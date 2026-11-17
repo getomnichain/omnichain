@@ -212,6 +212,19 @@ npm ci && npm run build && npm test
 
 # Deviations from the plan
 
+- **`tonW5DefaultWalletId()` takes no workchain.** A W5 on workchain -1 signs
+  with its workchain-0 twin's wallet id, as `TonWallet` builds it, so the id
+  is one value. The spec checks both workchains against real requests.
+- **Message cells are not checked for leftover data.** `@ton/core` reads an
+  inline body as the rest of the message cell, so the reader checks the body
+  and every action-list cell to their end, not each message cell. A message
+  cell is still covered by the signature check.
+- **AC6 (a recorded `internalBoc` from a real wallet app) is not done.** No
+  wallet app was available. The internalBoc shape is covered with a relaxed
+  internal message built like TonConnect's. It is left to the gasless live e2e,
+  which signs with a real wallet.
+- **Version 0.7.6**, a patch bump like the earlier additive releases.
+
 ---
 
 # Follow-ups raised

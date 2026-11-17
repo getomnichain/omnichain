@@ -151,6 +151,26 @@ The relay message is bounceable: a request that fails in the target's compute ph
 
 **A relayed request that failed is not dead.** W5 keeps an internal request's seqno only when the transaction succeeds, so after a failure the request is still valid, and anyone can deliver it again from the public trace until its `validUntil` — observed on mainnet: a request that failed for lack of funds executed when delivered a second time. Before signing a replacement, wait for `getRequestState({ wallet: vault.address, seqno: request.seqno, validUntil: request.validUntil })` to say `expired`.
 
+### A request someone else signed
+
+A relayer that delivers a user's request — gasless, where the user's wallet app signs and we pay — reads it before paying for it. TonConnect's `signMessage` (W5 only) returns `internalBoc`: an internal message to the wallet carrying the signed request.
+
+```ts
+const request = tonSignedRequestOf(internalBoc); // or the signed body itself
+request.authType;          // 'internal' for a relayed request; refuse 'external'
+request.walletId === tonW5DefaultWalletId();
+request.seqno; request.validUntil;
+request.messages;          // [{ to (raw), value, bounce, body, stateInit, mode }], in the order sent
+request.extendedActions;   // extension and signature-auth changes; a relayer usually requires none
+verifyTonW5Request(request, publicKey); // the wallet's own key, e.g. TonConnect's account.publicKey
+const relay = tonRelayMessage({ wallet, request: tonInternalRequestOf(request.body), value, deploy });
+```
+
+- The body and every action cell are read to their end; data after the actions, a v3r2 / v4r2 body, an action list holding anything but sends, more than 255 messages or extra currencies throw `TransactionDecodeFailed`.
+- The signature is checked over the signed bytes themselves (the body without its trailing 512 bits), not over the fields read from them.
+- `tonW5DefaultWalletId()` is the wallet id `TonWallet` signs with: a W5 on workchain -1 signs its workchain-0 twin's.
+- A wallet's address does not reveal its key: check `tonWalletAddress(publicKey, 'v5r1')` is the wallet before trusting the signature.
+
 ### Before signing a replacement: `getRequestState`
 
 `getRequestState({ wallet, seqno, validUntil, hash? })` says where a signed request stands. `wallet` is the wallet that signed it — the sender of an external request (pass its `hash`), the target of a relayed one (no `hash`: a relay's hash is the relayer's request, and a `hash` whose trace starts at another wallet is refused with `InvalidArgument`).
